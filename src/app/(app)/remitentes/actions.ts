@@ -6,11 +6,16 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { encryptSecret } from "@/lib/crypto";
 import { mailboxFor, verifyMailbox } from "@/lib/mailer";
+import { imageSize } from "@/lib/image-size";
 
 const senderSchema = z.object({
   name: z.string().trim().min(1),
   email: z.string().trim().toLowerCase().email(),
   signature: z.string().max(3000).default(""),
+  jobTitle: z.string().trim().max(120).default(""),
+  phone: z.string().trim().max(40).default(""),
+  website: z.string().trim().max(200).default(""),
+  signatureImageMode: z.enum(["LOGO", "FULL"]).default("LOGO"),
   dailyLimit: z.coerce.number().int().min(1).max(500),
   // Las contraseñas de aplicación de Google se muestran con espacios; se guardan sin ellos.
   appPassword: z.string().transform((v) => v.replace(/\s+/g, "")),
@@ -21,21 +26,60 @@ function read(form: FormData) {
     name: form.get("name"),
     email: form.get("email"),
     signature: form.get("signature") ?? "",
+    jobTitle: form.get("jobTitle") ?? "",
+    phone: form.get("phone") ?? "",
+    website: form.get("website") ?? "",
+    signatureImageMode: form.get("signatureImageMode") ?? "LOGO",
     dailyLimit: form.get("dailyLimit") ?? 50,
     appPassword: form.get("appPassword") ?? "",
   });
 }
 
+const MAX_IMAGE_BYTES = 300 * 1024;
+
+/** Lee la imagen subida (PNG, JPG o GIF, hasta 300 KB). Sin archivo devuelve null. */
+async function readImage(form: FormData) {
+  const file = form.get("signatureImage");
+  if (!(file instanceof File) || file.size === 0) return null;
+  const fail = (msg: string) => redirect(`/remitentes?error=${encodeURIComponent(msg)}`);
+  if (file.size > MAX_IMAGE_BYTES) fail("La imagen pesa más de 300 KB: expórtala más liviana.");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const size = imageSize(bytes);
+  if (!size) return fail("Formato no válido: usa PNG, JPG o GIF.");
+  return {
+    signatureImage: bytes,
+    signatureImageType: size.type,
+    signatureImageWidth: size.width,
+    signatureImageHeight: size.height,
+    signatureImageVersion: { increment: 1 },
+  };
+}
+
 export async function createSender(form: FormData) {
   const { appPassword, ...data } = read(form);
-  await db.sender.create({ data: { ...data, appPassword: appPassword ? encryptSecret(appPassword) : null } });
+  const image = await readImage(form);
+  await db.sender.create({
+    data: { ...data, ...(image ? { ...image, signatureImageVersion: 1 } : {}), appPassword: appPassword ? encryptSecret(appPassword) : null },
+  });
   revalidatePath("/remitentes");
 }
 
-/** Deja la contraseña como está si el campo llega vacío. */
+/** Deja la contraseña y la imagen como están si sus campos llegan vacíos. */
 export async function updateSender(id: string, form: FormData) {
   const { appPassword, ...data } = read(form);
-  await db.sender.update({ where: { id }, data: { ...data, ...(appPassword ? { appPassword: encryptSecret(appPassword) } : {}) } });
+  const image = await readImage(form);
+  await db.sender.update({
+    where: { id },
+    data: { ...data, ...(image ?? {}), ...(appPassword ? { appPassword: encryptSecret(appPassword) } : {}) },
+  });
+  revalidatePath("/remitentes");
+}
+
+export async function removeSignatureImage(id: string) {
+  await db.sender.update({
+    where: { id },
+    data: { signatureImage: null, signatureImageType: null, signatureImageWidth: null, signatureImageHeight: null },
+  });
   revalidatePath("/remitentes");
 }
 

@@ -143,6 +143,19 @@ model Sender {
   /// Contraseña de aplicación de Gmail, cifrada con ENCRYPTION_KEY.
   appPassword String?
   signature   String     @default("")
+  /// Datos de la firma profesional (se muestran en HTML; `signature` queda como texto extra).
+  jobTitle    String     @default("")
+  phone       String     @default("")
+  website     String     @default("")
+  /// Logo, foto o firma diseñada. Se aloja en /api/firma/:id, nunca se adjunta.
+  signatureImage       Bytes?
+  signatureImageType   String?
+  signatureImageWidth  Int?
+  signatureImageHeight Int?
+  /// LOGO: imagen pequeña junto a los datos. FULL: la imagen es la firma completa.
+  signatureImageMode   String  @default("LOGO")
+  /// Sube con cada imagen nueva para que los clientes de correo no usen la vieja en caché.
+  signatureImageVersion Int    @default(0)
   /// Máximo de emails al día desde este buzón, sumando todas sus secuencias.
   dailyLimit  Int        @default(50)
   createdAt   DateTime   @default(now())

@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { sendEmail, newMessageId, mailboxFor } from "./mailer";
 import { renderTemplate } from "./template";
-import { withSignature } from "./signature";
+import { renderSignature } from "./signature";
 import { nextSendTime, isInWindow, windowFromEnv } from "./schedule";
 import { randomUUID } from "node:crypto";
 import { sentToday as countSentToday, generalMailbox } from "./quota";
@@ -14,6 +14,8 @@ const BATCH = 50;
  */
 export async function runDueSteps(now = new Date()) {
   const window = windowFromEnv();
+  const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
+  const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
   const summary = { sent: 0, tasks: 0, finished: 0, errors: 0, skippedOutsideWindow: false };
   if (!isInWindow(now, window)) {
     summary.skippedOutsideWindow = true;
@@ -79,7 +81,10 @@ export async function runDueSteps(now = new Date()) {
           mailbox,
           to: contact.email,
           subject,
-          body: withSignature(renderTemplate(step.body, contact), renderTemplate(sequence.sender?.signature ?? "", contact)),
+          body: renderTemplate(step.body, contact),
+          signature: sequence.sender
+            ? renderSignature(sequence.sender, company, baseUrl, renderTemplate(sequence.sender.signature, contact))
+            : undefined,
           messageId,
           trackingId,
           contactId: contact.id,
