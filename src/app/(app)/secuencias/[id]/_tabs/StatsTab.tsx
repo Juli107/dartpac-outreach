@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { formatPct, pct, variantStats } from "@/lib/stats";
-import { daysToFinish, generalMailbox, pendingEmails, sentToday } from "@/lib/quota";
+import { daysToFinish, pendingEmails, sentToday } from "@/lib/quota";
 import { stepDays, stepVariants } from "@/lib/variants";
 import { Kpi } from "@/components/ui";
 import type { Seq } from "./types";
@@ -19,8 +19,7 @@ export async function StatsTab({ seq }: { seq: Seq }) {
     sentToday(),
     pendingEmails([id]),
   ]);
-  const general = generalMailbox();
-  const box = { email: seq.sender?.email.toLowerCase() ?? general.email, name: seq.sender?.name ?? "Buzón general", limit: seq.sender?.dailyLimit ?? general.dailyLimit };
+  const box = { email: seq.sender?.email.toLowerCase() ?? "", name: seq.sender?.name ?? "el remitente", limit: seq.sender?.dailyLimit ?? 0 };
   const pending = pendingMap.get(id) ?? 0;
   const seqToday = today.bySequence.get(id) ?? 0;
   const boxToday = today.byMailbox.get(box.email) ?? 0;

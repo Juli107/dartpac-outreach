@@ -20,7 +20,7 @@ export default async function Mailbox({ params, searchParams }: { params: Promis
   if (!item) notFound();
   const { box, today, checks } = item;
   const tab = TABS.some(([k]) => k === sp.tab) ? sp.tab! : "salida";
-  const senderFilter = key === "general" ? { senderId: null } : { senderId: key };
+  const senderFilter = { senderId: key };
 
   const [queuedCount, sentCount, inCount] = await Promise.all([
     db.enrollment.count({ where: { status: "ACTIVE", sequence: { ...senderFilter, status: { not: "ARCHIVED" } } } }),
@@ -36,7 +36,7 @@ export default async function Mailbox({ params, searchParams }: { params: Promis
         sub={box.email}
       >
         <form action={checkConnections}><button className="btn-ghost" title="No envía nada">Comprobar conexión</button></form>
-        {key !== "general" && <Link href="/remitentes" className="btn-ghost">Editar remitente</Link>}
+        <Link href={`/remitentes?editar=${key}`} className="btn-ghost">Editar remitente</Link>
       </PageHeader>
 
       <div className="grid items-start gap-4 lg:grid-cols-[1fr_320px]">
@@ -69,7 +69,7 @@ export default async function Mailbox({ params, searchParams }: { params: Promis
   );
 }
 
-async function Outbox({ senderFilter }: { senderFilter: { senderId: string | null } }) {
+async function Outbox({ senderFilter }: { senderFilter: { senderId: string } }) {
   const rows = await db.enrollment.findMany({
     where: { status: "ACTIVE", nextRunAt: { not: null }, sequence: { ...senderFilter, status: { not: "ARCHIVED" } } },
     include: { contact: true, sequence: { select: { id: true, name: true, sendingOn: true, steps: { select: { order: true, type: true, subject: true } } } } },

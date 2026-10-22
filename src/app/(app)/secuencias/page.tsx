@@ -60,7 +60,7 @@ export default async function Sequences() {
                         </div>
                         <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
                           <Dot level={verdict.level} pulse={verdict.level === "ok" && s.sendingOn} />
-                          <span className="truncate">{verdict.text} · {s.sender?.name ?? "Buzón general"} · {s._count.steps} pasos</span>
+                          <span className="truncate">{verdict.text} · {s.sender?.name ?? "Sin remitente"} · {s._count.steps} pasos</span>
                         </div>
                       </td>
                       <td className="font-medium">{s._count.enrollments.toLocaleString("es-AR")}</td>

@@ -21,15 +21,14 @@ export function senderConnected(sender: { appPassword: string | null; googleRefr
   return !!(sender.googleRefreshToken || sender.appPassword);
 }
 
+/** Buzón de un remitente. No hay buzón general: cada secuencia envía desde el Gmail de un remitente. */
 export function mailboxFor(sender?: SenderCredentials | null): Mailbox {
-  if (sender) {
-    const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
-    const from = `"${sender.name} | ${company}" <${sender.email}>`;
-    if (sender.googleRefreshToken) return { from, user: sender.email, refreshToken: decryptSecret(sender.googleRefreshToken) };
-    if (sender.appPassword) return { from, user: sender.email, pass: decryptSecret(sender.appPassword) };
-    throw new Error(`${sender.name} no tiene su Gmail conectado`);
-  }
-  return { from: process.env.MAIL_FROM ?? process.env.SMTP_USER ?? "", user: process.env.SMTP_USER ?? "", pass: process.env.SMTP_PASS ?? "" };
+  if (!sender) throw new Error("La secuencia no tiene remitente: elige quién envía en Ajustes");
+  const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
+  const from = `"${sender.name} | ${company}" <${sender.email}>`;
+  if (sender.googleRefreshToken) return { from, user: sender.email, refreshToken: decryptSecret(sender.googleRefreshToken) };
+  if (sender.appPassword) return { from, user: sender.email, pass: decryptSecret(sender.appPassword) };
+  throw new Error(`${sender.name} no tiene su Gmail conectado`);
 }
 
 function getTransport(box: Mailbox) {

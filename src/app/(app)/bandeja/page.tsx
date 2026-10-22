@@ -16,9 +16,9 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
     include: { contact: true },
   });
   const unread = replies.filter((r) => !r.read).length;
-  // Buzones que se leen: el general si tiene contraseña IMAP y cada remitente conectado.
+  // Buzones que se leen: el de cada remitente conectado.
   const senders = await db.sender.findMany({ where: { OR: [{ appPassword: { not: null } }, { googleRefreshToken: { not: null } }] }, select: { email: true } });
-  const read = [...(process.env.IMAP_USER && process.env.IMAP_PASS ? [process.env.IMAP_USER] : []), ...senders.map((s) => s.email)];
+  const read = senders.map((s) => s.email);
   return (
     <>
       <PageHeader title="Bandeja" sub={`${unread} sin leer · cuando un contacto responde, sale de sus secuencias`}>

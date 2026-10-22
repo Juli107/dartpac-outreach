@@ -24,8 +24,3 @@ export async function lastRun() {
   return { at: s?.lastRunAt ?? null, report: (s?.lastRun ?? null) as RunReport | null };
 }
 
-/** Guarda el resultado de comprobar el buzón general (sus credenciales viven en el .env, no en la tabla de remitentes). */
-export async function recordGeneralCheck(error: string | null) {
-  const data = { generalCheckAt: new Date(), generalCheckError: error };
-  await db.setting.upsert({ where: { id: "app" }, update: data, create: { id: "app", ...data } });
-}

@@ -28,6 +28,9 @@ const NAV = [
   { href: "/remitentes", label: "Remitentes" },
 ];
 
+/** Secciones de la barra inferior en el móvil. */
+const TAB_BAR = ["/", "/secuencias", "/contactos", "/bandeja", "/buzones"];
+
 const HEALTH: Record<Level, [string, string]> = {
   ok: ["Todo listo para enviar", "bg-[#34C759]"],
   info: ["Todo listo para enviar", "bg-[#34C759]"],
@@ -40,12 +43,12 @@ export function Sidebar({ counts, health }: { counts: Record<string, number>; he
   const path = usePathname();
   const [healthText, healthDot] = HEALTH[health];
   return (
-    <aside className="sticky top-0 z-10 flex flex-col gap-5 border-b border-white/10 bg-[#06162B]/40 px-3 py-4 text-white backdrop-blur-2xl backdrop-saturate-150 md:h-screen md:border-b-0 md:border-r md:py-6">
+    <aside className="z-10 flex flex-col gap-5 px-3 pt-4 text-white md:sticky md:top-0 md:h-screen md:border-r md:border-white/10 md:bg-[#06162B]/40 md:py-6 md:backdrop-blur-2xl md:backdrop-saturate-150">
       <div className="flex items-center gap-2 px-3 md:flex-col md:items-start md:gap-1">
         <Image src="/logo-dartpac-blanco.png" alt="Dartpac" width={112} height={58} priority className="h-auto w-[96px] md:w-[112px]" />
         <span className="text-[11px] font-medium uppercase tracking-[.2em] text-white/60">Outreach</span>
       </div>
-      <nav aria-label="Secciones" className="-mx-1 flex flex-row gap-0.5 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
+      <nav aria-label="Secciones" className="hidden flex-col gap-0.5 md:flex">
         {NAV.map((item) => {
           const active = item.href === "/" ? path === "/" : path.startsWith(item.href);
           return (
@@ -70,12 +73,45 @@ export function Sidebar({ counts, health }: { counts: Record<string, number>; he
           );
         })}
       </nav>
-      <Link href="/#estado" className="mt-auto hidden items-center gap-2.5 rounded-xl bg-white/[.08] px-3 py-2.5 text-[13px] font-medium text-white/90 ring-1 ring-white/10 transition hover:bg-white/[.14] md:flex">
+      {/* En el móvil: las secciones secundarias arriba y las cinco principales en una barra fija abajo, como en iOS. */}
+      <nav aria-label="Más secciones" className="flex gap-1.5 md:hidden">
+        {NAV.filter((i) => !TAB_BAR.includes(i.href)).map((item) => {
+          const active = path.startsWith(item.href);
+          return (
+            <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-white/15 ${active ? "bg-white text-navy" : "bg-white/[.08] text-white/80"}`}>
+              {item.label}
+              {counts[item.href] ? ` · ${counts[item.href]}` : ""}
+            </Link>
+          );
+        })}
+      </nav>
+      <nav aria-label="Secciones" className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-white/10 bg-[#06162B]/85 px-1 pb-[max(6px,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-2xl md:hidden">
+        {NAV.filter((i) => TAB_BAR.includes(i.href)).map((item) => {
+          const active = item.href === "/" ? path === "/" : path.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={`relative flex min-w-[56px] flex-1 flex-col items-center gap-0.5 rounded-lg py-1 text-[11px] font-medium transition ${active ? "text-white" : "text-white/55"}`}
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                {ICONS[item.href]}
+              </svg>
+              {item.label}
+              {counts[item.href] && item.href === "/bandeja" ? (
+                <span className="absolute right-1 top-0 min-w-4 rounded-full bg-[#FF3B30] px-1 text-center text-[10px] leading-4 text-white">{counts[item.href]}</span>
+              ) : null}
+            </Link>
+          );
+        })}
+      </nav>
+      <Link href="/#estado" className="absolute right-4 top-5 flex items-center gap-2 rounded-full bg-white/[.08] px-3 py-1.5 text-xs font-medium text-white/90 ring-1 ring-white/10 transition hover:bg-white/[.14] md:static md:mt-auto md:gap-2.5 md:rounded-xl md:px-3 md:py-2.5 md:text-[13px]">
         <span className="relative inline-flex h-2.5 w-2.5">
           {(health === "ok" || health === "info") && <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-50 ${healthDot}`} />}
           <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${healthDot}`} />
         </span>
-        {healthText}
+        <span className="hidden sm:inline md:inline">{healthText}</span>
       </Link>
     </aside>
   );

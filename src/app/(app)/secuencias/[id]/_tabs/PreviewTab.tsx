@@ -17,7 +17,7 @@ export async function PreviewTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
   });
   const contact = people.find((p) => p.contactId === sp.contacto)?.contact ?? people[0]?.contact ?? SAMPLE;
   const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
-  const from = seq.sender ? `${seq.sender.name} <${seq.sender.email}>` : process.env.MAIL_FROM ?? process.env.SMTP_USER;
+  const from = seq.sender ? `${seq.sender.name} <${seq.sender.email}>` : "(sin remitente: elígelo en Ajustes)";
   const signature = seq.sender ? renderSignature(seq.sender, company, "", renderTemplate(seq.sender.signature, contact)) : null;
   const days = stepDays(seq.steps);
   // Igual que el motor: un seguimiento en el mismo hilo reutiliza el asunto del email anterior con "Re:".

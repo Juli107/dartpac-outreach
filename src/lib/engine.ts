@@ -6,7 +6,7 @@ import { nextSendTime, isInWindow, windowFor } from "./schedule";
 import { pickVariant, stepVariants } from "./variants";
 import { randomUUID } from "node:crypto";
 import { isHardBounce } from "./bounce";
-import { sentToday as countSentToday, generalMailbox, minGapMinutes } from "./quota";
+import { sentToday as countSentToday, minGapMinutes } from "./quota";
 
 const BATCH = 50;
 
@@ -25,16 +25,16 @@ export async function runDueSteps(now = new Date()) {
     select: { id: true, dailyLimit: true, sender: true, timeZone: true, startHour: true, endHour: true, sendDays: true },
   });
   summary.sequencesOn = on.length;
-  const active = on.filter((sq) => isInWindow(now, windowFor(sq)));
+  // Sin remitente no hay desde dónde enviar.
+  const active = on.filter((sq) => sq.sender && isInWindow(now, windowFor(sq)));
   summary.outsideWindow = on.length - active.length;
   if (active.length === 0) return summary;
 
   // Dos cupos diarios: el de la secuencia y el del buzón (que comparten todas sus secuencias).
   const { bySequence, byMailbox, lastByMailbox } = await countSentToday(now);
-  const general = generalMailbox();
   const mailboxOf = (sq: { sender: { email: string; dailyLimit: number } | null }) => ({
-    box: sq.sender?.email.toLowerCase() ?? general.email,
-    limit: sq.sender?.dailyLimit ?? general.dailyLimit,
+    box: sq.sender?.email.toLowerCase() ?? "",
+    limit: sq.sender?.dailyLimit ?? 0,
   });
   // Ritmo humano: cada buzón espera su intervalo desde el último envío y manda uno por pasada.
   const paced = (box: string, limit: number, sq: { startHour: number; endHour: number }) => {

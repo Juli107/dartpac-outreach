@@ -20,8 +20,8 @@ export default async function Mailboxes() {
   ]);
   const queued = new Map<string, number>();
   for (const e of scheduled) {
-    const key = e.sequence.senderId ?? "general";
-    queued.set(key, (queued.get(key) ?? 0) + 1);
+    const key = e.sequence.senderId;
+    if (key) queued.set(key, (queued.get(key) ?? 0) + 1);
   }
   const by = <T extends { _count: number }>(rows: T[], f: (r: T) => string) => new Map(rows.map((r) => [f(r).toLowerCase(), r._count]));
   const sentMap = by(sent24, (r) => r.fromEmail);
@@ -34,7 +34,7 @@ export default async function Mailboxes() {
         <Link href="/remitentes" className="btn">Gestionar remitentes</Link>
       </PageHeader>
       {boxes.length === 0 ? (
-        <div className="card"><Empty title="No hay buzones">Añade un remitente o configura el buzón general.</Empty></div>
+        <div className="card"><Empty title="No hay buzones">Añade un remitente y conéctalo con Google.</Empty></div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {boxes.map(({ box, today, checks, level }, i) => {

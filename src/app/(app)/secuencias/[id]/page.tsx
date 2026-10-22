@@ -62,7 +62,7 @@ export default async function SequenceDetail({ params, searchParams }: { params:
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px]">
             <Dot level={verdict.level} pulse={seq.sendingOn} />
             <span className="font-medium text-white">{verdict.text}</span>
-            <span>· {seq.sender?.name ?? "Buzón general"}</span>
+            <span>· {seq.sender?.name ?? "Sin remitente"}</span>
             <span>· {scheduleLabel(seq)}</span>
             <span>· máx. {seq.dailyLimit} al día</span>
           </span>
