@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Contact {
+  id          String       @id @default(cuid())
+  email       String       @unique
+  firstName   String?
+  lastName    String?
+  company     String?
+  title       String?
+  phone       String?
+  tags        String[]
+  unsubscribed Boolean     @default(false)
+  bounced     Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  enrollments Enrollment[]
+  replies     Reply[]
+}
+
+enum SequenceStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model Sequence {
+  id          String         @id @default(cuid())
+  name        String
+  status      SequenceStatus @default(DRAFT)
+  dailyLimit  Int            @default(150)
+  createdAt   DateTime       @default(now())
+  steps       Step[]
+  enrollments Enrollment[]
+}
+
+enum StepType {
+  EMAIL
+  TASK
+}
+
+model Step {
+  id         String    @id @default(cuid())
+  sequenceId String
+  sequence   Sequence  @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  order      Int
+  type       StepType  @default(EMAIL)
+  delayDays  Int       @default(0)
+  subject    String    @default("")
+  body       String    @default("")
+  sameThread Boolean   @default(true)
+  messages   Message[]
+
+  @@unique([sequenceId, order])
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PAUSED
+  REPLIED
+  FINISHED
+  BOUNCED
+  UNSUBSCRIBED
+}
+
+model Enrollment {
+  id         String           @id @default(cuid())
+  sequenceId String
+  sequence   Sequence         @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status     EnrollmentStatus @default(ACTIVE)
+  nextStep   Int              @default(1)
+  nextRunAt  DateTime?        @default(now())
+  createdAt  DateTime         @default(now())
+  messages   Message[]
+  tasks      Task[]
+
+  @@unique([sequenceId, contactId])
+  @@index([status, nextRunAt])
+}
+
+model Message {
+  id           String     @id @default(cuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  stepId       String
+  step         Step       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  messageId    String     @unique
+  subject      String
+  sentAt       DateTime   @default(now())
+  openedAt     DateTime?
+  openCount    Int        @default(0)
+  error        String?
+}
+
+model Task {
+  id           String     @id @default(cuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  title        String
+  notes        String     @default("")
+  done         Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+}
+
+enum ReplyLabel {
+  NEW
+  INTERESTED
+  MEETING
+  LATER
+  NOT_INTERESTED
+}
+
+model Reply {
+  id         String     @id @default(cuid())
+  contactId  String
+  contact    Contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messageId  String     @unique
+  inReplyTo  String?
+  subject    String
+  body       String
+  receivedAt DateTime
+  read       Boolean    @default(false)
+  label      ReplyLabel @default(NEW)
+}
