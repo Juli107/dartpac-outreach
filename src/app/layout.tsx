@@ -1,10 +1,15 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "Dartpac Outreach", template: "%s · Dartpac Outreach" },
   description: "Secuencias de email, contactos y respuestas para el equipo comercial de Dartpac.",
+  applicationName: "Dartpac Outreach",
+  appleWebApp: { capable: true, title: "Outreach", statusBarStyle: "black-translucent" },
+  icons: { apple: "/app-192.png" },
 };
+
+export const viewport: Viewport = { themeColor: "#0B2545" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
