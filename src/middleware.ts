@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { hasSession } from "@/lib/session";
 
 // Rutas públicas: login (también con Google), píxel de apertura, imagen de firma, baja y cron (que se protege con su propio secreto).
-const PUBLIC = [/^\/login/, /^\/api\/t\//, /^\/api\/firma\//, /^\/api\/google\//, /^\/baja\//, /^\/api\/cron/, /^\/_next\//, /^\/icon/, /^\/logo/];
+const PUBLIC = [/^\/login/, /^\/api\/t\//, /^\/api\/firma\//, /^\/api\/google\//, /^\/baja\//, /^\/api\/cron/, /^\/_next\//, /^\/icon/, /^\/logo/, /^\/app-\d+\.png$/, /^\/manifest\.webmanifest$/];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
