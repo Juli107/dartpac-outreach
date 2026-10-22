@@ -32,7 +32,8 @@ export async function runDueSteps(now = new Date()) {
   // Ritmo humano: cada buzón espera su intervalo desde el último envío y manda uno por pasada.
   const paced = (box: string, limit: number) => {
     const last = lastByMailbox.get(box);
-    return !last || now.getTime() - last.getTime() >= minGapMinutes(limit, window.startHour, window.endHour) * 60_000;
+    // Margen del 25 %: los avisos del cron llegan con algo de retraso y no deben perder turnos.
+    return !last || now.getTime() - last.getTime() >= minGapMinutes(limit, window.startHour, window.endHour) * 0.75 * 60_000;
   };
   // Las secuencias que ya llenaron su cupo (o el de su buzón) se saltan para no ocupar el lote.
   const active = await db.sequence.findMany({ where: { status: "ACTIVE" }, select: { id: true, dailyLimit: true, sender: true } });

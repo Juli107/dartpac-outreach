@@ -1,0 +1,23 @@
+name: Envíos programados
+
+# Cada 10 minutos en el horario de envío (8–19 h de Buenos Aires = 11–22 h UTC), de lunes a viernes.
+# El token OIDC de GitHub sirve de llave, así que no hace falta guardar ningún secreto.
+on:
+  schedule:
+    - cron: "*/10 11-21 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Llamar al cron de la app
+        run: |
+          TOKEN=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=dartpac-outreach" | jq -r .value)
+          curl -fsS --max-time 90 -H "Authorization: Bearer $TOKEN" \
+            "https://dartpac-outreach-plup-ack-embalajes.vercel.app/api/cron?bandeja=1"
