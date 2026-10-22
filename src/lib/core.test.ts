@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { renderTemplate, unknownVariables } from "./template.ts";
-import { nextSendTime, isInWindow } from "./schedule.ts";
+import { nextSendTime, isInWindow, startOfLocalDay } from "./schedule.ts";
 import { parseContactsCsv } from "./csv.ts";
 import { stripQuoted } from "./strip.ts";
 import { withSignature } from "./signature.ts";
@@ -54,4 +54,10 @@ test("encryptSecret y decryptSecret recuperan la contraseña", async () => {
   assert.notEqual(stored, "abcdefghijklmnop");
   assert.notEqual(encryptSecret("abcdefghijklmnop"), stored);
   assert.equal(decryptSecret(stored), "abcdefghijklmnop");
+});
+
+test("startOfLocalDay usa la medianoche de la zona horaria de envío", () => {
+  // 22 oct 2026, 01:30 UTC = 21 oct, 22:30 en Buenos Aires → medianoche del 21 (03:00 UTC)
+  const d = startOfLocalDay(new Date("2026-10-22T01:30:00Z"), "America/Argentina/Buenos_Aires");
+  assert.equal(d.toISOString(), "2026-10-21T03:00:00.000Z");
 });

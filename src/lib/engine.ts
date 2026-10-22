@@ -4,6 +4,7 @@ import { renderTemplate } from "./template";
 import { withSignature } from "./signature";
 import { nextSendTime, isInWindow, windowFromEnv } from "./schedule";
 import { randomUUID } from "node:crypto";
+import { sentToday as countSentToday, generalMailbox } from "./quota";
 
 const BATCH = 50;
 
@@ -19,16 +20,28 @@ export async function runDueSteps(now = new Date()) {
     return summary;
   }
 
+  // Dos cupos diarios: el de la secuencia y el del buzón (que comparten todas sus secuencias).
+  const { bySequence, byMailbox } = await countSentToday(now);
+  const general = generalMailbox();
+  const mailboxOf = (sq: { sender: { email: string; dailyLimit: number } | null }) => ({
+    box: sq.sender?.email.toLowerCase() ?? general.email,
+    limit: sq.sender?.dailyLimit ?? general.dailyLimit,
+  });
+  // Las secuencias que ya llenaron su cupo (o el de su buzón) se saltan para no ocupar el lote.
+  const active = await db.sequence.findMany({ where: { status: "ACTIVE" }, select: { id: true, dailyLimit: true, sender: true } });
+  const full = active
+    .filter((sq) => {
+      const { box, limit } = mailboxOf(sq);
+      return (bySequence.get(sq.id) ?? 0) >= sq.dailyLimit || (byMailbox.get(box) ?? 0) >= limit;
+    })
+    .map((sq) => sq.id);
+
   const due = await db.enrollment.findMany({
-    where: { status: "ACTIVE", nextRunAt: { lte: now }, sequence: { status: "ACTIVE" } },
+    where: { status: "ACTIVE", nextRunAt: { lte: now }, sequence: { status: "ACTIVE" }, sequenceId: { notIn: full } },
     include: { contact: true, sequence: { include: { sender: true, steps: { orderBy: { order: "asc" } } } } },
     orderBy: { nextRunAt: "asc" },
     take: BATCH,
   });
-
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
-  const sentToday = new Map<string, number>();
 
   for (const enr of due) {
     const { contact, sequence } = enr;
@@ -48,13 +61,9 @@ export async function runDueSteps(now = new Date()) {
     }
 
     if (step.type === "EMAIL") {
-      if (!sentToday.has(sequence.id)) {
-        sentToday.set(
-          sequence.id,
-          await db.message.count({ where: { sentAt: { gte: startOfDay }, error: null, enrollment: { sequenceId: sequence.id } } }),
-        );
-      }
-      if (sentToday.get(sequence.id)! >= sequence.dailyLimit) continue;
+      const { box, limit } = mailboxOf(sequence);
+      if ((bySequence.get(sequence.id) ?? 0) >= sequence.dailyLimit) continue;
+      if ((byMailbox.get(box) ?? 0) >= limit) continue;
 
       const previous = step.sameThread
         ? await db.message.findFirst({ where: { enrollmentId: enr.id, error: null }, orderBy: { sentAt: "desc" } })
@@ -77,13 +86,14 @@ export async function runDueSteps(now = new Date()) {
           inReplyTo: previous?.messageId,
         });
         summary.sent++;
-        sentToday.set(sequence.id, sentToday.get(sequence.id)! + 1);
+        bySequence.set(sequence.id, (bySequence.get(sequence.id) ?? 0) + 1);
+        byMailbox.set(box, (byMailbox.get(box) ?? 0) + 1);
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
         summary.errors++;
       }
       await db.message.create({
-        data: { id: trackingId, enrollmentId: enr.id, stepId: step.id, messageId, subject, error },
+        data: { id: trackingId, enrollmentId: enr.id, stepId: step.id, messageId, subject, error, fromEmail: box },
       });
       if (error) {
         // Reintenta en una hora sin avanzar de paso.

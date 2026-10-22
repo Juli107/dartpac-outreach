@@ -1,10 +1,11 @@
 import { db } from "@/lib/db";
+import { sentToday } from "@/lib/quota";
 import { PageHeader, Pill } from "@/components/ui";
 import { createSender, updateSender, disconnectSender, deleteSender, testSender } from "./actions";
 
 export const metadata = { title: "Remitentes" };
 
-type SenderFields = { name?: string; email?: string; signature?: string; hasPassword?: boolean };
+type SenderFields = { name?: string; email?: string; signature?: string; dailyLimit?: number; hasPassword?: boolean };
 
 function Fields({ s, prefix }: { s: SenderFields; prefix: string }) {
   return (
@@ -17,6 +18,11 @@ function Fields({ s, prefix }: { s: SenderFields; prefix: string }) {
         <label htmlFor={`${prefix}-email`} className="label">Email</label>
         <input id={`${prefix}-email`} name="email" type="email" required defaultValue={s.email} className="input" />
       </div>
+      <div>
+        <label htmlFor={`${prefix}-limit`} className="label">Máximo de emails al día</label>
+        <input id={`${prefix}-limit`} name="dailyLimit" type="number" min={1} max={500} required defaultValue={s.dailyLimit ?? 50} className="input" />
+      </div>
+      <p className="self-end pb-2 text-xs text-muted">Suma de todas sus secuencias. Buzón nuevo: 20–30 la primera semana y sube poco a poco; no pases de 100 en frío.</p>
       <div className="sm:col-span-2">
         <label htmlFor={`${prefix}-pass`} className="label">Contraseña de aplicación de Google</label>
         <input
@@ -39,6 +45,7 @@ function Fields({ s, prefix }: { s: SenderFields; prefix: string }) {
 export default async function Senders({ searchParams }: { searchParams: Promise<{ prueba?: string; resultado?: string }> }) {
   const { prueba, resultado } = await searchParams;
   const senders = await db.sender.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { sequences: true } } } });
+  const { byMailbox } = await sentToday();
   return (
     <>
       <PageHeader
@@ -55,6 +62,7 @@ export default async function Senders({ searchParams }: { searchParams: Promise<
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted">{s._count.sequences} secuencias</span>
+                <Pill tone={(byMailbox.get(s.email) ?? 0) >= s.dailyLimit ? "warn" : "neutral"}>Hoy {byMailbox.get(s.email) ?? 0} / {s.dailyLimit}</Pill>
                 {s.appPassword ? <Pill tone="ok">Conectado</Pill> : <Pill tone="warn">Sin conectar</Pill>}
               </div>
             </div>

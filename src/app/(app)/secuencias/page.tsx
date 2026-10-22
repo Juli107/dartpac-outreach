@@ -24,7 +24,7 @@ export default async function Sequences() {
         ) : (
           <div className="overflow-x-auto">
             <table className="table">
-              <thead><tr><th>Secuencia</th><th>Estado</th><th>Pasos</th><th>Contactos</th><th>Enviados</th><th>Apertura</th><th>Respuesta</th><th>Progreso</th></tr></thead>
+              <thead><tr><th>Secuencia</th><th>Estado</th><th>Pasos</th><th>Contactos</th><th>Enviados</th><th>Por enviar</th><th>Hoy</th><th>Apertura</th><th>Respuesta</th><th>Progreso</th></tr></thead>
               <tbody>
                 {sequences.map((s) => (
                   <tr key={s.id}>
@@ -33,6 +33,8 @@ export default async function Sequences() {
                     <td>{s._count.steps}</td>
                     <td>{s._count.enrollments}</td>
                     <td>{s.sent}</td>
+                    <td>{s.pending}</td>
+                    <td className={s.today >= s.dailyLimit ? "text-amber-700" : undefined}>{s.today} / {s.dailyLimit}</td>
                     <td>{formatPct(s.openRate)}</td>
                     <td>{formatPct(s.replyRate)}</td>
                     <td><ProgressBar value={s.progress} /></td>
