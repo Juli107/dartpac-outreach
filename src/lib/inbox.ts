@@ -2,20 +2,19 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { db } from "./db";
 import { stripQuoted } from "./strip";
-import { decryptSecret } from "./crypto";
+import { imapAuth, mailboxFor, type Mailbox } from "./mailer";
 
 /**
- * Lee por IMAP el buzón general y el de cada comercial con contraseña guardada, y guarda
+ * Lee por IMAP el buzón general y el de cada comercial conectado (Google o contraseña), y guarda
  * como respuesta cualquier correo de un contacto conocido. Al responder, el contacto sale
  * de todas sus secuencias activas.
  */
 export async function syncInbox(sinceDays = 3) {
-  if (!process.env.IMAP_HOST) return { imported: 0, disabled: true, errors: [] as string[] };
-  const boxes: { user: string; pass: string }[] = [];
-  if (process.env.IMAP_USER && process.env.IMAP_PASS) boxes.push({ user: process.env.IMAP_USER, pass: process.env.IMAP_PASS });
-  const senders = await db.sender.findMany({ where: { appPassword: { not: null } } });
+  const boxes: Mailbox[] = [];
+  if (process.env.IMAP_USER && process.env.IMAP_PASS) boxes.push({ from: "", user: process.env.IMAP_USER, pass: process.env.IMAP_PASS });
+  const senders = await db.sender.findMany({ where: { OR: [{ appPassword: { not: null } }, { googleRefreshToken: { not: null } }] } });
   for (const s of senders) {
-    if (!boxes.some((b) => b.user === s.email)) boxes.push({ user: s.email, pass: decryptSecret(s.appPassword!) });
+    if (!boxes.some((b) => b.user === s.email)) boxes.push(mailboxFor(s));
   }
   let imported = 0;
   const errors: string[] = [];
@@ -29,12 +28,12 @@ export async function syncInbox(sinceDays = 3) {
   return { imported, disabled: boxes.length === 0, errors };
 }
 
-async function syncMailbox(box: { user: string; pass: string }, sinceDays: number) {
+async function syncMailbox(box: Mailbox, sinceDays: number) {
   const client = new ImapFlow({
-    host: process.env.IMAP_HOST!,
+    host: process.env.IMAP_HOST ?? "imap.gmail.com",
     port: Number(process.env.IMAP_PORT ?? 993),
     secure: true,
-    auth: box,
+    auth: await imapAuth(box),
     logger: false,
   });
   await client.connect();

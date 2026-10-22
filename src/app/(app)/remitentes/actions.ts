@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { encryptSecret } from "@/lib/crypto";
+import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { revokeToken } from "@/lib/google";
 import { mailboxFor, verifyMailbox } from "@/lib/mailer";
 import { imageSize } from "@/lib/image-size";
 
@@ -85,6 +86,14 @@ export async function removeSignatureImage(id: string) {
 
 export async function disconnectSender(id: string) {
   await db.sender.update({ where: { id }, data: { appPassword: null } });
+  revalidatePath("/remitentes");
+}
+
+/** Quita la conexión con Google y retira el permiso en la cuenta del comercial. */
+export async function disconnectGoogle(id: string) {
+  const sender = await db.sender.findUniqueOrThrow({ where: { id }, select: { googleRefreshToken: true } });
+  await db.sender.update({ where: { id }, data: { googleRefreshToken: null, googleConnectedAt: null } });
+  if (sender.googleRefreshToken) await revokeToken(decryptSecret(sender.googleRefreshToken));
   revalidatePath("/remitentes");
 }
 

@@ -4,40 +4,67 @@ import { signId } from "./tokens";
 
 import { decryptSecret } from "./crypto";
 import { withSignature } from "./signature";
+import { accessTokenFor } from "./google";
 
 type Transport = ReturnType<typeof nodemailer.createTransport>;
 const transports = new Map<string, Transport>();
 
-/** Datos de un buzón de envío: el de un comercial o, si la secuencia no tiene, el general del .env. */
-export type Mailbox = { from: string; user: string; pass: string };
+/**
+ * Datos de un buzón de envío: el de un comercial o, si la secuencia no tiene, el general del .env.
+ * Un comercial conectado con Google lleva refreshToken; si no, su contraseña de aplicación.
+ */
+export type Mailbox = { from: string; user: string; pass?: string; refreshToken?: string };
 
-export function mailboxFor(sender?: { name: string; email: string; appPassword: string | null } | null): Mailbox {
-  if (sender?.appPassword) {
+type SenderCredentials = { name: string; email: string; appPassword: string | null; googleRefreshToken?: string | null };
+
+export function senderConnected(sender: { appPassword: string | null; googleRefreshToken?: string | null }) {
+  return !!(sender.googleRefreshToken || sender.appPassword);
+}
+
+export function mailboxFor(sender?: SenderCredentials | null): Mailbox {
+  if (sender) {
     const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
-    return { from: `"${sender.name} | ${company}" <${sender.email}>`, user: sender.email, pass: decryptSecret(sender.appPassword) };
+    const from = `"${sender.name} | ${company}" <${sender.email}>`;
+    if (sender.googleRefreshToken) return { from, user: sender.email, refreshToken: decryptSecret(sender.googleRefreshToken) };
+    if (sender.appPassword) return { from, user: sender.email, pass: decryptSecret(sender.appPassword) };
+    throw new Error(`${sender.name} no tiene su Gmail conectado`);
   }
-  if (sender) throw new Error(`${sender.name} no tiene contraseña de aplicación guardada`);
   return { from: process.env.MAIL_FROM ?? process.env.SMTP_USER ?? "", user: process.env.SMTP_USER ?? "", pass: process.env.SMTP_PASS ?? "" };
 }
 
 function getTransport(box: Mailbox) {
-  let t = transports.get(box.user);
+  const key = `${box.user}:${box.refreshToken ? "google" : "pass"}`;
+  let t = transports.get(key);
   if (!t) {
     const port = Number(process.env.SMTP_PORT ?? 465);
     t = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
+      host: process.env.SMTP_HOST ?? "smtp.gmail.com",
       port,
       secure: port === 465,
-      auth: { user: box.user, pass: box.pass },
+      // Con OAuth2 nodemailer renueva solo el token de acceso a partir del refresh token.
+      auth: box.refreshToken
+        ? {
+            type: "OAuth2",
+            user: box.user,
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            refreshToken: box.refreshToken,
+          }
+        : { user: box.user, pass: box.pass },
     });
-    transports.set(box.user, t);
+    transports.set(key, t);
   }
   return t;
 }
 
-/** Comprueba usuario y contraseña contra el servidor SMTP sin enviar nada. */
+/** Credenciales IMAP del buzón: token de acceso de Google o contraseña. */
+export async function imapAuth(box: Mailbox) {
+  return box.refreshToken ? { user: box.user, accessToken: await accessTokenFor(box.refreshToken) } : { user: box.user, pass: box.pass ?? "" };
+}
+
+/** Comprueba las credenciales contra el servidor SMTP sin enviar nada. */
 export async function verifyMailbox(box: Mailbox) {
-  transports.delete(box.user);
+  transports.delete(`${box.user}:${box.refreshToken ? "google" : "pass"}`);
   await getTransport(box).verify();
 }
 

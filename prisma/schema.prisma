@@ -142,6 +142,9 @@ model Sender {
   email       String     @unique
   /// Contraseña de aplicación de Gmail, cifrada con ENCRYPTION_KEY.
   appPassword String?
+  /// Conexión con Google (OAuth): refresh token cifrado. Si existe, se usa en lugar de la contraseña.
+  googleRefreshToken String?
+  googleConnectedAt  DateTime?
   signature   String     @default("")
   /// Datos de la firma profesional (se muestran en HTML; `signature` queda como texto extra).
   jobTitle    String     @default("")
