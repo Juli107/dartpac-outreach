@@ -4,7 +4,7 @@ export function windowFromEnv(): SendWindow {
   return {
     startHour: Number(process.env.SEND_HOUR_START ?? 8),
     endHour: Number(process.env.SEND_HOUR_END ?? 19),
-    timeZone: process.env.SEND_TIMEZONE ?? "Europe/Madrid",
+    timeZone: process.env.SEND_TIMEZONE ?? "America/Argentina/Buenos_Aires",
   };
 }
 
@@ -38,4 +38,18 @@ export function nextSendTime(from: Date, delayDays: number, w: SendWindow): Date
     t = new Date(Math.floor(t.getTime() / STEP_MS) * STEP_MS + STEP_MS);
   }
   return t;
+}
+
+/** Medianoche de hoy en la zona horaria de envío (los cupos diarios se reinician a esa hora). */
+export function startOfLocalDay(date: Date, timeZone: string): Date {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  const elapsed = ((get("hour") * 60 + get("minute")) * 60 + get("second")) * 1000 + date.getMilliseconds();
+  return new Date(date.getTime() - elapsed);
 }

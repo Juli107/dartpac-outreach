@@ -37,5 +37,5 @@ export function relativeTime(d: Date) {
 }
 
 export function formatDate(d: Date) {
-  return d.toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: process.env.SEND_TIMEZONE ?? "Europe/Madrid" });
+  return d.toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: process.env.SEND_TIMEZONE ?? "America/Argentina/Buenos_Aires" });
 }

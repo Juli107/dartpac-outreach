@@ -35,7 +35,7 @@ export async function updateSequence(id: string, form: FormData) {
   const data = z
     .object({
       name: z.string().trim().min(1),
-      dailyLimit: z.coerce.number().int().min(1).max(2000),
+      dailyLimit: z.coerce.number().int().min(1).max(500),
       senderId: z.string().transform((v) => v || null),
     })
     .parse({ name: form.get("name"), dailyLimit: form.get("dailyLimit"), senderId: form.get("senderId") ?? "" });

@@ -11,6 +11,7 @@ const senderSchema = z.object({
   name: z.string().trim().min(1),
   email: z.string().trim().toLowerCase().email(),
   signature: z.string().max(3000).default(""),
+  dailyLimit: z.coerce.number().int().min(1).max(500),
   // Las contraseñas de aplicación de Google se muestran con espacios; se guardan sin ellos.
   appPassword: z.string().transform((v) => v.replace(/\s+/g, "")),
 });
@@ -20,6 +21,7 @@ function read(form: FormData) {
     name: form.get("name"),
     email: form.get("email"),
     signature: form.get("signature") ?? "",
+    dailyLimit: form.get("dailyLimit") ?? 50,
     appPassword: form.get("appPassword") ?? "",
   });
 }

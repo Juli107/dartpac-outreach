@@ -34,7 +34,7 @@ model Sequence {
   id          String         @id @default(cuid())
   name        String
   status      SequenceStatus @default(DRAFT)
-  dailyLimit  Int            @default(150)
+  dailyLimit  Int            @default(50)
   senderId    String?
   sender      Sender?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
   createdAt   DateTime       @default(now())
@@ -100,6 +100,8 @@ model Message {
   openedAt     DateTime?
   openCount    Int        @default(0)
   error        String?
+  /// Buzón que lo envió; sirve para contar el cupo diario de cada remitente.
+  fromEmail    String     @default("")
 }
 
 model Task {
@@ -141,6 +143,8 @@ model Sender {
   /// Contraseña de aplicación de Gmail, cifrada con ENCRYPTION_KEY.
   appPassword String?
   signature   String     @default("")
+  /// Máximo de emails al día desde este buzón, sumando todas sus secuencias.
+  dailyLimit  Int        @default(50)
   createdAt   DateTime   @default(now())
   sequences   Sequence[]
 }

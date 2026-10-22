@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { sentToday, pendingEmails } from "./quota";
 
 export function pct(part: number, total: number) {
   return total ? (part / total) * 100 : 0;
@@ -26,6 +27,7 @@ export async function sequenceStats() {
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { enrollments: true, steps: true } } },
   });
+  const [today, pending] = await Promise.all([sentToday(), pendingEmails(sequences.map((s) => s.id))]);
   return Promise.all(
     sequences.map(async (s) => {
       const [sent, opened, replied, finished] = await Promise.all([
@@ -38,6 +40,8 @@ export async function sequenceStats() {
       return {
         ...s,
         sent,
+        pending: pending.get(s.id) ?? 0,
+        today: today.bySequence.get(s.id) ?? 0,
         openRate: pct(opened, sent),
         replyRate: pct(replied, total),
         progress: pct(finished, total),

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { sentToday, pendingEmails, generalMailbox, daysToFinish } from "@/lib/quota";
 import { withSignature } from "@/lib/signature";
 import { renderTemplate, TEMPLATE_VARIABLES, unknownVariables } from "@/lib/template";
 import { SEQUENCE_STATUS, ENROLLMENT_STATUS, fullName, formatDate } from "@/lib/labels";
@@ -59,6 +60,19 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
   const tagCounts = [...new Set(tags)].sort();
   const sample = seq.enrollments[0]?.contact ?? { email: "marta@logisur.es", firstName: "Marta", lastName: "Ruiz", company: "Logisur", title: "Jefa de compras" };
   const firstEmail = seq.steps.find((s) => s.type === "EMAIL");
+
+  const [today, pendingMap, sent, failed] = await Promise.all([
+    sentToday(),
+    pendingEmails([seq.id]),
+    db.message.count({ where: { enrollment: { sequenceId: seq.id }, error: null } }),
+    db.message.count({ where: { enrollment: { sequenceId: seq.id }, error: { not: null } } }),
+  ]);
+  const general = generalMailbox();
+  const box = { email: seq.sender?.email ?? general.email, name: seq.sender?.name ?? "Buzón general", limit: seq.sender?.dailyLimit ?? general.dailyLimit };
+  const pending = pendingMap.get(seq.id) ?? 0;
+  const seqToday = today.bySequence.get(seq.id) ?? 0;
+  const boxToday = today.byMailbox.get(box.email.toLowerCase()) ?? 0;
+  const pace = Math.min(seq.dailyLimit, box.limit);
 
   return (
     <>
@@ -137,6 +151,32 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
           </section>
 
           <section className="card">
+            <h2 className="card-title">Envíos y límites</h2>
+            <dl className="grid grid-cols-2 gap-px bg-line">
+              {[
+                ["Enviados", String(sent)],
+                ["Por enviar", String(pending)],
+                ["Hoy en esta secuencia", `${seqToday} / ${seq.dailyLimit}`],
+                [`Hoy desde ${box.name}`, `${boxToday} / ${box.limit}`],
+              ].map(([k, v]) => (
+                <div key={k} className="bg-white p-3">
+                  <dt className="text-xs text-muted">{k}</dt>
+                  <dd className="font-mono text-lg">{v}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="grid gap-1 p-4 text-sm">
+              {pending > 0 && (
+                <p>Al ritmo actual ({pace} al día) faltan unos {daysToFinish(pending, pace)} días hábiles para enviar todo.</p>
+              )}
+              {seqToday >= seq.dailyLimit && <p className="text-amber-700">Esta secuencia ya llegó a su límite de hoy; sigue mañana.</p>}
+              {boxToday >= box.limit && <p className="text-amber-700">El buzón {box.email} ya llegó a su límite de hoy (cuenta todas sus secuencias).</p>}
+              {failed > 0 && <p className="text-red-700">{failed} envíos fallidos: revisa la conexión en Remitentes.</p>}
+              <p className="text-xs text-muted">Para no caer en spam: buzón nuevo 20–30 al día la primera semana, luego sube de a poco hasta 50–100 como mucho. Gmail corta en 2.000 al día por cuenta.</p>
+            </div>
+          </section>
+
+          <section className="card">
             <h2 className="card-title">Añadir contactos</h2>
             <form action={enrollContacts.bind(null, seq.id)} className="flex flex-wrap items-end gap-3 p-4">
               <div className="min-w-[180px] flex-1">
@@ -160,7 +200,7 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
               </div>
               <div>
                 <label htmlFor="seq-limit" className="label">Límite diario de emails</label>
-                <input id="seq-limit" name="dailyLimit" type="number" min={1} max={2000} defaultValue={seq.dailyLimit} className="input" />
+                <input id="seq-limit" name="dailyLimit" type="number" min={1} max={500} defaultValue={seq.dailyLimit} className="input" />
               </div>
               <div>
                 <label htmlFor="seq-sender" className="label">Envía</label>
