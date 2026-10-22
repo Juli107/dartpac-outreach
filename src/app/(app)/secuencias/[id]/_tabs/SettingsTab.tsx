@@ -21,8 +21,8 @@ export async function SettingsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="seq-sender" className="label">Envía</label>
-            <select id="seq-sender" name="senderId" defaultValue={seq.senderId ?? ""} className="input">
-              <option value="">Buzón general ({process.env.SMTP_USER})</option>
+            <select id="seq-sender" name="senderId" required defaultValue={seq.senderId ?? ""} className="input">
+              <option value="" disabled>Elige quién envía</option>
               {senders.map((s) => (
                 <option key={s.id} value={s.id}>{s.name} · {s.email}{s.appPassword || s.googleRefreshToken ? "" : " (sin conectar)"}</option>
               ))}

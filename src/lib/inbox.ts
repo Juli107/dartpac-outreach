@@ -6,17 +6,14 @@ import { imapAuth, mailboxFor, type Mailbox } from "./mailer";
 import { bouncedAddresses, isBounceSender } from "./bounce";
 
 /**
- * Lee por IMAP el buzón general y el de cada comercial conectado (Google o contraseña), y guarda
+ * Lee por IMAP el buzón de cada comercial conectado (Google o contraseña), y guarda
  * como respuesta cualquier correo de un contacto conocido. Al responder, el contacto sale
  * de todas sus secuencias activas.
  */
 export async function syncInbox(sinceDays = 3) {
   const boxes: Mailbox[] = [];
-  if (process.env.IMAP_USER && process.env.IMAP_PASS) boxes.push({ from: "", user: process.env.IMAP_USER, pass: process.env.IMAP_PASS });
   const senders = await db.sender.findMany({ where: { OR: [{ appPassword: { not: null } }, { googleRefreshToken: { not: null } }] } });
-  for (const s of senders) {
-    if (!boxes.some((b) => b.user === s.email)) boxes.push(mailboxFor(s));
-  }
+  for (const s of senders) boxes.push(mailboxFor(s));
   let imported = 0;
   let bounced = 0;
   const errors: string[] = [];

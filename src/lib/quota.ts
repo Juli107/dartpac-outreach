@@ -1,11 +1,6 @@
 import { db } from "./db";
 import { startOfLocalDay, windowFromEnv } from "./schedule";
 
-/** Cupo del buzón general (secuencias sin remitente asignado). */
-export function generalMailbox() {
-  return { email: (process.env.SMTP_USER ?? "").toLowerCase(), dailyLimit: Number(process.env.GENERAL_DAILY_LIMIT ?? 50) };
-}
-
 export function todayStart(now = new Date()) {
   return startOfLocalDay(now, windowFromEnv().timeZone);
 }

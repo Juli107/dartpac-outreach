@@ -1,10 +1,10 @@
 import { resolveTxt } from "node:dns/promises";
 import { db } from "./db";
-import { generalMailbox, sentToday } from "./quota";
+import { sentToday } from "./quota";
 import { isInWindow, nextSendTime, windowFor } from "./schedule";
 import { unknownVariables } from "./template";
 import { mailboxFor, senderConnected, verifyMailbox } from "./mailer";
-import { lastRun, recordGeneralCheck } from "./settings";
+import { lastRun } from "./settings";
 
 /**
  * Estado de envío: responde "¿está todo bien para que salgan los correos?" sin enviar nada.
@@ -33,26 +33,10 @@ export type MailboxInfo = {
   lastCheckError: string | null;
 };
 
-/** Buzón general (el del .env) y uno por remitente. La clave del general es "general". */
+/** Un buzón por remitente (la clave es el id del remitente). */
 export async function mailboxes(): Promise<MailboxInfo[]> {
-  const [senders, setting] = await Promise.all([
-    db.sender.findMany({ orderBy: { name: "asc" } }),
-    db.setting.findUnique({ where: { id: "app" } }),
-  ]);
-  const general = generalMailbox();
+  const senders = await db.sender.findMany({ orderBy: { name: "asc" } });
   const list: MailboxInfo[] = [];
-  if (general.email) {
-    list.push({
-      key: "general",
-      name: "Buzón general",
-      email: general.email,
-      limit: general.dailyLimit,
-      connected: !!process.env.SMTP_PASS,
-      viaGoogle: false,
-      lastCheckAt: setting?.generalCheckAt ?? null,
-      lastCheckError: setting?.generalCheckError ?? null,
-    });
-  }
   for (const s of senders) {
     list.push({
       key: s.id,
@@ -92,7 +76,7 @@ export function mailboxChecks(box: MailboxInfo, today: number, failures?: { coun
     checks.push({
       level: "bad",
       title: "Sin conectar",
-      detail: box.key === "general" ? "Falta la contraseña SMTP del buzón general en Vercel." : "Conéctalo con Google en Remitentes.",
+      detail: "Conéctalo con Google en Remitentes.",
     });
     return checks;
   }
@@ -138,7 +122,7 @@ export function sequenceChecks(
     if (unknown.length) checks.push({ level: "warn", title: `Variables desconocidas en el paso ${s.order}`, detail: unknown.map((v) => `{{${v}}}`).join(", ") });
   }
 
-  if (!ctx.box) checks.push({ level: "bad", title: "No tiene buzón de envío" });
+  if (!ctx.box) checks.push({ level: "bad", title: "Sin remitente", detail: "Elige quién envía en la pestaña Ajustes." });
   else if (!ctx.box.connected) checks.push({ level: "bad", title: `${ctx.box.name} no está conectado`, detail: ctx.box.email });
   else if (ctx.box.lastCheckError) checks.push({ level: "bad", title: `${ctx.box.name}: la conexión falló`, detail: ctx.box.lastCheckError });
 
@@ -176,7 +160,7 @@ export async function sequenceHealthMap(sequences: SequenceForHealth[], now = ne
   const waitingBy = new Map(waiting.map((w) => [w.sequenceId, w._count]));
   const map = new Map<string, Check[]>();
   for (const sq of sequences) {
-    const box = boxes.find((b) => b.key === (sq.senderId ?? "general"));
+    const box = boxes.find((b) => b.key === sq.senderId);
     map.set(
       sq.id,
       sequenceChecks(sq, {
@@ -276,15 +260,6 @@ export async function checkAllConnections() {
       await db.sender.update({ where: { id: s.id }, data: { lastCheckAt: new Date(), lastCheckError: error } });
     }),
   );
-  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    let error: string | null = null;
-    try {
-      await verifyMailbox(mailboxFor(null));
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    }
-    await recordGeneralCheck(error);
-  }
 }
 
 /**
@@ -299,7 +274,7 @@ export async function overallHealth(now = new Date()) {
   });
   const [bySequence, boxes, scheduler] = await Promise.all([sequenceHealthMap(sequences, now), mailboxHealth(now), schedulerChecks(now)]);
   const on = sequences.filter((s) => s.sendingOn);
-  const usedBoxes = new Set(on.map((s) => s.senderId ?? "general"));
+  const usedBoxes = new Set(on.map((s) => s.senderId));
   const relevant = [
     ...scheduler,
     ...on.flatMap((s) => bySequence.get(s.id) ?? []),

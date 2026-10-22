@@ -24,7 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         counts={{ "/secuencias": sequences, "/contactos": contacts, "/bandeja": unread, "/tareas": tasks }}
         health={health?.level ?? "warn"}
       />
-      <main className="mx-auto flex w-full min-w-0 max-w-[1240px] flex-col gap-6 px-4 py-6 md:px-8 md:py-9">{children}</main>
+      <main className="mx-auto flex w-full min-w-0 max-w-[1240px] flex-col gap-6 px-4 pb-28 pt-4 md:px-8 md:py-9">{children}</main>
     </div>
   );
 }
