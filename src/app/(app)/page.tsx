@@ -3,14 +3,16 @@ import { db } from "@/lib/db";
 import { overallStats, sequenceStats, formatPct, pct } from "@/lib/stats";
 import { SEQUENCE_STATUS, REPLY_LABEL, fullName, relativeTime } from "@/lib/labels";
 import { Kpi, PageHeader, ProgressBar, StatusPill, Empty } from "@/components/ui";
-import { runNow } from "./actions";
+import { sendingEnabled } from "@/lib/settings";
+import { runNow, toggleSending } from "./actions";
 
 export default async function Dashboard() {
   const since = new Date(Date.now() - 30 * 86400_000);
-  const [stats, sequences, replies] = await Promise.all([
+  const [stats, sequences, replies, sending] = await Promise.all([
     overallStats(since),
     sequenceStats(),
     db.reply.findMany({ orderBy: { receivedAt: "desc" }, take: 4, include: { contact: true } }),
+    sendingEnabled(),
   ]);
   return (
     <>
@@ -20,6 +22,20 @@ export default async function Dashboard() {
         </form>
         <Link href="/secuencias" className="btn">Nueva secuencia</Link>
       </PageHeader>
+
+      <section className={`card flex flex-wrap items-center justify-between gap-3 p-4 ${sending ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>
+        <div>
+          <h2>{sending ? "Envíos encendidos" : "Envíos apagados"}</h2>
+          <p className="text-sm text-muted">
+            {sending
+              ? "Las secuencias activas envían solas en el horario y con los límites de cada remitente."
+              : "No sale ningún email ni se crean tareas, aunque haya secuencias activas. Enciéndelo cuando quieras empezar."}
+          </p>
+        </div>
+        <form action={toggleSending.bind(null, !sending)}>
+          <button className={sending ? "btn-danger" : "btn"}>{sending ? "Apagar envíos" : "Encender envíos"}</button>
+        </form>
+      </section>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Enviados" value={stats.sent.toLocaleString("es-ES")} />
