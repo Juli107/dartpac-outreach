@@ -161,3 +161,11 @@ model Sender {
   createdAt   DateTime   @default(now())
   sequences   Sequence[]
 }
+
+/// Ajustes generales de la app (una sola fila, id "app").
+model Setting {
+  id             String    @id @default("app")
+  /// Interruptor general: mientras esté apagado no sale ningún email ni se crean tareas.
+  sendingEnabled Boolean   @default(false)
+  sendingChangedAt DateTime?
+}

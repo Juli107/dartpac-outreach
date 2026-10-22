@@ -2,6 +2,7 @@ import { db } from "./db";
 import { sendEmail, newMessageId, mailboxFor } from "./mailer";
 import { renderTemplate } from "./template";
 import { renderSignature } from "./signature";
+import { sendingEnabled } from "./settings";
 import { nextSendTime, isInWindow, windowFromEnv } from "./schedule";
 import { randomUUID } from "node:crypto";
 import { sentToday as countSentToday, generalMailbox, minGapMinutes } from "./quota";
@@ -16,7 +17,12 @@ export async function runDueSteps(now = new Date()) {
   const window = windowFromEnv();
   const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const summary = { sent: 0, tasks: 0, finished: 0, errors: 0, skippedOutsideWindow: false };
+  const summary = { sent: 0, tasks: 0, finished: 0, errors: 0, skippedOutsideWindow: false, sendingOff: false };
+  // Nada sale hasta que alguien encienda los envíos desde el panel.
+  if (!(await sendingEnabled())) {
+    summary.sendingOff = true;
+    return summary;
+  }
   if (!isInWindow(now, window)) {
     summary.skippedOutsideWindow = true;
     return summary;
