@@ -33,7 +33,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron
 
 1. Crea una base de datos Postgres (Neon o Vercel Postgres) y copia su URL en `DATABASE_URL`.
 2. Importa el repositorio en Vercel y añade todas las variables de `.env.example`.
-3. Ejecuta `npx prisma db push` una vez contra esa base de datos.
+3. En Vercel el script `vercel-build` crea o actualiza las tablas (`prisma db push`) y da de alta los remitentes en cada despliegue.
 4. El plan gratuito (Hobby) de Vercel solo permite un cron al día: `vercel.json` llama a `/api/cron` a las 7:00 UTC como respaldo.
    Para enviar cada 10 minutos crea una tarea gratuita en [cron-job.org](https://cron-job.org) que haga `GET https://TU-APP.vercel.app/api/cron`
    cada 10 minutos con la cabecera `Authorization: Bearer <CRON_SECRET>`. En el plan Pro basta con cambiar el horario de `vercel.json` a `*/10 * * * *`.
