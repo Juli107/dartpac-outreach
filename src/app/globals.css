@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-canvas text-ink font-sans text-sm antialiased; }
+  h1 { @apply font-display font-extrabold text-2xl; text-wrap: balance; }
+  h2 { @apply font-display font-bold text-[15px]; }
+  :focus-visible { @apply outline outline-2 outline-offset-2 outline-brand; }
+}
+
+@layer components {
+  .btn { @apply inline-flex items-center gap-2 rounded-lg bg-navy px-4 py-2 font-semibold text-white hover:bg-navy-700 disabled:opacity-50; }
+  .btn-ghost { @apply inline-flex items-center gap-2 rounded-lg border border-line bg-white px-3 py-1.5 font-medium text-ink hover:bg-canvas; }
+  .btn-danger { @apply inline-flex items-center rounded-lg px-3 py-1.5 font-medium text-red-700 hover:bg-red-50; }
+  .card { @apply rounded-xl border border-line bg-white; }
+  .card-title { @apply border-b border-line px-4 py-3; }
+  .input { @apply w-full rounded-lg border border-line bg-white px-3 py-2 placeholder:text-muted/70 focus:border-brand focus:outline-none; }
+  .label { @apply mb-1 block text-xs font-semibold uppercase tracking-wider text-muted; }
+  .table { @apply w-full border-collapse tabular-nums; }
+  .table th { @apply whitespace-nowrap border-b border-line px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted; }
+  .table td { @apply whitespace-nowrap border-b border-line px-4 py-2.5; }
+  .table tr:last-child td { @apply border-b-0; }
+  .sub { @apply mt-0.5 text-muted; }
+}
