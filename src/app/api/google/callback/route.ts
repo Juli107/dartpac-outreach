@@ -54,7 +54,8 @@ export async function GET(req: NextRequest) {
       return fail(`Entraste con ${profile.email}, pero este remitente es ${sender.email}. Elige esa cuenta en Google.`);
     }
   }
-  const google = { googleRefreshToken: encryptSecret(tokens.refresh_token), googleConnectedAt: new Date() };
+  // Conexión recién hecha: se olvida el error de la comprobación anterior.
+  const google = { googleRefreshToken: encryptSecret(tokens.refresh_token), googleConnectedAt: new Date(), lastCheckError: null };
   await db.sender.upsert({
     where: { email: profile.email },
     update: google,

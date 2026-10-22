@@ -8,19 +8,19 @@ datasource db {
 }
 
 model Contact {
-  id          String       @id @default(cuid())
-  email       String       @unique
-  firstName   String?
-  lastName    String?
-  company     String?
-  title       String?
-  phone       String?
-  tags        String[]
-  unsubscribed Boolean     @default(false)
-  bounced     Boolean      @default(false)
-  createdAt   DateTime     @default(now())
-  enrollments Enrollment[]
-  replies     Reply[]
+  id           String       @id @default(cuid())
+  email        String       @unique
+  firstName    String?
+  lastName     String?
+  company      String?
+  title        String?
+  phone        String?
+  tags         String[]
+  unsubscribed Boolean      @default(false)
+  bounced      Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  enrollments  Enrollment[]
+  replies      Reply[]
 }
 
 enum SequenceStatus {
@@ -37,6 +37,15 @@ model Sequence {
   dailyLimit  Int            @default(50)
   senderId    String?
   sender      Sender?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  /// Interruptor de la secuencia: apagado al crearla; solo envía si está encendido.
+  sendingOn   Boolean        @default(false)
+  /// Horario de envío propio: zona, horas [inicio, fin) y días (0 = domingo … 6 = sábado).
+  timeZone    String         @default("America/Argentina/Buenos_Aires")
+  startHour   Int            @default(8)
+  endHour     Int            @default(19)
+  sendDays    Int[]          @default([1, 2, 3, 4, 5])
+  /// Solo texto: sin HTML, sin píxel de apertura y con la firma en texto (llega mejor a la bandeja principal).
+  plainText   Boolean        @default(false)
   createdAt   DateTime       @default(now())
   steps       Step[]
   enrollments Enrollment[]
@@ -48,18 +57,32 @@ enum StepType {
 }
 
 model Step {
-  id         String    @id @default(cuid())
+  id         String        @id @default(cuid())
   sequenceId String
-  sequence   Sequence  @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  sequence   Sequence      @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
   order      Int
-  type       StepType  @default(EMAIL)
-  delayDays  Int       @default(0)
-  subject    String    @default("")
-  body       String    @default("")
-  sameThread Boolean   @default(true)
+  type       StepType      @default(EMAIL)
+  delayDays  Int           @default(0)
+  subject    String        @default("")
+  body       String        @default("")
+  sameThread Boolean       @default(true)
   messages   Message[]
+  /// Variantes B, C… del email (la A es el asunto y el cuerpo del propio paso).
+  variants   StepVariant[]
 
   @@unique([sequenceId, order])
+}
+
+model StepVariant {
+  id        String   @id @default(cuid())
+  stepId    String
+  step      Step     @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  label     String
+  subject   String   @default("")
+  body      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@unique([stepId, label])
 }
 
 enum EnrollmentStatus {
@@ -102,6 +125,8 @@ model Message {
   error        String?
   /// Buzón que lo envió; sirve para contar el cupo diario de cada remitente.
   fromEmail    String     @default("")
+  /// Variante del paso que se envió (A, B, C…).
+  variant      String     @default("A")
 }
 
 model Task {
@@ -133,42 +158,55 @@ model Reply {
   receivedAt DateTime
   read       Boolean    @default(false)
   label      ReplyLabel @default(NEW)
+  /// Buzón donde llegó la respuesta.
+  mailbox    String     @default("")
 }
 
 /// Comercial que envía: cada secuencia sale de su buzón y lleva su firma.
 model Sender {
-  id          String     @id @default(cuid())
-  name        String
-  email       String     @unique
+  id                    String     @id @default(cuid())
+  name                  String
+  email                 String     @unique
   /// Contraseña de aplicación de Gmail, cifrada con ENCRYPTION_KEY.
-  appPassword String?
+  appPassword           String?
   /// Conexión con Google (OAuth): refresh token cifrado. Si existe, se usa en lugar de la contraseña.
-  googleRefreshToken String?
-  googleConnectedAt  DateTime?
-  signature   String     @default("")
+  googleRefreshToken    String?
+  googleConnectedAt     DateTime?
+  signature             String     @default("")
   /// Datos de la firma profesional (se muestran en HTML; `signature` queda como texto extra).
-  jobTitle    String     @default("")
-  phone       String     @default("")
-  website     String     @default("")
+  jobTitle              String     @default("")
+  phone                 String     @default("")
+  website               String     @default("")
   /// Logo, foto o firma diseñada. Se aloja en /api/firma/:id, nunca se adjunta.
-  signatureImage       Bytes?
-  signatureImageType   String?
-  signatureImageWidth  Int?
-  signatureImageHeight Int?
+  signatureImage        Bytes?
+  signatureImageType    String?
+  signatureImageWidth   Int?
+  signatureImageHeight  Int?
   /// LOGO: imagen pequeña junto a los datos. FULL: la imagen es la firma completa.
-  signatureImageMode   String  @default("LOGO")
+  signatureImageMode    String     @default("LOGO")
   /// Sube con cada imagen nueva para que los clientes de correo no usen la vieja en caché.
-  signatureImageVersion Int    @default(0)
+  signatureImageVersion Int        @default(0)
   /// Máximo de emails al día desde este buzón, sumando todas sus secuencias.
-  dailyLimit  Int        @default(50)
-  createdAt   DateTime   @default(now())
-  sequences   Sequence[]
+  dailyLimit            Int        @default(50)
+  /// Última comprobación de la conexión SMTP (sin enviar nada).
+  lastCheckAt           DateTime?
+  lastCheckError        String?
+  createdAt             DateTime   @default(now())
+  sequences             Sequence[]
 }
 
 /// Ajustes generales de la app (una sola fila, id "app").
 model Setting {
-  id             String    @id @default("app")
-  /// Interruptor general: mientras esté apagado no sale ningún email ni se crean tareas.
-  sendingEnabled Boolean   @default(false)
+  id               String    @id @default("app")
+  /// Obsoleto: el encendido ahora es por secuencia (Sequence.sendingOn). Se conserva para no borrar datos.
+  sendingEnabled   Boolean   @default(false)
   sendingChangedAt DateTime?
+  /// Última pasada del programador y su resultado, para el estado de envío.
+  lastRunAt        DateTime?
+  lastRun          Json?
+  /// Última comprobación SMTP del buzón general (sin enviar nada).
+  /// Última lectura de buzones (la Bandeja abierta lee como mucho una vez por minuto).
+  lastInboxAt       DateTime?
+  generalCheckAt    DateTime?
+  generalCheckError String?
 }

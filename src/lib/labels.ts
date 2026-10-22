@@ -1,5 +1,31 @@
 export type Tone = "ok" | "warn" | "bad" | "info" | "neutral";
 
+/** Encender una secuencia envía correos reales: se pide confirmación siempre. */
+export const CONFIRM_ON = "Al encenderla empezará a enviar correos reales a sus contactos, dentro de su horario y con sus límites. ¿Encender?";
+
+export const TIME_ZONES: [string, string][] = [
+  ["America/Argentina/Buenos_Aires", "Argentina (Buenos Aires)"],
+  ["America/Montevideo", "Uruguay (Montevideo)"],
+  ["America/Santiago", "Chile (Santiago)"],
+  ["America/Sao_Paulo", "Brasil (São Paulo)"],
+  ["America/Asuncion", "Paraguay (Asunción)"],
+  ["America/Lima", "Perú (Lima)"],
+  ["America/Bogota", "Colombia (Bogotá)"],
+  ["America/Mexico_City", "México (CDMX)"],
+  ["Europe/Madrid", "España (Madrid)"],
+];
+
+export const DAYS: [number, string][] = [[1, "L"], [2, "M"], [3, "X"], [4, "J"], [5, "V"], [6, "S"], [0, "D"]];
+
+/** "Argentina · L–V · 8–19 h" */
+export function scheduleLabel(sq: { timeZone: string; startHour: number; endHour: number; sendDays: number[] }) {
+  const zone = (TIME_ZONES.find(([z]) => z === sq.timeZone)?.[1] ?? sq.timeZone).split(" (")[0];
+  const d = [...sq.sendDays].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+  const weekdays = d.join() === "1,2,3,4,5";
+  const days = weekdays ? "L–V" : d.length === 7 ? "Todos los días" : d.map((n) => DAYS.find(([k]) => k === n)?.[1]).join(" ");
+  return `${zone} · ${days} · ${sq.startHour}–${sq.endHour} h`;
+}
+
 export const SEQUENCE_STATUS: Record<string, [string, Tone]> = {
   DRAFT: ["Borrador", "info"],
   ACTIVE: ["Activa", "ok"],

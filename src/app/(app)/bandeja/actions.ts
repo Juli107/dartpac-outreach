@@ -19,6 +19,26 @@ export async function markRead(id: string) {
 }
 
 export async function checkInbox() {
-  await syncInbox();
+  await syncInbox(14);
   revalidatePath("/", "layout");
+}
+
+/**
+ * Lectura automática mientras la Bandeja está abierta: como mucho una vez por minuto
+ * aunque haya varias pestañas abiertas (la marca se guarda en la base de datos).
+ */
+export async function autoCheckInbox() {
+  const cutoff = new Date(Date.now() - 55_000);
+  const claimed = await db.setting.updateMany({
+    where: { id: "app", OR: [{ lastInboxAt: null }, { lastInboxAt: { lt: cutoff } }] },
+    data: { lastInboxAt: new Date() },
+  });
+  if (claimed.count === 0) {
+    const exists = await db.setting.findUnique({ where: { id: "app" } });
+    if (exists) return { checked: false };
+    await db.setting.create({ data: { id: "app", lastInboxAt: new Date() } });
+  }
+  const result = await syncInbox(14).catch((e) => ({ imported: 0, error: String(e) }));
+  revalidatePath("/", "layout");
+  return { checked: true, imported: result.imported };
 }

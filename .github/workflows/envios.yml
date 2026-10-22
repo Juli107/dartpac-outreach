@@ -2,6 +2,7 @@ name: Envíos programados
 
 # Cada 10 minutos en el horario de envío (8–19 h de Buenos Aires = 11–22 h UTC), de lunes a viernes.
 # El token OIDC de GitHub sirve de llave, así que no hace falta guardar ningún secreto.
+# Cada pasada también lee los buzones (?bandeja=1) y queda registrada en el Panel ("Programador").
 on:
   schedule:
     - cron: "*/10 11-21 * * 1-5"
