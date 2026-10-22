@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { withSignature } from "@/lib/signature";
 import { renderTemplate, TEMPLATE_VARIABLES, unknownVariables } from "@/lib/template";
 import { SEQUENCE_STATUS, ENROLLMENT_STATUS, fullName, formatDate } from "@/lib/labels";
 import { PageHeader, StatusPill, Empty, Pill } from "@/components/ui";
@@ -126,7 +127,7 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
               <div className="p-4 leading-relaxed">
                 <div className="text-xs text-muted">Para: {sample.email}</div>
                 <div className="mb-2 mt-1 font-semibold">{renderTemplate(firstEmail.subject, sample)}</div>
-                <div className="whitespace-pre-wrap">{renderTemplate(firstEmail.body, sample)}</div>
+                <div className="whitespace-pre-wrap">{withSignature(renderTemplate(firstEmail.body, sample), renderTemplate(seq.signature, sample))}</div>
               </div>
             ) : (
               <Empty title="Sin pasos de email" />
@@ -158,6 +159,10 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
               <div>
                 <label htmlFor="seq-limit" className="label">Límite diario de emails</label>
                 <input id="seq-limit" name="dailyLimit" type="number" min={1} max={2000} defaultValue={seq.dailyLimit} className="input" />
+              </div>
+              <div>
+                <label htmlFor="seq-signature" className="label">Firma (se añade al final de cada email)</label>
+                <textarea id="seq-signature" name="signature" rows={5} defaultValue={seq.signature} placeholder={"Julián\nPlupack Embalajes\nTel. 600 000 000"} className="input font-mono text-[13px]" />
               </div>
               <button className="btn justify-self-start">Guardar ajustes</button>
             </form>

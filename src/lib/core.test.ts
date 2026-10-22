@@ -4,6 +4,7 @@ import { renderTemplate, unknownVariables } from "./template.ts";
 import { nextSendTime, isInWindow } from "./schedule.ts";
 import { parseContactsCsv } from "./csv.ts";
 import { stripQuoted } from "./strip.ts";
+import { withSignature } from "./signature.ts";
 
 const marta = { email: "marta@logisur.es", firstName: "Marta", company: "Logisur" };
 const madrid = { startHour: 8, endHour: 19, timeZone: "Europe/Madrid" };
@@ -39,4 +40,9 @@ test("parseContactsCsv reconoce cabeceras en español y descarta filas malas", (
 test("stripQuoted quita la cita del correo original", () => {
   const body = "Sí, nos interesa.\n\nEl jue, 22 oct 2026 a las 10:00, Dartpac escribió:\n> Hola Jorge";
   assert.equal(stripQuoted(body), "Sí, nos interesa.");
+});
+
+test("withSignature añade la firma solo si existe", () => {
+  assert.equal(withSignature("Hola\n", "Julián\nPlupack"), "Hola\n\nJulián\nPlupack");
+  assert.equal(withSignature("Hola", "  "), "Hola");
 });

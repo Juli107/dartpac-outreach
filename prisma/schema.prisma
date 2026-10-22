@@ -35,6 +35,7 @@ model Sequence {
   name        String
   status      SequenceStatus @default(DRAFT)
   dailyLimit  Int            @default(150)
+  signature   String         @default("")
   createdAt   DateTime       @default(now())
   steps       Step[]
   enrollments Enrollment[]

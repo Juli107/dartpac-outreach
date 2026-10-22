@@ -16,8 +16,8 @@ export async function createSequence(form: FormData) {
         create: {
           order: 1,
           delayDays: 0,
-          subject: "{{empresa}} y Dartpac",
-          body: "Hola {{nombre|}},\n\nEscribe aquí tu primer mensaje.\n\nUn saludo,\nEquipo Dartpac",
+          subject: "{{empresa}} y Plupack Embalajes",
+          body: "Hola {{nombre|}},\n\nEscribe aquí tu primer mensaje.",
         },
       },
     },
@@ -33,8 +33,12 @@ export async function setSequenceStatus(id: string, status: "ACTIVE" | "PAUSED" 
 
 export async function updateSequence(id: string, form: FormData) {
   const data = z
-    .object({ name: z.string().trim().min(1), dailyLimit: z.coerce.number().int().min(1).max(2000) })
-    .parse({ name: form.get("name"), dailyLimit: form.get("dailyLimit") });
+    .object({
+      name: z.string().trim().min(1),
+      dailyLimit: z.coerce.number().int().min(1).max(2000),
+      signature: z.string().max(2000).default(""),
+    })
+    .parse({ name: form.get("name"), dailyLimit: form.get("dailyLimit"), signature: form.get("signature") ?? "" });
   await db.sequence.update({ where: { id }, data });
   revalidatePath(`/secuencias/${id}`);
 }

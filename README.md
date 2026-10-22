@@ -5,7 +5,7 @@ Plataforma propia de prospección por email para el equipo comercial de Dartpac:
 ## Qué hace
 
 - **Contactos**: alta manual o importación CSV (columnas en español o inglés), etiquetas, búsqueda.
-- **Secuencias**: pasos de email o tarea manual con esperas en días. Variables `{{nombre}}`, `{{apellido}}`, `{{empresa}}`, `{{cargo}}`, `{{email}}`, con valor por defecto `{{nombre|hola}}`. Los seguimientos van en el mismo hilo.
+- **Secuencias**: firma propia que se añade al final de cada email; pasos de email o tarea manual con esperas en días. Variables `{{nombre}}`, `{{apellido}}`, `{{empresa}}`, `{{cargo}}`, `{{email}}`, con valor por defecto `{{nombre|hola}}`. Los seguimientos van en el mismo hilo.
 - **Envío programado**: `/api/cron` se ejecuta cada 10 minutos (Vercel Cron). Solo envía de lunes a viernes dentro del horario configurado y respeta el límite diario de cada secuencia.
 - **Bandeja**: lee el buzón por IMAP; cuando un contacto responde sale de sus secuencias. Las respuestas se clasifican (interesado, reunión, más adelante, no interesado).
 - **Tareas**: los pasos manuales (llamar, LinkedIn) aparecen aquí.

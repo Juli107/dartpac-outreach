@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { sendEmail, newMessageId } from "./mailer";
 import { renderTemplate } from "./template";
+import { withSignature } from "./signature";
 import { nextSendTime, isInWindow, windowFromEnv } from "./schedule";
 import { randomUUID } from "node:crypto";
 
@@ -66,7 +67,7 @@ export async function runDueSteps(now = new Date()) {
         await sendEmail({
           to: contact.email,
           subject,
-          body: renderTemplate(step.body, contact),
+          body: withSignature(renderTemplate(step.body, contact), renderTemplate(sequence.signature, contact)),
           messageId,
           trackingId,
           contactId: contact.id,

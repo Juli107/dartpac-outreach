@@ -25,12 +25,13 @@ async function main() {
     data: {
       name: "Distribuidores de embalaje · Q4",
       status: "ACTIVE",
+      signature: "Un saludo,\nJulián\nPlupack Embalajes · plupackembalajes.com",
       steps: {
         create: [
-          { order: 1, delayDays: 0, subject: "{{empresa}} y sus envíos de temporada", body: "Hola {{nombre}},\n\nEn Dartpac preparamos cajas y film a medida para picos de campaña, con entrega en 48 h.\n\n¿Te va bien una llamada de 15 minutos esta semana?\n\nUn saludo,\nEquipo Dartpac" },
-          { order: 2, delayDays: 3, subject: "", body: "Hola {{nombre}},\n\nTe escribo de nuevo por si se perdió mi mensaje. Puedo enviarte muestras sin coste.\n\nUn saludo" },
+          { order: 1, delayDays: 0, subject: "{{empresa}} y sus envíos de temporada", body: "Hola {{nombre}},\n\nEn Plupack Embalajes preparamos cajas y film a medida para picos de campaña, con entrega en 48 h.\n\n¿Te va bien una llamada de 15 minutos esta semana?" },
+          { order: 2, delayDays: 3, subject: "", body: "Hola {{nombre}},\n\nTe escribo de nuevo por si se perdió mi mensaje. Puedo enviarte muestras sin coste." },
           { order: 3, delayDays: 2, type: "TASK", subject: "Llamar a {{nombre}} ({{empresa}})", body: "Ofrecer muestras de caja de doble canal." },
-          { order: 4, delayDays: 5, subject: "", body: "Hola {{nombre}},\n\nÚltimo mensaje por mi parte. Te dejo nuestro catálogo por si en algún momento os encaja.\n\nUn saludo" },
+          { order: 4, delayDays: 5, subject: "", body: "Hola {{nombre}},\n\nÚltimo mensaje por mi parte. Te dejo nuestro catálogo por si en algún momento os encaja." },
         ],
       },
     },

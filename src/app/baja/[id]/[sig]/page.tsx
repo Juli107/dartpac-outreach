@@ -16,7 +16,7 @@ export default async function Unsubscribe({ params }: { params: Promise<{ id: st
       <div className="card max-w-md p-8 text-center">
         <h1>{ok ? "Te has dado de baja" : "Enlace no válido"}</h1>
         <p className="sub mt-2">
-          {ok ? "No volverás a recibir correos comerciales de Dartpac." : "Este enlace de baja no es correcto o ha caducado."}
+          {ok ? `No volverás a recibir correos comerciales de ${process.env.COMPANY_NAME ?? "Plupack Embalajes"}.` : "Este enlace de baja no es correcto o ha caducado."}
         </p>
       </div>
     </div>
