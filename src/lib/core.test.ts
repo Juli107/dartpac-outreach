@@ -4,7 +4,8 @@ import { renderTemplate, unknownVariables } from "./template.ts";
 import { nextSendTime, isInWindow, startOfLocalDay } from "./schedule.ts";
 import { parseContactsCsv } from "./csv.ts";
 import { stripQuoted } from "./strip.ts";
-import { withSignature } from "./signature.ts";
+import { withSignature, renderSignature } from "./signature.ts";
+import { imageSize } from "./image-size.ts";
 
 const marta = { email: "marta@logisur.es", firstName: "Marta", company: "Logisur" };
 const madrid = { startHour: 8, endHour: 19, timeZone: "Europe/Madrid" };
@@ -60,4 +61,25 @@ test("startOfLocalDay usa la medianoche de la zona horaria de envío", () => {
   // 22 oct 2026, 01:30 UTC = 21 oct, 22:30 en Buenos Aires → medianoche del 21 (03:00 UTC)
   const d = startOfLocalDay(new Date("2026-10-22T01:30:00Z"), "America/Argentina/Buenos_Aires");
   assert.equal(d.toISOString(), "2026-10-21T03:00:00.000Z");
+});
+
+test("renderSignature arma la firma en texto y HTML con la imagen alojada", () => {
+  const sender = {
+    id: "s1", name: "Ailén <Nardone>", email: "ailen@x.com", jobTitle: "Comercial", phone: "+54 9 11 5555-1234",
+    website: "plupackembalajes.com", signature: "", signatureImageType: "image/png", signatureImageWidth: 256,
+    signatureImageHeight: 256, signatureImageMode: "LOGO", signatureImageVersion: 3,
+  };
+  const { text, html } = renderSignature(sender, "Plupack Embalajes", "https://app.test");
+  assert.equal(text, "Ailén <Nardone>\nComercial · Plupack Embalajes\n+54 9 11 5555-1234 · plupackembalajes.com");
+  assert.match(html, /src="https:\/\/app\.test\/api\/firma\/s1\?v=3" width="64" height="64"/);
+  assert.match(html, /Ailén &lt;Nardone&gt;/);
+  assert.match(html, /href="tel:\+5491155551234"/);
+  const full = renderSignature({ ...sender, signatureImageMode: "FULL", signatureImageWidth: 960, signatureImageHeight: 240 }, "P", "");
+  assert.match(full.html, /width="480" height="120"/);
+});
+
+test("imageSize lee el tamaño de un PNG", () => {
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0, 0, 0, 0, 0x80, 8]);
+  assert.deepEqual(imageSize(png), { type: "image/png", width: 256, height: 128 });
+  assert.equal(imageSize(Uint8Array.from([1, 2, 3])), null);
 });

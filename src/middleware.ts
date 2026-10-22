@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { sessionToken, SESSION_COOKIE } from "@/lib/session";
 
-// Rutas públicas: login, píxel de apertura, baja y cron (que se protege con su propio secreto).
-const PUBLIC = [/^\/login/, /^\/api\/t\//, /^\/baja\//, /^\/api\/cron/, /^\/_next\//, /^\/icon/, /^\/logo/];
+// Rutas públicas: login, píxel de apertura, imagen de firma, baja y cron (que se protege con su propio secreto).
+const PUBLIC = [/^\/login/, /^\/api\/t\//, /^\/api\/firma\//, /^\/baja\//, /^\/api\/cron/, /^\/_next\//, /^\/icon/, /^\/logo/];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

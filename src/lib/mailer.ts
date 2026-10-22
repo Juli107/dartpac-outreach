@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { signId } from "./tokens";
 
 import { decryptSecret } from "./crypto";
+import { withSignature } from "./signature";
 
 type Transport = ReturnType<typeof nodemailer.createTransport>;
 const transports = new Map<string, Transport>();
@@ -50,7 +51,7 @@ function escapeHtml(s: string) {
 }
 
 /** Convierte el texto plano del paso en HTML sencillo, con píxel de apertura y enlace de baja. */
-export function buildHtml(body: string, opts: { trackingId: string; contactId: string }) {
+export function buildHtml(body: string, opts: { trackingId: string; contactId: string; signatureHtml?: string }) {
   const base = process.env.APP_URL ?? "http://localhost:3000";
   const paragraphs = body
     .split(/\n{2,}/)
@@ -59,7 +60,7 @@ export function buildHtml(body: string, opts: { trackingId: string; contactId: s
   const unsubscribe = `${base}/baja/${opts.contactId}/${signId(opts.contactId)}`;
   return {
     html:
-      `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#14213D">${paragraphs}` +
+      `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#14213D">${paragraphs}${opts.signatureHtml ?? ""}` +
       `<p style="margin:24px 0 0;font-size:11px;color:#8792A2">Si no quieres recibir más correos, <a href="${unsubscribe}" style="color:#8792A2">date de baja aquí</a>.</p>` +
       `<img src="${base}/api/t/${opts.trackingId}" width="1" height="1" alt="" style="display:block"></div>`,
     unsubscribe,
@@ -75,13 +76,14 @@ export async function sendEmail(args: {
   trackingId: string;
   contactId: string;
   inReplyTo?: string;
+  signature?: { text: string; html: string };
 }) {
-  const { html, unsubscribe } = buildHtml(args.body, args);
+  const { html, unsubscribe } = buildHtml(args.body, { ...args, signatureHtml: args.signature?.html });
   await getTransport(args.mailbox).sendMail({
     from: args.mailbox.from,
     to: args.to,
     subject: args.subject,
-    text: args.body,
+    text: withSignature(args.body, args.signature?.text ?? ""),
     html,
     messageId: args.messageId,
     inReplyTo: args.inReplyTo,

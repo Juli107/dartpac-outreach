@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { sentToday, pendingEmails, generalMailbox, daysToFinish } from "@/lib/quota";
-import { withSignature } from "@/lib/signature";
+import { renderSignature } from "@/lib/signature";
 import { renderTemplate, TEMPLATE_VARIABLES, unknownVariables } from "@/lib/template";
 import { SEQUENCE_STATUS, ENROLLMENT_STATUS, fullName, formatDate } from "@/lib/labels";
 import { PageHeader, StatusPill, Empty, Pill } from "@/components/ui";
@@ -143,7 +143,10 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
               <div className="p-4 leading-relaxed">
                 <div className="text-xs text-muted">De: {seq.sender ? `${seq.sender.name} <${seq.sender.email}>` : process.env.MAIL_FROM} · Para: {sample.email}</div>
                 <div className="mb-2 mt-1 font-semibold">{renderTemplate(firstEmail.subject, sample)}</div>
-                <div className="whitespace-pre-wrap">{withSignature(renderTemplate(firstEmail.body, sample), renderTemplate(seq.sender?.signature ?? "", sample))}</div>
+                <div className="whitespace-pre-wrap">{renderTemplate(firstEmail.body, sample)}</div>
+                {seq.sender && (
+                  <div dangerouslySetInnerHTML={{ __html: renderSignature(seq.sender, process.env.COMPANY_NAME ?? "Plupack Embalajes", "", renderTemplate(seq.sender.signature, sample)).html }} />
+                )}
               </div>
             ) : (
               <Empty title="Sin pasos de email" />
