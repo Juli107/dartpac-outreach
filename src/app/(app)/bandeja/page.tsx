@@ -1,7 +1,9 @@
 import { db } from "@/lib/db";
 import { REPLY_LABEL, fullName, relativeTime } from "@/lib/labels";
-import { PageHeader, StatusPill, Empty } from "@/components/ui";
-import { labelReply, markRead, checkInbox } from "./actions";
+import Link from "next/link";
+import { PageHeader, StatusPill, Empty, Segmented, Avatar, Flash } from "@/components/ui";
+import { AutoRefresh } from "@/components/AutoRefresh";
+import { labelReply, markRead, checkInbox, autoCheckInbox } from "./actions";
 
 export const metadata = { title: "Bandeja" };
 
@@ -14,24 +16,36 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
     include: { contact: true },
   });
   const unread = replies.filter((r) => !r.read).length;
+  // Buzones que se leen: el general si tiene contraseña IMAP y cada remitente conectado.
+  const senders = await db.sender.findMany({ where: { OR: [{ appPassword: { not: null } }, { googleRefreshToken: { not: null } }] }, select: { email: true } });
+  const read = [...(process.env.IMAP_USER && process.env.IMAP_PASS ? [process.env.IMAP_USER] : []), ...senders.map((s) => s.email)];
   return (
     <>
       <PageHeader title="Bandeja" sub={`${unread} sin leer · cuando un contacto responde, sale de sus secuencias`}>
-        <form action={checkInbox}><button className="btn-ghost">Comprobar correo</button></form>
+        <AutoRefresh action={autoCheckInbox} />
+        <form action={checkInbox}><button className="btn-ghost">Comprobar ahora</button></form>
       </PageHeader>
-      <nav className="flex flex-wrap gap-2" aria-label="Filtrar por etiqueta">
-        <a href="/bandeja" className={`btn-ghost ${!label ? "border-brand text-brand" : ""}`}>Todas</a>
-        {Object.entries(REPLY_LABEL).map(([k, [name]]) => (
-          <a key={k} href={`/bandeja?label=${k}`} className={`btn-ghost ${label === k ? "border-brand text-brand" : ""}`}>{name}</a>
-        ))}
-      </nav>
-      <section className="card min-w-0">
+      {read.length === 0 ? (
+        <Flash tone="warn">
+          Ningún buzón está conectado para leer respuestas. Ve a <Link href="/remitentes" className="font-semibold underline">Remitentes</Link> y toca “Conectar” con Google en tu perfil.
+        </Flash>
+      ) : (
+        <p className="-mt-3 text-[13px] text-white/70">Leyendo {read.join(", ")}. Se guardan los correos de personas que están en Contactos.</p>
+      )}
+      <Segmented
+        label="Filtrar por etiqueta"
+        active={label ?? "todas"}
+        items={[{ key: "todas", label: "Todas", href: "/bandeja" }, ...Object.entries(REPLY_LABEL).map(([k, [name]]) => ({ key: k, label: name, href: `/bandeja?label=${k}` }))]}
+      />
+      <section className="card appear min-w-0 overflow-hidden">
         {replies.length === 0 ? (
-          <Empty title="No hay respuestas">Las respuestas llegan solas cada 10 minutos si el buzón IMAP está configurado.</Empty>
+          <Empty title="No hay respuestas">Aquí aparecen los correos que te escriben tus contactos, en cuanto llegan a un buzón conectado.</Empty>
         ) : (
           <ul>
             {replies.map((r) => (
-              <li key={r.id} className={`grid gap-2 border-b border-line px-4 py-4 last:border-b-0 ${r.read ? "" : "bg-brand-soft/40"}`}>
+              <li key={r.id} className={`flex gap-3 border-b border-line/70 px-5 py-4 last:border-b-0 ${r.read ? "" : "bg-brand-soft/50"}`}>
+                <Avatar name={fullName(r.contact)} size={36} />
+                <div className="grid min-w-0 flex-1 gap-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
                     <b>{fullName(r.contact)}</b>
@@ -50,7 +64,8 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
                     <button className="btn-ghost">Clasificar</button>
                   </form>
                   {!r.read && <form action={markRead.bind(null, r.id)}><button className="btn-ghost">Marcar como leída</button></form>}
-                  <span className="select-all text-xs text-muted">{r.contact.email}</span>
+                  <span className="select-all text-xs text-muted">{r.contact.email}{r.mailbox ? ` → ${r.mailbox}` : ""}</span>
+                </div>
                 </div>
               </li>
             ))}

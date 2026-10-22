@@ -104,14 +104,17 @@ export async function sendEmail(args: {
   contactId: string;
   inReplyTo?: string;
   signature?: { text: string; html: string };
+  /** Solo texto: sin HTML ni píxel de apertura; el enlace de baja va al final del texto. */
+  plainText?: boolean;
 }) {
   const { html, unsubscribe } = buildHtml(args.body, { ...args, signatureHtml: args.signature?.html });
+  const text = withSignature(args.body, args.signature?.text ?? "");
   await getTransport(args.mailbox).sendMail({
     from: args.mailbox.from,
     to: args.to,
     subject: args.subject,
-    text: withSignature(args.body, args.signature?.text ?? ""),
-    html,
+    text: args.plainText ? `${text}\n\n--\nSi no quieres recibir más correos: ${unsubscribe}` : text,
+    ...(args.plainText ? {} : { html }),
     messageId: args.messageId,
     inReplyTo: args.inReplyTo,
     references: args.inReplyTo,

@@ -2,23 +2,35 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ENROLLMENT_STATUS, fullName } from "@/lib/labels";
-import { PageHeader, StatusPill, Pill, Empty } from "@/components/ui";
+import { PageHeader, StatusPill, Pill, Empty, Segmented, Flash, Avatar } from "@/components/ui";
 import { addContact, deleteContact } from "./actions";
 
 export const metadata = { title: "Contactos" };
 
+const FILTERS: [string, string, Prisma.ContactWhereInput][] = [
+  ["todos", "Todos", {}],
+  ["abrieron", "Abrieron", { enrollments: { some: { messages: { some: { openedAt: { not: null } } } } } }],
+  ["respondieron", "Respondieron", { replies: { some: {} } }],
+  ["rebotados", "Rebotados", { bounced: true }],
+  ["bajas", "Bajas", { unsubscribed: true }],
+  ["llamar", "Por llamar", { enrollments: { some: { tasks: { some: { done: false } } } } }],
+];
+
 export default async function Contacts({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; tag?: string; importados?: string; actualizados?: string; omitidos?: string }>;
+  searchParams: Promise<{ q?: string; tag?: string; f?: string; importados?: string; actualizados?: string; omitidos?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q?.trim();
-  const where: Prisma.ContactWhereInput = {
+  const filter = FILTERS.find(([k]) => k === sp.f) ?? FILTERS[0];
+  const search: Prisma.ContactWhereInput = {
     ...(q ? { OR: ["email", "firstName", "lastName", "company"].map((f) => ({ [f]: { contains: q, mode: "insensitive" } })) } : {}),
     ...(sp.tag ? { tags: { has: sp.tag } } : {}),
   };
-  const [contacts, total, allTags] = await Promise.all([
+  const where: Prisma.ContactWhereInput = { AND: [search, filter[2]] };
+  const qs = (f: string) => `/contactos?${new URLSearchParams({ ...(q ? { q } : {}), ...(sp.tag ? { tag: sp.tag } : {}), f })}`;
+  const [contacts, total, allTags, counts] = await Promise.all([
     db.contact.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -27,6 +39,7 @@ export default async function Contacts({
     }),
     db.contact.count({ where }),
     db.contact.findMany({ select: { tags: true } }),
+    Promise.all(FILTERS.map(([, , w]) => db.contact.count({ where: { AND: [search, w] } }))),
   ]);
   const tags = [...new Set(allTags.flatMap((c) => c.tags))].sort();
 
@@ -37,12 +50,15 @@ export default async function Contacts({
       </PageHeader>
 
       {sp.importados && (
-        <div className="rounded-lg bg-emerald-50 px-4 py-3 text-emerald-800">
+        <Flash tone="ok">
           Importación terminada: {sp.importados} nuevos, {sp.actualizados} actualizados, {sp.omitidos} filas omitidas (sin email válido o repetidas).
-        </div>
+        </Flash>
       )}
 
-      <form className="flex flex-wrap gap-2">
+      <Segmented label="Filtrar contactos" active={filter[0]} items={FILTERS.map(([k, label], i) => ({ key: k, label, count: counts[i], href: qs(k) }))} />
+
+      <form className="card appear flex flex-wrap gap-2 p-3">
+        {filter[0] !== "todos" && <input type="hidden" name="f" value={filter[0]} />}
         <input name="q" defaultValue={q} placeholder="Buscar por nombre, email o empresa" className="input max-w-sm" aria-label="Buscar" />
         <select name="tag" defaultValue={sp.tag ?? ""} className="input max-w-[200px]" aria-label="Etiqueta">
           <option value="">Todas las etiquetas</option>
@@ -51,7 +67,7 @@ export default async function Contacts({
         <button className="btn-ghost">Filtrar</button>
       </form>
 
-      <section className="card min-w-0">
+      <section className="card appear min-w-0 overflow-hidden">
         {contacts.length === 0 ? (
           <Empty title="No hay contactos">Importa un CSV o añade uno a mano abajo.</Empty>
         ) : (
@@ -63,12 +79,13 @@ export default async function Contacts({
                   const last = c.enrollments[0];
                   return (
                     <tr key={c.id}>
-                      <td className="font-medium">{fullName(c)}</td>
+                      <td><span className="flex items-center gap-2.5 font-medium"><Avatar name={fullName(c)} size={28} />{fullName(c)}</span></td>
                       <td className="text-muted">{c.email}</td>
                       <td>{c.company}</td>
                       <td>{c.title}</td>
                       <td className="space-x-1">
                         {c.unsubscribed && <Pill tone="bad">Baja</Pill>}
+                        {c.bounced && <Pill tone="bad">Rebotado</Pill>}
                         {c.tags.map((t) => <Pill key={t} tone="neutral">{t}</Pill>)}
                       </td>
                       <td>{last ? <><span className="mr-2">{last.sequence.name}</span><StatusPill map={ENROLLMENT_STATUS} value={last.status} /></> : <span className="text-muted">–</span>}</td>
@@ -83,8 +100,8 @@ export default async function Contacts({
       </section>
 
       <section className="card">
-        <h2 className="card-title">Añadir contacto</h2>
-        <form action={addContact} className="grid gap-3 p-4 sm:grid-cols-3">
+        <div className="card-title"><h2>Añadir contacto</h2></div>
+        <form action={addContact} className="grid gap-3 px-5 pb-5 pt-2 sm:grid-cols-3">
           {[
             ["email", "Email", "email"],
             ["firstName", "Nombre", "text"],

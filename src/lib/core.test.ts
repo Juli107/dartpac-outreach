@@ -109,3 +109,42 @@ test("authUrl pide Gmail y permiso permanente solo al conectar", () => {
   assert.equal(connect.searchParams.get("prompt"), "consent");
   assert.equal(connect.searchParams.get("login_hint"), "ailen@plupackembalajes.com");
 });
+
+test("windowFor respeta los días de envío de la secuencia", async () => {
+  const { windowFor } = await import("./schedule.ts");
+  const w = windowFor({ timeZone: "America/Argentina/Buenos_Aires", startHour: 9, endHour: 18, sendDays: [6] });
+  // Sábado 24 oct 2026, 12:00 en Buenos Aires (15:00 UTC): dentro. El jueves a la misma hora, fuera.
+  assert.ok(isInWindow(new Date("2026-10-24T15:00:00Z"), w));
+  assert.ok(!isInWindow(new Date("2026-10-22T15:00:00Z"), w));
+  // Sin días guardados, de lunes a viernes.
+  const weekdays = windowFor({ timeZone: "America/Argentina/Buenos_Aires", startHour: 8, endHour: 19, sendDays: [] });
+  assert.ok(isInWindow(new Date("2026-10-22T15:00:00Z"), weekdays));
+  assert.equal(nextSendTime(new Date("2026-10-22T15:00:00Z"), 0, w).toISOString(), "2026-10-24T12:00:00.000Z");
+});
+
+test("variantes: A es el paso, el reparto es estable y las letras siguen en orden", async () => {
+  const { stepVariants, pickVariant, nextVariantLabel, stepDays } = await import("./variants.ts");
+  const vs = stepVariants({ subject: "Hola", body: "x", variants: [{ label: "C", subject: "c", body: "c" }, { label: "B", subject: "b", body: "b" }] });
+  assert.deepEqual(vs.map((v) => v.label), ["A", "B", "C"]);
+  assert.equal(pickVariant("enr1:step1", vs).label, pickVariant("enr1:step1", vs).label);
+  const counts = { A: 0, B: 0, C: 0 } as Record<string, number>;
+  for (let i = 0; i < 3000; i++) counts[pickVariant(`e${i}:s`, vs).label]++;
+  for (const n of Object.values(counts)) assert.ok(n > 800 && n < 1200, `reparto desigual: ${JSON.stringify(counts)}`);
+  assert.equal(nextVariantLabel(["B", "C"]), "D");
+  assert.deepEqual(stepDays([{ delayDays: 0 }, { delayDays: 3 }, { delayDays: 4 }]), [1, 4, 8]);
+});
+
+test("rebotes: rechazo permanente y direcciones del aviso", async () => {
+  const { isHardBounce, bouncedAddresses, isBounceSender } = await import("./bounce.ts");
+  assert.ok(isHardBounce("550 5.1.1 The email account that you tried to reach does not exist"));
+  assert.ok(!isHardBounce("421 4.7.0 Try again later"));
+  assert.ok(isBounceSender("mailer-daemon@googlemail.com"));
+  assert.deepEqual(bouncedAddresses("No se entregó a ana@cliente.com.ar", "ana@cliente.com.ar"), ["ana@cliente.com.ar"]);
+  assert.deepEqual(bouncedAddresses("From: mailer-daemon@googlemail.com"), []);
+});
+
+test("scheduleLabel resume el horario", async () => {
+  const { scheduleLabel } = await import("./labels.ts");
+  assert.equal(scheduleLabel({ timeZone: "America/Argentina/Buenos_Aires", startHour: 8, endHour: 19, sendDays: [5, 1, 2, 3, 4] }), "Argentina · L–V · 8–19 h");
+  assert.equal(scheduleLabel({ timeZone: "Europe/Madrid", startHour: 9, endHour: 14, sendDays: [6, 1] }), "España · L S · 9–14 h");
+});

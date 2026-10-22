@@ -2,31 +2,32 @@ import { db } from "./db";
 import { sendEmail, newMessageId, mailboxFor } from "./mailer";
 import { renderTemplate } from "./template";
 import { renderSignature } from "./signature";
-import { sendingEnabled } from "./settings";
-import { nextSendTime, isInWindow, windowFromEnv } from "./schedule";
+import { nextSendTime, isInWindow, windowFor } from "./schedule";
+import { pickVariant, stepVariants } from "./variants";
 import { randomUUID } from "node:crypto";
+import { isHardBounce } from "./bounce";
 import { sentToday as countSentToday, generalMailbox, minGapMinutes } from "./quota";
 
 const BATCH = 50;
 
+
 /**
  * Procesa los pasos que tocan ahora: envía emails o crea tareas manuales
  * y programa el siguiente paso de cada contacto. Lo llama /api/cron cada 10 minutos.
+ * Solo trabajan las secuencias encendidas y dentro de su propio horario.
  */
 export async function runDueSteps(now = new Date()) {
-  const window = windowFromEnv();
   const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const summary = { sent: 0, tasks: 0, finished: 0, errors: 0, skippedOutsideWindow: false, sendingOff: false };
-  // Nada sale hasta que alguien encienda los envíos desde el panel.
-  if (!(await sendingEnabled())) {
-    summary.sendingOff = true;
-    return summary;
-  }
-  if (!isInWindow(now, window)) {
-    summary.skippedOutsideWindow = true;
-    return summary;
-  }
+  const summary = { sent: 0, tasks: 0, finished: 0, errors: 0, sequencesOn: 0, outsideWindow: 0 };
+  const on = await db.sequence.findMany({
+    where: { sendingOn: true, status: "ACTIVE" },
+    select: { id: true, dailyLimit: true, sender: true, timeZone: true, startHour: true, endHour: true, sendDays: true },
+  });
+  summary.sequencesOn = on.length;
+  const active = on.filter((sq) => isInWindow(now, windowFor(sq)));
+  summary.outsideWindow = on.length - active.length;
+  if (active.length === 0) return summary;
 
   // Dos cupos diarios: el de la secuencia y el del buzón (que comparten todas sus secuencias).
   const { bySequence, byMailbox, lastByMailbox } = await countSentToday(now);
@@ -36,29 +37,32 @@ export async function runDueSteps(now = new Date()) {
     limit: sq.sender?.dailyLimit ?? general.dailyLimit,
   });
   // Ritmo humano: cada buzón espera su intervalo desde el último envío y manda uno por pasada.
-  const paced = (box: string, limit: number) => {
+  const paced = (box: string, limit: number, sq: { startHour: number; endHour: number }) => {
     const last = lastByMailbox.get(box);
     // Margen del 25 %: los avisos del cron llegan con algo de retraso y no deben perder turnos.
-    return !last || now.getTime() - last.getTime() >= minGapMinutes(limit, window.startHour, window.endHour) * 0.75 * 60_000;
+    return !last || now.getTime() - last.getTime() >= minGapMinutes(limit, sq.startHour, sq.endHour) * 0.75 * 60_000;
   };
   // Las secuencias que ya llenaron su cupo (o el de su buzón) se saltan para no ocupar el lote.
-  const active = await db.sequence.findMany({ where: { status: "ACTIVE" }, select: { id: true, dailyLimit: true, sender: true } });
-  const full = active
+  const ready = active
     .filter((sq) => {
       const { box, limit } = mailboxOf(sq);
-      return (bySequence.get(sq.id) ?? 0) >= sq.dailyLimit || (byMailbox.get(box) ?? 0) >= limit || !paced(box, limit);
+      return (bySequence.get(sq.id) ?? 0) < sq.dailyLimit && (byMailbox.get(box) ?? 0) < limit && paced(box, limit, sq);
     })
     .map((sq) => sq.id);
 
   const due = await db.enrollment.findMany({
-    where: { status: "ACTIVE", nextRunAt: { lte: now }, sequence: { status: "ACTIVE" }, sequenceId: { notIn: full } },
-    include: { contact: true, sequence: { include: { sender: true, steps: { orderBy: { order: "asc" } } } } },
+    where: { status: "ACTIVE", nextRunAt: { lte: now }, sequenceId: { in: ready } },
+    include: {
+      contact: true,
+      sequence: { include: { sender: true, steps: { orderBy: { order: "asc" }, include: { variants: true } } } },
+    },
     orderBy: { nextRunAt: "asc" },
     take: BATCH,
   });
 
   for (const enr of due) {
     const { contact, sequence } = enr;
+    const window = windowFor(sequence);
     if (contact.unsubscribed || contact.bounced) {
       await db.enrollment.update({
         where: { id: enr.id },
@@ -77,12 +81,13 @@ export async function runDueSteps(now = new Date()) {
     if (step.type === "EMAIL") {
       const { box, limit } = mailboxOf(sequence);
       if ((bySequence.get(sequence.id) ?? 0) >= sequence.dailyLimit) continue;
-      if ((byMailbox.get(box) ?? 0) >= limit || !paced(box, limit)) continue;
+      if ((byMailbox.get(box) ?? 0) >= limit || !paced(box, limit, sequence)) continue;
 
+      const variant = pickVariant(`${enr.id}:${step.id}`, stepVariants(step));
       const previous = step.sameThread
         ? await db.message.findFirst({ where: { enrollmentId: enr.id, error: null }, orderBy: { sentAt: "desc" } })
         : null;
-      const subject = previous ? `Re: ${previous.subject.replace(/^Re:\s*/i, "")}` : renderTemplate(step.subject, contact);
+      const subject = previous ? `Re: ${previous.subject.replace(/^Re:\s*/i, "")}` : renderTemplate(variant.subject, contact);
       const trackingId = randomUUID();
       let messageId = `<${trackingId}@sin-enviar>`;
       let error: string | null = null;
@@ -93,7 +98,8 @@ export async function runDueSteps(now = new Date()) {
           mailbox,
           to: contact.email,
           subject,
-          body: renderTemplate(step.body, contact),
+          body: renderTemplate(variant.body, contact),
+          plainText: sequence.plainText,
           signature: sequence.sender
             ? renderSignature(sequence.sender, company, baseUrl, renderTemplate(sequence.sender.signature, contact))
             : undefined,
@@ -111,8 +117,14 @@ export async function runDueSteps(now = new Date()) {
         summary.errors++;
       }
       await db.message.create({
-        data: { id: trackingId, enrollmentId: enr.id, stepId: step.id, messageId, subject, error, fromEmail: box },
+        data: { id: trackingId, enrollmentId: enr.id, stepId: step.id, messageId, subject, error, fromEmail: box, variant: variant.label },
       });
+      if (error && isHardBounce(error)) {
+        // El servidor rechazó la dirección: no se reintenta y el contacto queda como rebotado.
+        await db.contact.update({ where: { id: contact.id }, data: { bounced: true } });
+        await db.enrollment.updateMany({ where: { contactId: contact.id, status: { in: ["ACTIVE", "PAUSED"] } }, data: { status: "BOUNCED", nextRunAt: null } });
+        continue;
+      }
       if (error) {
         // Reintenta en una hora sin avanzar de paso.
         await db.enrollment.update({ where: { id: enr.id }, data: { nextRunAt: new Date(now.getTime() + 3600_000) } });

@@ -111,5 +111,6 @@ export async function testSender(id: string) {
   } catch (e) {
     result = e instanceof Error ? e.message : String(e);
   }
+  await db.sender.update({ where: { id }, data: { lastCheckAt: new Date(), lastCheckError: result === "ok" ? null : result } });
   redirect(`/remitentes?prueba=${id}&resultado=${encodeURIComponent(result)}`);
 }

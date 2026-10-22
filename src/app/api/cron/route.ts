@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runDueSteps } from "@/lib/engine";
 import { syncInbox } from "@/lib/inbox";
 import { verifyGithubOidc } from "@/lib/github-oidc";
+import { recordRun } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -25,5 +26,6 @@ export async function GET(req: Request) {
   const checkInbox = new URL(req.url).searchParams.has("bandeja") || new Date().getUTCMinutes() % 5 === 0;
   const inbox = checkInbox ? await syncInbox().catch((e) => ({ error: String(e) })) : "omitida";
   const steps = await runDueSteps();
+  await recordRun({ at: new Date().toISOString(), steps, inbox, source: "cron" }).catch(() => undefined);
   return NextResponse.json({ inbox, steps });
 }

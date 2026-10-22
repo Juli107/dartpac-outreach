@@ -1,4 +1,8 @@
-export type SendWindow = { startHour: number; endHour: number; timeZone: string };
+/** Horario de envío. `days` usa 0 = domingo … 6 = sábado; sin `days`, de lunes a viernes. */
+export type SendWindow = { startHour: number; endHour: number; timeZone: string; days?: number[] };
+
+export const WEEKDAYS = [1, 2, 3, 4, 5];
+const DAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 export function windowFromEnv(): SendWindow {
   return {
@@ -6,6 +10,11 @@ export function windowFromEnv(): SendWindow {
     endHour: Number(process.env.SEND_HOUR_END ?? 19),
     timeZone: process.env.SEND_TIMEZONE ?? "America/Argentina/Buenos_Aires",
   };
+}
+
+/** Horario propio de una secuencia. */
+export function windowFor(sq: { timeZone: string; startHour: number; endHour: number; sendDays: number[] }): SendWindow {
+  return { timeZone: sq.timeZone, startHour: sq.startHour, endHour: sq.endHour, days: sq.sendDays.length ? sq.sendDays : WEEKDAYS };
 }
 
 function localParts(date: Date, timeZone: string) {
@@ -21,14 +30,14 @@ function localParts(date: Date, timeZone: string) {
 
 export function isInWindow(date: Date, w: SendWindow): boolean {
   const { weekday, hour } = localParts(date, w.timeZone);
-  if (weekday === "Sat" || weekday === "Sun") return false;
+  if (!(w.days ?? WEEKDAYS).includes(DAY_INDEX[weekday])) return false;
   return hour >= w.startHour && hour < w.endHour;
 }
 
 const STEP_MS = 15 * 60 * 1000;
 
 /**
- * Primer momento hábil (lunes a viernes, dentro del horario) a partir de `from` + `delayDays`.
+ * Primer momento dentro del horario (días y horas de envío) a partir de `from` + `delayDays`.
  * Avanza en tramos de 15 minutos, así respeta cambios de hora sin librerías.
  */
 export function nextSendTime(from: Date, delayDays: number, w: SendWindow): Date {

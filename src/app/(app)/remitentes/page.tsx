@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { sentToday } from "@/lib/quota";
 import { renderSignature, type SignatureSender } from "@/lib/signature";
-import { PageHeader, Pill } from "@/components/ui";
+import { PageHeader, Pill, Avatar, Flash, ProgressBar, Dot } from "@/components/ui";
+import { relativeTime } from "@/lib/labels";
 import { googleConfigured } from "@/lib/google";
 import { createSender, updateSender, disconnectSender, disconnectGoogle, deleteSender, testSender, removeSignatureImage } from "./actions";
 
@@ -24,7 +25,7 @@ function GoogleIcon() {
 function GoogleButton({ senderId, children }: { senderId?: string; children: React.ReactNode }) {
   const href = `/api/google/start?modo=conectar${senderId ? `&remitente=${senderId}` : ""}`;
   return (
-    <a href={href} className="btn-ghost inline-flex items-center gap-2">
+    <a href={href} className="btn-ghost inline-flex items-center gap-2 bg-white shadow-sm ring-1 ring-black/[.06] hover:bg-white">
       <GoogleIcon />
       {children}
     </a>
@@ -63,7 +64,7 @@ function Fields({ s, prefix }: { s: SenderFields; prefix: string }) {
       </div>
       )}
 
-      <h3 className="mt-2 font-semibold sm:col-span-2">Firma</h3>
+      <h3 className="mt-3 border-t border-line/70 pt-4 font-semibold sm:col-span-2">Firma</h3>
       <div>
         <label htmlFor={`${prefix}-title`} className="label">Cargo</label>
         <input id={`${prefix}-title`} name="jobTitle" defaultValue={s.jobTitle} placeholder="Ejecutivo comercial" className="input" />
@@ -99,84 +100,126 @@ function Fields({ s, prefix }: { s: SenderFields; prefix: string }) {
 export default async function Senders({
   searchParams,
 }: {
-  searchParams: Promise<{ prueba?: string; resultado?: string; error?: string; conectado?: string }>;
+  searchParams: Promise<{ prueba?: string; resultado?: string; error?: string; conectado?: string; editar?: string }>;
 }) {
-  const { prueba, resultado, error, conectado } = await searchParams;
+  const { prueba, resultado, error, conectado, editar } = await searchParams;
   const google = googleConfigured();
   const senders = await db.sender.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { sequences: true } } } });
   const { byMailbox } = await sentToday();
   const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
+  const tested = senders.find((s) => s.id === prueba);
   return (
     <>
-      <PageHeader
-        title="Remitentes"
-        sub="Cada comercial envía desde su propio Gmail y con su firma. La conexión se guarda cifrada y no se vuelve a mostrar."
-      >
-        {google && <GoogleButton>Agregar perfil con Google</GoogleButton>}
+      <PageHeader title="Remitentes" sub="Las personas que envían: cada una desde su Gmail y con su firma.">
+        {google && <GoogleButton>Agregar con Google</GoogleButton>}
       </PageHeader>
+
       {error === "google-sin-configurar" ? (
-        <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Falta configurar Google: añade GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en Vercel.
-        </div>
+        <Flash tone="warn">Falta configurar Google: añade GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en Vercel.</Flash>
       ) : (
-        error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
+        error && <Flash tone="bad">{error}</Flash>
       )}
-      {conectado && (
-        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          {conectado} quedó conectado con Google. Los envíos siguen apagados hasta que los enciendas en el Panel.
-        </div>
+      {conectado && <Flash tone="ok">{conectado} quedó conectado con Google. Ninguna secuencia envía hasta que la enciendas.</Flash>}
+      {tested && resultado && (
+        <Flash tone={resultado === "ok" ? "ok" : "bad"}>
+          {resultado === "ok" ? `${tested.name}: conexión correcta. Gmail aceptó las credenciales (no se envió nada).` : `${tested.name}: no se pudo conectar. ${resultado}`}
+        </Flash>
       )}
-      <div className="grid items-start gap-4 xl:grid-cols-2">
-        {senders.map((s) => (
-          <section key={s.id} className="card min-w-0">
-            <div className="card-title flex flex-wrap items-center justify-between gap-2">
-              <div className="min-w-0">
-                <h2 className="inline">{s.name}</h2>
-                <span className="ml-2 text-muted">{s.email}</span>
+
+      <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {senders.map((s, i) => {
+          const today = byMailbox.get(s.email.toLowerCase()) ?? 0;
+          const connected = !!(s.googleRefreshToken || s.appPassword);
+          const level = !connected || s.lastCheckError ? "bad" : today >= s.dailyLimit ? "warn" : s.lastCheckAt ? "ok" : "info";
+          const open = editar === s.id;
+          return (
+            <section key={s.id} className={`card appear group flex min-w-0 flex-col transition duration-200 hover:shadow-lift ${open ? "md:col-span-2 xl:col-span-3" : ""}`} style={{ animationDelay: `${i * 50}ms` }}>
+              <div className="flex flex-col items-center gap-3 px-5 pb-4 pt-6 text-center">
+                <div className="relative">
+                  {s.signatureImageType && s.signatureImageMode === "LOGO" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={`/api/firma/${s.id}?v=${s.signatureImageVersion}`} alt="" width={72} height={72} className="h-[72px] w-[72px] rounded-full object-cover shadow-sm ring-1 ring-black/5" />
+                  ) : (
+                    <Avatar name={s.name} size={72} />
+                  )}
+                  <span className="absolute bottom-0.5 right-0.5 rounded-full bg-white p-[3px]"><Dot level={level} /></span>
+                </div>
+                <div className="min-w-0">
+                  <h2 className="truncate text-[19px]">{s.name}</h2>
+                  <div className="truncate text-[13px] text-muted">{s.jobTitle || "Sin cargo"} · {s.email}</div>
+                </div>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {s.googleRefreshToken ? <Pill tone="ok">Conectado con Google</Pill> : s.appPassword ? <Pill tone="ok">Conectado</Pill> : <Pill tone="warn">Sin conectar</Pill>}
+                  <Pill tone="neutral">{s._count.sequences} {s._count.sequences === 1 ? "secuencia" : "secuencias"}</Pill>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted">{s._count.sequences} secuencias</span>
-                <Pill tone={(byMailbox.get(s.email) ?? 0) >= s.dailyLimit ? "warn" : "neutral"}>Hoy {byMailbox.get(s.email) ?? 0} / {s.dailyLimit}</Pill>
-                {s.googleRefreshToken ? (
-                  <Pill tone="ok">Conectado con Google</Pill>
-                ) : s.appPassword ? (
-                  <Pill tone="ok">Conectado</Pill>
-                ) : (
-                  <Pill tone="warn">Sin conectar</Pill>
-                )}
+
+              <div className="px-5">
+                <div className="mb-1.5 flex justify-between text-xs text-muted">
+                  <span>Enviados hoy</span>
+                  <span className="tabular-nums">{today} / {s.dailyLimit}</span>
+                </div>
+                <ProgressBar value={(today / Math.max(1, s.dailyLimit)) * 100} tone={today >= s.dailyLimit ? "warn" : "brand"} className="w-full" />
+                <p className={`mt-3 text-xs ${s.lastCheckError ? "text-[#D70015]" : "text-muted"}`}>
+                  {!connected
+                    ? "Conéctalo para que pueda enviar."
+                    : s.lastCheckError
+                      ? `Última comprobación falló: ${s.lastCheckError}`
+                      : s.lastCheckAt
+                        ? `Conexión comprobada ${relativeTime(s.lastCheckAt)}.`
+                        : "Conexión sin comprobar todavía."}
+                </p>
               </div>
-            </div>
-            {prueba === s.id && resultado && (
-              <div className={`mx-4 mt-4 rounded-lg px-3 py-2 text-sm ${resultado === "ok" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>
-                {resultado === "ok" ? "Conexión correcta: Gmail aceptó las credenciales (no se envió nada)." : `No se pudo conectar: ${resultado}`}
+
+              <div className="mt-4 flex flex-wrap justify-center gap-2 border-t border-line/70 px-5 py-3">
+                <a href={open ? "/remitentes" : `/remitentes?editar=${s.id}#r-${s.id}`} className="btn-ghost">{open ? "Cerrar" : "Editar"}</a>
+                {google && !s.googleRefreshToken && <GoogleButton senderId={s.id}>Conectar</GoogleButton>}
+                {connected && <form action={testSender.bind(null, s.id)}><button className="btn-ghost" title="No envía nada">Probar conexión</button></form>}
               </div>
-            )}
-            <div className="mx-4 mt-4 rounded-lg border border-line bg-white px-4 pb-4">
-              <p className="pt-3 text-xs text-muted">Así se verá la firma</p>
-              {/* HTML generado por renderSignature con todos los campos escapados. */}
-              <div dangerouslySetInnerHTML={{ __html: renderSignature(s, company, "").html }} />
-            </div>
-            <form action={updateSender.bind(null, s.id)} className="p-4">
-              <Fields s={{ ...s, hasPassword: !!s.appPassword, hasImage: !!s.signatureImageType, viaGoogle: !!s.googleRefreshToken }} prefix={s.id} />
-              <div className="mt-3"><button className="btn">Guardar</button></div>
+
+              {open && (
+                <div id={`r-${s.id}`} className="appear grid scroll-mt-6 gap-6 border-t border-line/70 p-5 lg:grid-cols-[1fr_380px]">
+                  <form action={updateSender.bind(null, s.id)}>
+                    <Fields s={{ ...s, hasPassword: !!s.appPassword, hasImage: !!s.signatureImageType, viaGoogle: !!s.googleRefreshToken }} prefix={s.id} />
+                    <div className="mt-4"><button className="btn">Guardar cambios</button></div>
+                  </form>
+                  <div className="flex flex-col gap-4">
+                    <div className="rounded-2xl bg-black/[.025] p-4">
+                      <p className="mb-2 text-xs font-medium text-muted">Así se ve la firma</p>
+                      <div className="rounded-xl bg-white p-4 shadow-sm">
+                        {/* HTML generado por renderSignature con todos los campos escapados. */}
+                        <div dangerouslySetInnerHTML={{ __html: renderSignature(s, company, "").html }} />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {s.googleRefreshToken && <form action={disconnectGoogle.bind(null, s.id)}><button className="btn-ghost">Desconectar Google</button></form>}
+                      {s.appPassword && <form action={disconnectSender.bind(null, s.id)}><button className="btn-ghost">Borrar contraseña</button></form>}
+                      {s.signatureImageType && <form action={removeSignatureImage.bind(null, s.id)}><button className="btn-ghost">Quitar imagen</button></form>}
+                      {s._count.sequences === 0 && <form action={deleteSender.bind(null, s.id)}><button className="btn-danger">Eliminar remitente</button></form>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+          );
+        })}
+
+        <details className="appear group min-w-0 rounded-2xl border-2 border-dashed border-white/25 bg-white/[.06] text-white backdrop-blur transition hover:bg-white/[.1] open:border-solid open:border-transparent open:bg-white open:text-ink open:shadow-soft open:md:col-span-2 open:xl:col-span-3" open={editar === "nuevo"}>
+          <summary className="flex min-h-[260px] cursor-pointer flex-col items-center justify-center gap-3 p-6 text-center group-open:min-h-0 group-open:flex-row group-open:justify-start">
+            <span className="grid h-14 w-14 place-items-center rounded-full bg-white/15 text-2xl font-light transition group-hover:bg-white group-hover:text-navy group-open:bg-navy group-open:text-white">+</span>
+            <span>
+              <span className="block font-semibold">Nuevo remitente</span>
+              <span className="block text-[13px] opacity-70">Con Google es un clic; también vale una contraseña de aplicación.</span>
+            </span>
+          </summary>
+          <div className="reveal on-light border-t border-line/70 p-5">
+            {google && <div className="mb-5"><GoogleButton>Agregar con Google</GoogleButton></div>}
+            <form action={createSender}>
+              <Fields s={{}} prefix="new" />
+              <div className="mt-4"><button className="btn">Añadir remitente</button></div>
             </form>
-            <div className="flex flex-wrap gap-2 border-t border-line px-4 py-3">
-              {google && !s.googleRefreshToken && <GoogleButton senderId={s.id}>Conectar con Google</GoogleButton>}
-              {(s.appPassword || s.googleRefreshToken) && <form action={testSender.bind(null, s.id)}><button className="btn-ghost">Probar conexión</button></form>}
-              {s.googleRefreshToken && <form action={disconnectGoogle.bind(null, s.id)}><button className="btn-ghost">Desconectar Google</button></form>}
-              {s.appPassword && <form action={disconnectSender.bind(null, s.id)}><button className="btn-ghost">Borrar contraseña</button></form>}
-              {s.signatureImageType && <form action={removeSignatureImage.bind(null, s.id)}><button className="btn-ghost">Quitar imagen</button></form>}
-              {s._count.sequences === 0 && <form action={deleteSender.bind(null, s.id)}><button className="btn-danger">Eliminar remitente</button></form>}
-            </div>
-          </section>
-        ))}
-        <section className="card min-w-0">
-          <h2 className="card-title">Añadir remitente</h2>
-          <form action={createSender} className="p-4">
-            <Fields s={{}} prefix="new" />
-            <div className="mt-3"><button className="btn">Añadir</button></div>
-          </form>
-        </section>
+          </div>
+        </details>
       </div>
     </>
   );

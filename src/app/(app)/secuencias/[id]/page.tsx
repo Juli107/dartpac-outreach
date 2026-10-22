@@ -1,253 +1,105 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { db } from "@/lib/db";
-import { sentToday, pendingEmails, generalMailbox, daysToFinish } from "@/lib/quota";
-import { renderSignature } from "@/lib/signature";
-import { renderTemplate, TEMPLATE_VARIABLES, unknownVariables } from "@/lib/template";
-import { SEQUENCE_STATUS, ENROLLMENT_STATUS, fullName, formatDate } from "@/lib/labels";
-import { PageHeader, StatusPill, Empty, Pill } from "@/components/ui";
-import {
-  setSequenceStatus, updateSequence, addStep, updateStep, deleteStep, enrollContacts, setEnrollmentStatus,
-} from "../actions";
+import { sequenceHealthMap, sequenceVerdict } from "@/lib/health";
+import { CONFIRM_ON, scheduleLabel } from "@/lib/labels";
+import { PageHeader, Segmented, CheckList, Dot } from "@/components/ui";
+import { Switch } from "@/components/Switch";
+import { toggleSequence } from "../actions";
+import { StepsTab } from "./_tabs/StepsTab";
+import { PeopleTab } from "./_tabs/PeopleTab";
+import { PreviewTab } from "./_tabs/PreviewTab";
+import { StatsTab } from "./_tabs/StatsTab";
+import { SettingsTab } from "./_tabs/SettingsTab";
+import { LogTab } from "./_tabs/LogTab";
+import { InboxTab } from "./_tabs/InboxTab";
+import { base, type TabParams } from "./_tabs/types";
 
-type Step = { id: string; order: number; type: string; delayDays: number; subject: string; body: string; sameThread: boolean };
+const TABS = [
+  ["bandeja", "Bandeja"],
+  ["pasos", "Pasos"],
+  ["personas", "Personas"],
+  ["vista", "Vista previa"],
+  ["estadisticas", "Estadísticas"],
+  ["ajustes", "Ajustes"],
+  ["registro", "Registro"],
+] as const;
 
-function StepFields({ step, idPrefix }: { step?: Step; idPrefix: string }) {
-  return (
-    <div className="grid gap-3">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div>
-          <label htmlFor={`${idPrefix}-type`} className="label">Tipo</label>
-          <select id={`${idPrefix}-type`} name="type" defaultValue={step?.type ?? "EMAIL"} className="input">
-            <option value="EMAIL">Email automático</option>
-            <option value="TASK">Tarea manual (llamada, LinkedIn…)</option>
-          </select>
-        </div>
-        <div>
-          <label htmlFor={`${idPrefix}-delay`} className="label">Esperar (días hábiles aprox.)</label>
-          <input id={`${idPrefix}-delay`} name="delayDays" type="number" min={0} max={90} defaultValue={step?.delayDays ?? 3} className="input" />
-        </div>
-        <label className="flex items-end gap-2 pb-2">
-          <input name="sameThread" type="checkbox" defaultChecked={step?.sameThread ?? true} />
-          <span>Responder en el mismo hilo</span>
-        </label>
-      </div>
-      <div>
-        <label htmlFor={`${idPrefix}-subject`} className="label">Asunto (o título de la tarea)</label>
-        <input id={`${idPrefix}-subject`} name="subject" defaultValue={step?.subject} className="input" />
-      </div>
-      <div>
-        <label htmlFor={`${idPrefix}-body`} className="label">Mensaje</label>
-        <textarea id={`${idPrefix}-body`} name="body" rows={7} defaultValue={step?.body} className="input font-mono text-[13px]" />
-      </div>
-    </div>
-  );
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const seq = await db.sequence.findUnique({ where: { id }, select: { name: true } });
+  return { title: seq?.name ?? "Secuencia" };
 }
 
-export default async function SequenceDetail({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function SequenceDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<TabParams> }) {
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
   const seq = await db.sequence.findUnique({
     where: { id },
-    include: {
-      sender: true,
-      steps: { orderBy: { order: "asc" } },
-      enrollments: { include: { contact: true }, orderBy: { createdAt: "desc" }, take: 200 },
-    },
+    include: { sender: true, steps: { orderBy: { order: "asc" }, include: { variants: { orderBy: { label: "asc" } } } } },
   });
   if (!seq) notFound();
-  const senders = await db.sender.findMany({ orderBy: { name: "asc" } });
-  const tags = (await db.contact.findMany({ select: { tags: true } })).flatMap((c) => c.tags);
-  const tagCounts = [...new Set(tags)].sort();
-  const sample = seq.enrollments[0]?.contact ?? { email: "marta@logisur.es", firstName: "Marta", lastName: "Ruiz", company: "Logisur", title: "Jefa de compras" };
-  const firstEmail = seq.steps.find((s) => s.type === "EMAIL");
+  const tab = TABS.some(([k]) => k === sp.tab) ? sp.tab! : "pasos";
 
-  const [today, pendingMap, sent, failed] = await Promise.all([
-    sentToday(),
-    pendingEmails([seq.id]),
-    db.message.count({ where: { enrollment: { sequenceId: seq.id }, error: null } }),
-    db.message.count({ where: { enrollment: { sequenceId: seq.id }, error: { not: null } } }),
+  const [health, people, unread] = await Promise.all([
+    sequenceHealthMap([seq]),
+    db.enrollment.count({ where: { sequenceId: id } }),
+    db.reply.count({ where: { read: false, contact: { enrollments: { some: { sequenceId: id } } } } }),
   ]);
-  const general = generalMailbox();
-  const box = { email: seq.sender?.email ?? general.email, name: seq.sender?.name ?? "Buzón general", limit: seq.sender?.dailyLimit ?? general.dailyLimit };
-  const pending = pendingMap.get(seq.id) ?? 0;
-  const seqToday = today.bySequence.get(seq.id) ?? 0;
-  const boxToday = today.byMailbox.get(box.email.toLowerCase()) ?? 0;
-  const pace = Math.min(seq.dailyLimit, box.limit);
+  const checks = health.get(id) ?? [];
+  const verdict = sequenceVerdict(checks);
+  const problems = checks.filter((c) => c.level === "bad" || c.level === "warn" || c.level === "info");
 
   return (
     <>
       <PageHeader
-        title={seq.name}
-        sub={<><StatusPill map={SEQUENCE_STATUS} value={seq.status} /> · envía {seq.sender?.name ?? "el buzón general"} · {seq.steps.length} pasos · {seq.enrollments.length} contactos · máx. {seq.dailyLimit} emails al día</>}
-      >
-        {seq.status === "ACTIVE" ? (
-          <form action={setSequenceStatus.bind(null, seq.id, "PAUSED")}><button className="btn-ghost">Pausar</button></form>
-        ) : (
-          <form action={setSequenceStatus.bind(null, seq.id, "ACTIVE")}><button className="btn" disabled={seq.steps.length === 0}>Activar</button></form>
-        )}
-        {seq.status !== "ARCHIVED" && (
-          <form action={setSequenceStatus.bind(null, seq.id, "ARCHIVED")}><button className="btn-danger">Archivar</button></form>
-        )}
-      </PageHeader>
+        back={{ href: "/secuencias", label: "Secuencias" }}
+        title={
+          <span className="flex items-center gap-3">
+            <Switch on={seq.sendingOn} action={toggleSequence.bind(null, seq.id, !seq.sendingOn)} label={seq.sendingOn ? "Apagar secuencia" : "Encender secuencia"} confirmOn={CONFIRM_ON} disabled={seq.steps.length === 0 || seq.status === "ARCHIVED"} />
+            <span className="min-w-0">{seq.name}</span>
+          </span>
+        }
+        sub={
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px]">
+            <Dot level={verdict.level} pulse={seq.sendingOn} />
+            <span className="font-medium text-white">{verdict.text}</span>
+            <span>· {seq.sender?.name ?? "Buzón general"}</span>
+            <span>· {scheduleLabel(seq)}</span>
+            <span>· máx. {seq.dailyLimit} al día</span>
+          </span>
+        }
+      />
 
-      <div className="grid items-start gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <section className="card min-w-0">
-          <h2 className="card-title">Pasos</h2>
-          <ol className="p-4">
-            {seq.steps.map((step, i) => {
-              const unknown = unknownVariables(step.subject + step.body);
-              return (
-                <li key={step.id} className="relative grid grid-cols-[28px_1fr] gap-3 pb-4">
-                  {i < seq.steps.length - 1 && <span className="absolute bottom-0 left-[13px] top-7 w-0.5 bg-line" aria-hidden />}
-                  <span className="grid h-7 w-7 place-items-center rounded-full bg-brand-soft font-mono text-xs text-brand">{step.order}</span>
-                  <details className="min-w-0 rounded-lg border border-line">
-                    <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-3 py-2">
-                      <span className="min-w-0">
-                        <b>{step.type === "EMAIL" ? "Email" : "Tarea"}</b>
-                        <span className="ml-2 text-muted">{step.subject || (step.sameThread && step.order > 1 ? "Respuesta en el mismo hilo" : "(sin asunto)")}</span>
-                      </span>
-                      <span className="font-mono text-xs text-muted">{step.order === 1 ? `Día ${step.delayDays}` : `+${step.delayDays} días`}</span>
-                    </summary>
-                    <div className="border-t border-line p-3">
-                      {unknown.length > 0 && (
-                        <p className="mb-3 text-sm text-amber-700">Variables desconocidas: {unknown.join(", ")}. Usa {TEMPLATE_VARIABLES.map((v) => `{{${v}}}`).join(", ")}.</p>
-                      )}
-                      <form action={updateStep.bind(null, step.id)}>
-                        <StepFields step={step} idPrefix={`s${step.id}`} />
-                        <div className="mt-3 flex justify-between">
-                          <button className="btn">Guardar paso</button>
-                        </div>
-                      </form>
-                      <form action={deleteStep.bind(null, step.id)} className="mt-2 text-right">
-                        <button className="btn-danger">Eliminar paso</button>
-                      </form>
-                    </div>
-                  </details>
-                </li>
-              );
-            })}
-          </ol>
-          <details className="border-t border-line">
-            <summary className="cursor-pointer px-4 py-3 font-semibold text-brand">+ Añadir paso</summary>
-            <form action={addStep.bind(null, seq.id)} className="px-4 pb-4">
-              <StepFields idPrefix="new" />
-              <button className="btn mt-3">Añadir paso</button>
-            </form>
-          </details>
-        </section>
+      {problems.length > 0 && (
+        <details className="card appear" open={problems.some((p) => p.level === "bad")}>
+          <summary className="flex cursor-pointer items-center justify-between gap-3 px-5 py-3.5">
+            <span className="flex items-center gap-2 font-medium">
+              <Dot level={verdict.level === "off" ? "off" : problems.some((p) => p.level === "bad") ? "bad" : problems.some((p) => p.level === "warn") ? "warn" : "info"} />
+              Estado de envío: {problems.length} {problems.length === 1 ? "aviso" : "avisos"}
+            </span>
+            <span className="text-[13px] text-brand">Ver</span>
+          </summary>
+          <div className="reveal border-t border-line/70 py-1"><CheckList checks={problems} /></div>
+        </details>
+      )}
 
-        <div className="flex min-w-0 flex-col gap-4">
-          <section className="card">
-            <h2 className="card-title">Vista previa · para {fullName(sample)}</h2>
-            {firstEmail ? (
-              <div className="p-4 leading-relaxed">
-                <div className="text-xs text-muted">De: {seq.sender ? `${seq.sender.name} <${seq.sender.email}>` : process.env.MAIL_FROM} · Para: {sample.email}</div>
-                <div className="mb-2 mt-1 font-semibold">{renderTemplate(firstEmail.subject, sample)}</div>
-                <div className="whitespace-pre-wrap">{renderTemplate(firstEmail.body, sample)}</div>
-                {seq.sender && (
-                  <div dangerouslySetInnerHTML={{ __html: renderSignature(seq.sender, process.env.COMPANY_NAME ?? "Plupack Embalajes", "", renderTemplate(seq.sender.signature, sample)).html }} />
-                )}
-              </div>
-            ) : (
-              <Empty title="Sin pasos de email" />
-            )}
-          </section>
+      <Segmented
+        label="Secciones de la secuencia"
+        active={tab}
+        items={TABS.map(([k, label]) => ({
+          key: k,
+          label,
+          href: `${base(id)}?tab=${k}`,
+          count: k === "bandeja" ? unread || undefined : k === "personas" ? people : k === "pasos" ? seq.steps.length : undefined,
+        }))}
+      />
 
-          <section className="card">
-            <h2 className="card-title">Envíos y límites</h2>
-            <dl className="grid grid-cols-2 gap-px bg-line">
-              {[
-                ["Enviados", String(sent)],
-                ["Por enviar", String(pending)],
-                ["Hoy en esta secuencia", `${seqToday} / ${seq.dailyLimit}`],
-                [`Hoy desde ${box.name}`, `${boxToday} / ${box.limit}`],
-              ].map(([k, v]) => (
-                <div key={k} className="bg-white p-3">
-                  <dt className="text-xs text-muted">{k}</dt>
-                  <dd className="font-mono text-lg">{v}</dd>
-                </div>
-              ))}
-            </dl>
-            <div className="grid gap-1 p-4 text-sm">
-              {pending > 0 && (
-                <p>Al ritmo actual ({pace} al día) faltan unos {daysToFinish(pending, pace)} días hábiles para enviar todo.</p>
-              )}
-              {seqToday >= seq.dailyLimit && <p className="text-amber-700">Esta secuencia ya llegó a su límite de hoy; sigue mañana.</p>}
-              {boxToday >= box.limit && <p className="text-amber-700">El buzón {box.email} ya llegó a su límite de hoy (cuenta todas sus secuencias).</p>}
-              {failed > 0 && <p className="text-red-700">{failed} envíos fallidos: revisa la conexión en Remitentes.</p>}
-              <p className="text-xs text-muted">Para no caer en spam: buzón nuevo 20–30 al día la primera semana, luego sube de a poco hasta 50–100 como mucho. Gmail corta en 2.000 al día por cuenta.</p>
-            </div>
-          </section>
-
-          <section className="card">
-            <h2 className="card-title">Añadir contactos</h2>
-            <form action={enrollContacts.bind(null, seq.id)} className="flex flex-wrap items-end gap-3 p-4">
-              <div className="min-w-[180px] flex-1">
-                <label htmlFor="tag" className="label">Etiqueta</label>
-                <select id="tag" name="tag" className="input">
-                  <option value="">Todos los contactos</option>
-                  {tagCounts.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <button className="btn">Inscribir</button>
-            </form>
-            <p className="px-4 pb-4 text-xs text-muted">Se omiten los contactos dados de baja, rebotados o ya inscritos en esta secuencia.</p>
-          </section>
-
-          <section className="card">
-            <h2 className="card-title">Ajustes</h2>
-            <form action={updateSequence.bind(null, seq.id)} className="grid gap-3 p-4">
-              <div>
-                <label htmlFor="seq-name" className="label">Nombre</label>
-                <input id="seq-name" name="name" defaultValue={seq.name} className="input" />
-              </div>
-              <div>
-                <label htmlFor="seq-limit" className="label">Límite diario de emails</label>
-                <input id="seq-limit" name="dailyLimit" type="number" min={1} max={500} defaultValue={seq.dailyLimit} className="input" />
-              </div>
-              <div>
-                <label htmlFor="seq-sender" className="label">Envía</label>
-                <select id="seq-sender" name="senderId" defaultValue={seq.senderId ?? ""} className="input">
-                  <option value="">Buzón general ({process.env.SMTP_USER})</option>
-                  {senders.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} · {s.email}{s.appPassword || s.googleRefreshToken ? "" : " (sin conectar)"}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-muted">Los emails salen de este buzón y llevan su firma. Gestiona los buzones en <Link href="/remitentes" className="text-brand">Remitentes</Link>.</p>
-              </div>
-              <button className="btn justify-self-start">Guardar ajustes</button>
-            </form>
-          </section>
-        </div>
-      </div>
-
-      <section className="card min-w-0">
-        <h2 className="card-title">Contactos en esta secuencia</h2>
-        {seq.enrollments.length === 0 ? (
-          <Empty title="Nadie inscrito todavía">Usa “Añadir contactos” para empezar.</Empty>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead><tr><th>Contacto</th><th>Empresa</th><th>Estado</th><th>Siguiente paso</th><th>Cuándo</th><th></th></tr></thead>
-              <tbody>
-                {seq.enrollments.map((e) => (
-                  <tr key={e.id}>
-                    <td><Link href={`/contactos?q=${encodeURIComponent(e.contact.email)}`} className="hover:text-brand">{fullName(e.contact)}</Link></td>
-                    <td>{e.contact.company}</td>
-                    <td><StatusPill map={ENROLLMENT_STATUS} value={e.status} /></td>
-                    <td>{e.status === "ACTIVE" || e.status === "PAUSED" ? <Pill tone="neutral">Paso {e.nextStep}</Pill> : "–"}</td>
-                    <td className="text-muted">{e.nextRunAt && e.status === "ACTIVE" ? formatDate(e.nextRunAt) : "–"}</td>
-                    <td className="text-right">
-                      {e.status === "ACTIVE" && <form action={setEnrollmentStatus.bind(null, e.id, "PAUSED")}><button className="btn-ghost">Pausar</button></form>}
-                      {e.status === "PAUSED" && <form action={setEnrollmentStatus.bind(null, e.id, "ACTIVE")}><button className="btn-ghost">Reanudar</button></form>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      {tab === "pasos" && <StepsTab seq={seq} sp={sp} />}
+      {tab === "personas" && <PeopleTab seq={seq} sp={sp} />}
+      {tab === "vista" && <PreviewTab seq={seq} sp={sp} />}
+      {tab === "estadisticas" && <StatsTab seq={seq} />}
+      {tab === "ajustes" && <SettingsTab seq={seq} sp={sp} />}
+      {tab === "registro" && <LogTab seq={seq} />}
+      {tab === "bandeja" && <InboxTab seq={seq} />}
     </>
   );
 }
