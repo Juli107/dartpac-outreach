@@ -10,7 +10,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
   // Primero las respuestas, para no enviar un seguimiento a quien acaba de contestar.
-  const inbox = await syncInbox().catch((e) => ({ error: String(e) }));
+  // Con el cron cada minuto, los buzones se revisan cada 5 para no saturar IMAP.
+  const inbox = new Date().getUTCMinutes() % 5 === 0 ? await syncInbox().catch((e) => ({ error: String(e) })) : "omitida";
   const steps = await runDueSteps();
   return NextResponse.json({ inbox, steps });
 }
