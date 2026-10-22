@@ -6,6 +6,7 @@ import { parseContactsCsv } from "./csv.ts";
 import { stripQuoted } from "./strip.ts";
 import { withSignature, renderSignature } from "./signature.ts";
 import { imageSize } from "./image-size.ts";
+import { authUrl, readIdToken, DomainError, GMAIL_SCOPE } from "./google.ts";
 
 const marta = { email: "marta@logisur.es", firstName: "Marta", company: "Logisur" };
 const madrid = { startHour: 8, endHour: 19, timeZone: "Europe/Madrid" };
@@ -82,4 +83,29 @@ test("imageSize lee el tamaño de un PNG", () => {
   const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0, 0, 0, 0, 0x80, 8]);
   assert.deepEqual(imageSize(png), { type: "image/png", width: 256, height: 128 });
   assert.equal(imageSize(Uint8Array.from([1, 2, 3])), null);
+});
+
+test("readIdToken acepta solo cuentas verificadas del dominio y para esta app", () => {
+  process.env.GOOGLE_CLIENT_ID = "cliente-123";
+  const token = (claims: Record<string, unknown>) =>
+    `x.${Buffer.from(JSON.stringify({ iss: "https://accounts.google.com", aud: "cliente-123", exp: 2000, email_verified: true, ...claims })).toString("base64url")}.y`;
+  const now = 1000 * 1000;
+  assert.deepEqual(readIdToken(token({ email: "Enzo@plupackembalajes.com", name: "Enzo Ayala" }), now), { email: "enzo@plupackembalajes.com", name: "Enzo Ayala" });
+  assert.throws(() => readIdToken(token({ email: "x@gmail.com" }), now), DomainError);
+  assert.throws(() => readIdToken(token({ email: "x@plupackembalajes.com.ar" }), now), DomainError);
+  assert.throws(() => readIdToken(token({ email: "enzo@plupackembalajes.com", aud: "otro" }), now), /no es para esta app/);
+  assert.throws(() => readIdToken(token({ email: "enzo@plupackembalajes.com", exp: 10 }), now), /caducó/);
+  assert.throws(() => readIdToken(token({ email: "enzo@plupackembalajes.com", email_verified: false }), now), /no confirmó/);
+});
+
+test("authUrl pide Gmail y permiso permanente solo al conectar", () => {
+  const login = new URL(authUrl({ mode: "login", state: "s", redirectUri: "https://app.test/api/google/callback" }));
+  assert.equal(login.searchParams.get("scope"), "openid email profile");
+  assert.equal(login.searchParams.get("access_type"), null);
+  assert.equal(login.searchParams.get("hd"), "plupackembalajes.com");
+  const connect = new URL(authUrl({ mode: "connect", state: "s", redirectUri: "https://app.test/cb", loginHint: "ailen@plupackembalajes.com" }));
+  assert.ok(connect.searchParams.get("scope")!.split(" ").includes(GMAIL_SCOPE));
+  assert.equal(connect.searchParams.get("access_type"), "offline");
+  assert.equal(connect.searchParams.get("prompt"), "consent");
+  assert.equal(connect.searchParams.get("login_hint"), "ailen@plupackembalajes.com");
 });

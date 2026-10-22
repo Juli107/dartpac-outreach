@@ -210,7 +210,7 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
                 <select id="seq-sender" name="senderId" defaultValue={seq.senderId ?? ""} className="input">
                   <option value="">Buzón general ({process.env.SMTP_USER})</option>
                   {senders.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} · {s.email}{s.appPassword ? "" : " (sin conectar)"}</option>
+                    <option key={s.id} value={s.id}>{s.name} · {s.email}{s.appPassword || s.googleRefreshToken ? "" : " (sin conectar)"}</option>
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-muted">Los emails salen de este buzón y llevan su firma. Gestiona los buzones en <Link href="/remitentes" className="text-brand">Remitentes</Link>.</p>
