@@ -2,18 +2,39 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { db } from "./db";
 import { stripQuoted } from "./strip";
+import { decryptSecret } from "./crypto";
 
 /**
- * Lee el buzón por IMAP y guarda como respuesta cualquier correo de un contacto conocido.
- * Al responder, el contacto sale de todas sus secuencias activas.
+ * Lee por IMAP el buzón general y el de cada comercial con contraseña guardada, y guarda
+ * como respuesta cualquier correo de un contacto conocido. Al responder, el contacto sale
+ * de todas sus secuencias activas.
  */
 export async function syncInbox(sinceDays = 3) {
-  if (!process.env.IMAP_HOST || !process.env.IMAP_PASS) return { imported: 0, disabled: true };
+  if (!process.env.IMAP_HOST) return { imported: 0, disabled: true, errors: [] as string[] };
+  const boxes: { user: string; pass: string }[] = [];
+  if (process.env.IMAP_USER && process.env.IMAP_PASS) boxes.push({ user: process.env.IMAP_USER, pass: process.env.IMAP_PASS });
+  const senders = await db.sender.findMany({ where: { appPassword: { not: null } } });
+  for (const s of senders) {
+    if (!boxes.some((b) => b.user === s.email)) boxes.push({ user: s.email, pass: decryptSecret(s.appPassword!) });
+  }
+  let imported = 0;
+  const errors: string[] = [];
+  for (const box of boxes) {
+    try {
+      imported += await syncMailbox(box, sinceDays);
+    } catch (e) {
+      errors.push(`${box.user}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return { imported, disabled: boxes.length === 0, errors };
+}
+
+async function syncMailbox(box: { user: string; pass: string }, sinceDays: number) {
   const client = new ImapFlow({
-    host: process.env.IMAP_HOST,
+    host: process.env.IMAP_HOST!,
     port: Number(process.env.IMAP_PORT ?? 993),
     secure: true,
-    auth: { user: process.env.IMAP_USER!, pass: process.env.IMAP_PASS },
+    auth: box,
     logger: false,
   });
   await client.connect();
@@ -54,5 +75,5 @@ export async function syncInbox(sinceDays = 3) {
     lock.release();
     await client.logout();
   }
-  return { imported, disabled: false };
+  return imported;
 }

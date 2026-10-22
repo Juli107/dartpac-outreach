@@ -36,9 +36,9 @@ export async function updateSequence(id: string, form: FormData) {
     .object({
       name: z.string().trim().min(1),
       dailyLimit: z.coerce.number().int().min(1).max(2000),
-      signature: z.string().max(2000).default(""),
+      senderId: z.string().transform((v) => v || null),
     })
-    .parse({ name: form.get("name"), dailyLimit: form.get("dailyLimit"), signature: form.get("signature") ?? "" });
+    .parse({ name: form.get("name"), dailyLimit: form.get("dailyLimit"), senderId: form.get("senderId") ?? "" });
   await db.sequence.update({ where: { id }, data });
   revalidatePath(`/secuencias/${id}`);
 }

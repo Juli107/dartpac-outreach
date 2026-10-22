@@ -11,6 +11,7 @@ const NAV = [
   { href: "/bandeja", label: "Bandeja" },
   { href: "/tareas", label: "Tareas" },
   { href: "/analiticas", label: "Analíticas" },
+  { href: "/remitentes", label: "Remitentes" },
 ];
 
 export function Sidebar({ counts, mailbox }: { counts: Record<string, number>; mailbox?: string }) {

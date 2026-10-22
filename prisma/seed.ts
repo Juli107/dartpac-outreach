@@ -14,7 +14,20 @@ const contacts = [
   ["raul@bodegasribera.es", "Raúl", "Ibáñez", "Bodegas Ribera", "Director", "feria-hispack"],
 ];
 
+const senders = [
+  ["Luis Mendieta", "luis@plupackembalajes.com"],
+  ["Ailén Nardone", "ailen@plupackembalajes.com"],
+  ["Julián Cuello", "julian@plupackembalajes.com"],
+  ["Enzo Ayala", "enzo@plupackembalajes.com"],
+];
+
 async function main() {
+  // Comerciales que envían. Sin contraseña: cada uno la añade desde Remitentes.
+  for (const [name, email] of senders) {
+    await db.sender.upsert({ where: { email }, update: {}, create: { name, email } });
+  }
+  if (process.argv.includes("--solo-remitentes")) return;
+
   for (const [email, firstName, lastName, company, title, tag] of contacts) {
     await db.contact.upsert({ where: { email }, update: {}, create: { email, firstName, lastName, company, title, tags: [tag] } });
   }
@@ -25,7 +38,6 @@ async function main() {
     data: {
       name: "Distribuidores de embalaje · Q4",
       status: "ACTIVE",
-      signature: "Un saludo,\nJulián\nPlupack Embalajes · plupackembalajes.com",
       steps: {
         create: [
           { order: 1, delayDays: 0, subject: "{{empresa}} y sus envíos de temporada", body: "Hola {{nombre}},\n\nEn Plupack Embalajes preparamos cajas y film a medida para picos de campaña, con entrega en 48 h.\n\n¿Te va bien una llamada de 15 minutos esta semana?" },

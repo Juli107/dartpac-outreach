@@ -46,3 +46,12 @@ test("withSignature añade la firma solo si existe", () => {
   assert.equal(withSignature("Hola\n", "Julián\nPlupack"), "Hola\n\nJulián\nPlupack");
   assert.equal(withSignature("Hola", "  "), "Hola");
 });
+
+test("encryptSecret y decryptSecret recuperan la contraseña", async () => {
+  process.env.ENCRYPTION_KEY = "clave-de-prueba";
+  const { encryptSecret, decryptSecret } = await import("./crypto.ts");
+  const stored = encryptSecret("abcdefghijklmnop");
+  assert.notEqual(stored, "abcdefghijklmnop");
+  assert.notEqual(encryptSecret("abcdefghijklmnop"), stored);
+  assert.equal(decryptSecret(stored), "abcdefghijklmnop");
+});

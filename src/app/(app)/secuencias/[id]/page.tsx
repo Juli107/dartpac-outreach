@@ -48,11 +48,13 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
   const seq = await db.sequence.findUnique({
     where: { id },
     include: {
+      sender: true,
       steps: { orderBy: { order: "asc" } },
       enrollments: { include: { contact: true }, orderBy: { createdAt: "desc" }, take: 200 },
     },
   });
   if (!seq) notFound();
+  const senders = await db.sender.findMany({ orderBy: { name: "asc" } });
   const tags = (await db.contact.findMany({ select: { tags: true } })).flatMap((c) => c.tags);
   const tagCounts = [...new Set(tags)].sort();
   const sample = seq.enrollments[0]?.contact ?? { email: "marta@logisur.es", firstName: "Marta", lastName: "Ruiz", company: "Logisur", title: "Jefa de compras" };
@@ -62,7 +64,7 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
     <>
       <PageHeader
         title={seq.name}
-        sub={<><StatusPill map={SEQUENCE_STATUS} value={seq.status} /> · {seq.steps.length} pasos · {seq.enrollments.length} contactos · máx. {seq.dailyLimit} emails al día</>}
+        sub={<><StatusPill map={SEQUENCE_STATUS} value={seq.status} /> · envía {seq.sender?.name ?? "el buzón general"} · {seq.steps.length} pasos · {seq.enrollments.length} contactos · máx. {seq.dailyLimit} emails al día</>}
       >
         {seq.status === "ACTIVE" ? (
           <form action={setSequenceStatus.bind(null, seq.id, "PAUSED")}><button className="btn-ghost">Pausar</button></form>
@@ -122,12 +124,12 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
 
         <div className="flex min-w-0 flex-col gap-4">
           <section className="card">
-            <h2 className="card-title">Vista previa · {fullName(sample)}</h2>
+            <h2 className="card-title">Vista previa · para {fullName(sample)}</h2>
             {firstEmail ? (
               <div className="p-4 leading-relaxed">
-                <div className="text-xs text-muted">Para: {sample.email}</div>
+                <div className="text-xs text-muted">De: {seq.sender ? `${seq.sender.name} <${seq.sender.email}>` : process.env.MAIL_FROM} · Para: {sample.email}</div>
                 <div className="mb-2 mt-1 font-semibold">{renderTemplate(firstEmail.subject, sample)}</div>
-                <div className="whitespace-pre-wrap">{withSignature(renderTemplate(firstEmail.body, sample), renderTemplate(seq.signature, sample))}</div>
+                <div className="whitespace-pre-wrap">{withSignature(renderTemplate(firstEmail.body, sample), renderTemplate(seq.sender?.signature ?? "", sample))}</div>
               </div>
             ) : (
               <Empty title="Sin pasos de email" />
@@ -161,8 +163,14 @@ export default async function SequenceDetail({ params }: { params: Promise<{ id:
                 <input id="seq-limit" name="dailyLimit" type="number" min={1} max={2000} defaultValue={seq.dailyLimit} className="input" />
               </div>
               <div>
-                <label htmlFor="seq-signature" className="label">Firma (se añade al final de cada email)</label>
-                <textarea id="seq-signature" name="signature" rows={5} defaultValue={seq.signature} placeholder={"Julián\nPlupack Embalajes\nTel. 600 000 000"} className="input font-mono text-[13px]" />
+                <label htmlFor="seq-sender" className="label">Envía</label>
+                <select id="seq-sender" name="senderId" defaultValue={seq.senderId ?? ""} className="input">
+                  <option value="">Buzón general ({process.env.SMTP_USER})</option>
+                  {senders.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} · {s.email}{s.appPassword ? "" : " (sin conectar)"}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted">Los emails salen de este buzón y llevan su firma. Gestiona los buzones en <Link href="/remitentes" className="text-brand">Remitentes</Link>.</p>
               </div>
               <button className="btn justify-self-start">Guardar ajustes</button>
             </form>

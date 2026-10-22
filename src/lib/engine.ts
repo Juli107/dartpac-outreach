@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { sendEmail, newMessageId } from "./mailer";
+import { sendEmail, newMessageId, mailboxFor } from "./mailer";
 import { renderTemplate } from "./template";
 import { withSignature } from "./signature";
 import { nextSendTime, isInWindow, windowFromEnv } from "./schedule";
@@ -21,7 +21,7 @@ export async function runDueSteps(now = new Date()) {
 
   const due = await db.enrollment.findMany({
     where: { status: "ACTIVE", nextRunAt: { lte: now }, sequence: { status: "ACTIVE" } },
-    include: { contact: true, sequence: { include: { steps: { orderBy: { order: "asc" } } } } },
+    include: { contact: true, sequence: { include: { sender: true, steps: { orderBy: { order: "asc" } } } } },
     orderBy: { nextRunAt: "asc" },
     take: BATCH,
   });
@@ -51,7 +51,7 @@ export async function runDueSteps(now = new Date()) {
       if (!sentToday.has(sequence.id)) {
         sentToday.set(
           sequence.id,
-          await db.message.count({ where: { sentAt: { gte: startOfDay }, enrollment: { sequenceId: sequence.id } } }),
+          await db.message.count({ where: { sentAt: { gte: startOfDay }, error: null, enrollment: { sequenceId: sequence.id } } }),
         );
       }
       if (sentToday.get(sequence.id)! >= sequence.dailyLimit) continue;
@@ -60,14 +60,17 @@ export async function runDueSteps(now = new Date()) {
         ? await db.message.findFirst({ where: { enrollmentId: enr.id, error: null }, orderBy: { sentAt: "desc" } })
         : null;
       const subject = previous ? `Re: ${previous.subject.replace(/^Re:\s*/i, "")}` : renderTemplate(step.subject, contact);
-      const messageId = newMessageId();
       const trackingId = randomUUID();
+      let messageId = `<${trackingId}@sin-enviar>`;
       let error: string | null = null;
       try {
+        const mailbox = mailboxFor(sequence.sender);
+        messageId = newMessageId(mailbox.user);
         await sendEmail({
+          mailbox,
           to: contact.email,
           subject,
-          body: withSignature(renderTemplate(step.body, contact), renderTemplate(sequence.signature, contact)),
+          body: withSignature(renderTemplate(step.body, contact), renderTemplate(sequence.sender?.signature ?? "", contact)),
           messageId,
           trackingId,
           contactId: contact.id,

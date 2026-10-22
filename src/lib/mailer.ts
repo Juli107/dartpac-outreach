@@ -2,27 +2,47 @@ import nodemailer from "nodemailer";
 import { randomUUID } from "node:crypto";
 import { signId } from "./tokens";
 
-let transport: ReturnType<typeof nodemailer.createTransport> | null = null;
+import { decryptSecret } from "./crypto";
 
-function getTransport() {
-  if (!transport) {
+type Transport = ReturnType<typeof nodemailer.createTransport>;
+const transports = new Map<string, Transport>();
+
+/** Datos de un buzón de envío: el de un comercial o, si la secuencia no tiene, el general del .env. */
+export type Mailbox = { from: string; user: string; pass: string };
+
+export function mailboxFor(sender?: { name: string; email: string; appPassword: string | null } | null): Mailbox {
+  if (sender?.appPassword) {
+    const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
+    return { from: `"${sender.name} | ${company}" <${sender.email}>`, user: sender.email, pass: decryptSecret(sender.appPassword) };
+  }
+  if (sender) throw new Error(`${sender.name} no tiene contraseña de aplicación guardada`);
+  return { from: process.env.MAIL_FROM ?? process.env.SMTP_USER ?? "", user: process.env.SMTP_USER ?? "", pass: process.env.SMTP_PASS ?? "" };
+}
+
+function getTransport(box: Mailbox) {
+  let t = transports.get(box.user);
+  if (!t) {
     const port = Number(process.env.SMTP_PORT ?? 465);
-    transport = nodemailer.createTransport({
+    t = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port,
       secure: port === 465,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      auth: { user: box.user, pass: box.pass },
     });
+    transports.set(box.user, t);
   }
-  return transport;
+  return t;
 }
 
-function domain() {
-  return (process.env.SMTP_USER ?? "dartpac.local").split("@")[1] ?? "dartpac.local";
+/** Comprueba usuario y contraseña contra el servidor SMTP sin enviar nada. */
+export async function verifyMailbox(box: Mailbox) {
+  transports.delete(box.user);
+  await getTransport(box).verify();
 }
 
-export function newMessageId() {
-  return `<${randomUUID()}@${domain()}>`;
+export function newMessageId(fromAddress: string) {
+  const domain = fromAddress.split("@")[1] || "plupackembalajes.com";
+  return `<${randomUUID()}@${domain}>`;
 }
 
 function escapeHtml(s: string) {
@@ -47,6 +67,7 @@ export function buildHtml(body: string, opts: { trackingId: string; contactId: s
 }
 
 export async function sendEmail(args: {
+  mailbox: Mailbox;
   to: string;
   subject: string;
   body: string;
@@ -56,8 +77,8 @@ export async function sendEmail(args: {
   inReplyTo?: string;
 }) {
   const { html, unsubscribe } = buildHtml(args.body, args);
-  await getTransport().sendMail({
-    from: process.env.MAIL_FROM,
+  await getTransport(args.mailbox).sendMail({
+    from: args.mailbox.from,
     to: args.to,
     subject: args.subject,
     text: args.body,

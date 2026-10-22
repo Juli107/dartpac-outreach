@@ -35,7 +35,8 @@ model Sequence {
   name        String
   status      SequenceStatus @default(DRAFT)
   dailyLimit  Int            @default(150)
-  signature   String         @default("")
+  senderId    String?
+  sender      Sender?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
   createdAt   DateTime       @default(now())
   steps       Step[]
   enrollments Enrollment[]
@@ -130,4 +131,16 @@ model Reply {
   receivedAt DateTime
   read       Boolean    @default(false)
   label      ReplyLabel @default(NEW)
+}
+
+/// Comercial que envía: cada secuencia sale de su buzón y lleva su firma.
+model Sender {
+  id          String     @id @default(cuid())
+  name        String
+  email       String     @unique
+  /// Contraseña de aplicación de Gmail, cifrada con ENCRYPTION_KEY.
+  appPassword String?
+  signature   String     @default("")
+  createdAt   DateTime   @default(now())
+  sequences   Sequence[]
 }
