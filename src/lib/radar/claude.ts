@@ -34,6 +34,9 @@ function usoDe(u: Record<string, unknown> | undefined): Usage {
   return { tokIn: n("input_tokens"), tokOut: n("output_tokens"), cacheR: n("cache_read_input_tokens"), cacheW: n("cache_creation_input_tokens"), busq, fetch, usd: +usd.toFixed(4) };
 }
 
+export const SIN_CREDITO =
+  "Se terminó el crédito de la API de Claude de este mes. Vuelve a funcionar cuando se renueva el crédito del plan; no se cobra nada aparte.";
+
 export class ApiError extends Error {
   constructor(public status: number, public tipo: string, message: string) {
     super(message);
@@ -69,6 +72,8 @@ export async function llamar(body: Record<string, unknown>, opts: { signal?: Abo
       tipo = j?.error?.type ?? tipo;
       msg = j?.error?.message ?? msg;
     } catch {}
+    // Sin crédito la API frena (no cobra nada aparte): se avisa claro y en castellano, sin reintentar.
+    if (/credit balance is too low/i.test(msg)) throw new ApiError(res.status, "sin_credito", SIN_CREDITO);
     const reintentable = res.status === 429 || res.status === 529 || res.status >= 500;
     if (!reintentable || i + 1 >= intentos) throw new ApiError(res.status, tipo, msg);
     const ra = Number(res.headers.get("retry-after"));

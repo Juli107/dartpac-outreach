@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { conversar, ApiError, iaConfigurada, sumarUso, usoVacio, type ClientTool, type Usage } from "./claude";
+import { conversar, ApiError, iaConfigurada, sumarUso, usoVacio, SIN_CREDITO, type ClientTool, type Usage } from "./claude";
 import { getDoc, hoyAR, listCol, setDoc, updateDoc, type RadarData } from "./store";
 import { FUENTES, norm, PROV, provNom, RUB, rubNom } from "./geo";
 import { verificarLocal } from "../verifier";
@@ -278,7 +278,12 @@ async function procesarBusqueda(job: Job, runner: string, hasta: number): Promis
           estado: "error",
           fin: Date.now(),
           progreso: "Error",
-          resultado: e.tipo === "sin_clave" ? "Falta configurar la API de Claude en la plataforma (ANTHROPIC_API_KEY)." : `La API de Claude rechazó la búsqueda: ${e.message.slice(0, 160)}`,
+          resultado:
+            e.tipo === "sin_clave"
+              ? "Falta configurar la API de Claude en la plataforma (ANTHROPIC_API_KEY)."
+              : e.tipo === "sin_credito"
+                ? SIN_CREDITO
+                : `La API de Claude rechazó la búsqueda: ${e.message.slice(0, 160)}`,
         });
         return "hecho";
       }
@@ -387,8 +392,8 @@ async function enriquecer(job: Job, runner: string, hasta: number, ped: RadarDat
       const r = await conversar({ system: SYSTEM_BUSCAR(), user, tools: [tool], web: { busquedas: 6, lecturas: 8 }, maxRondas: 8, hasta: Math.min(hasta - 20_000, Date.now() + 200_000) });
       await sumarUsoDia(r.uso).catch(() => null);
     } catch (e) {
-      if (e instanceof ApiError && (e.status === 401 || e.tipo === "sin_clave")) {
-        await soltar(job, runner, { estado: "error", fin: Date.now(), resultado: "Falta configurar la API de Claude en la plataforma (ANTHROPIC_API_KEY)." });
+      if (e instanceof ApiError && (e.status === 401 || e.tipo === "sin_clave" || e.tipo === "sin_credito")) {
+        await soltar(job, runner, { estado: "error", fin: Date.now(), resultado: e.tipo === "sin_credito" ? SIN_CREDITO : "Falta configurar la API de Claude en la plataforma (ANTHROPIC_API_KEY)." });
         return "hecho";
       }
     }
@@ -457,7 +462,7 @@ async function alertas(job: Job, runner: string, hasta: number): Promise<"hecho"
     const r = await conversar({ system: SYSTEM_BUSCAR(), user, tools: [tool], web: { busquedas: 8, lecturas: 6 }, maxRondas: 8, hasta: Math.min(hasta - 20_000, Date.now() + 230_000) });
     await sumarUsoDia(r.uso).catch(() => null);
   } catch (e) {
-    await soltar(job, runner, { estado: "error", fin: Date.now(), resultado: e instanceof ApiError && e.tipo === "sin_clave" ? "Falta configurar la API de Claude en la plataforma (ANTHROPIC_API_KEY)." : "No se pudieron buscar oportunidades ahora. Probá más tarde." });
+    await soltar(job, runner, { estado: "error", fin: Date.now(), resultado: e instanceof ApiError && e.tipo === "sin_clave" ? "Falta configurar la API de Claude en la plataforma (ANTHROPIC_API_KEY)." : e instanceof ApiError && e.tipo === "sin_credito" ? SIN_CREDITO : "No se pudieron buscar oportunidades ahora. Probá más tarde." });
     return "hecho";
   }
   await soltar(job, runner, { estado: "hecha", fin: Date.now(), resultado: n ? `Encontré ${n} ${n === 1 ? "oportunidad nueva" : "oportunidades nuevas"}` : "No encontré oportunidades nuevas esta vez" });
