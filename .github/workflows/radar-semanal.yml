@@ -1,0 +1,23 @@
+name: Radar · búsqueda de los lunes
+
+# Todos los lunes a las 8:47 de Buenos Aires (11:47 UTC) la plataforma busca clientes sola en los partidos y
+# departamentos con más habitantes y menos prospectos. El token OIDC de GitHub sirve de llave (sin secretos).
+on:
+  schedule:
+    - cron: "47 11 * * 1"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+
+jobs:
+  semanal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Lanzar la búsqueda automática del Radar
+        run: |
+          TOKEN=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=dartpac-outreach" | jq -r .value)
+          curl -fsS --max-time 60 -X POST -H "Authorization: Bearer $TOKEN" \
+            "https://dartpac-outreach-plup-ack-embalajes.vercel.app/api/radar/semanal"

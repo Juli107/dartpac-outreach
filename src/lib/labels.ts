@@ -50,8 +50,8 @@ export const REPLY_LABEL: Record<string, [string, Tone]> = {
   NOT_INTERESTED: ["No interesado", "bad"],
 };
 
-export function fullName(c: { firstName?: string | null; lastName?: string | null; email: string }) {
-  return [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email;
+export function fullName(c: { firstName?: string | null; lastName?: string | null; email?: string | null; company?: string | null; phone?: string | null }) {
+  return [c.firstName, c.lastName].filter(Boolean).join(" ") || c.company || c.email || c.phone || "Sin nombre";
 }
 
 export function relativeTime(d: Date) {

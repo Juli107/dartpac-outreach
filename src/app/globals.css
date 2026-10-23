@@ -2,65 +2,108 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Dartpac Premium: un solo tema oscuro, elegido a propósito. Azul marino en degradé, vidrio esmerilado y acento azul cielo. */
+:root {
+  color-scheme: dark;
+  --dp-n0: #030a17;
+  --dp-glass: rgba(17, 40, 76, 0.56);
+  --dp-glass-2: rgba(23, 52, 96, 0.66);
+  --dp-line: rgba(160, 195, 255, 0.14);
+  --dp-line-2: rgba(160, 195, 255, 0.26);
+  --dp-accent-grad: linear-gradient(180deg, #2f7ff5 0%, #1859cf 100%);
+  --dp-blur: blur(22px) saturate(1.6);
+  --dp-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dp-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
 @layer base {
-  body { @apply bg-[#0B2545] text-ink font-sans text-[14px] antialiased; font-feature-settings: "cv11", "ss01"; }
-  h1 { @apply font-display text-[28px] font-bold tracking-tight; text-wrap: balance; }
-  h2 { @apply font-display text-[17px] font-semibold tracking-tight; }
-  :focus-visible { @apply outline outline-2 outline-offset-2 outline-brand/60; }
-  ::selection { @apply bg-brand/20; }
+  html { background: var(--dp-n0); }
+  body { @apply text-ink font-sans text-[14px] antialiased; background: var(--dp-n0); font-feature-settings: "cv11", "ss01"; letter-spacing: -0.005em; }
+  h1 { @apply font-display text-[30px] font-bold tracking-tight text-white; text-wrap: balance; letter-spacing: -0.025em; }
+  h2 { @apply font-display text-[17px] font-semibold tracking-tight text-white; }
+  h3 { text-wrap: balance; }
+  :focus-visible { @apply outline outline-2 outline-offset-2 outline-brand-2/70; }
+  ::selection { background: rgba(77, 163, 255, 0.35); }
+  select option { background: #0b2545; color: #f3f7fd; }
+  input[type="checkbox"], input[type="radio"] { accent-color: #4da3ff; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(160, 195, 255, 0.18); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
 }
 
 @layer components {
-  /* Botones sobre el fondo azul (fuera de tarjetas): blanco y cristal. Dentro de una tarjeta: azul marino y gris. */
-  .btn { @apply inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2 font-medium text-navy shadow-sm transition duration-150 hover:bg-white/90 active:scale-[.97] disabled:pointer-events-none disabled:opacity-40; }
-  .btn-ghost { @apply inline-flex items-center justify-center gap-2 rounded-full bg-white/[.12] px-3.5 py-1.5 font-medium text-white ring-1 ring-white/15 backdrop-blur transition duration-150 hover:bg-white/20 active:scale-[.97] disabled:opacity-40; }
-  .card .btn, .on-light .btn { @apply bg-navy text-white hover:bg-navy-700; }
-  .card .btn-ghost, .on-light .btn-ghost { @apply bg-black/[.05] text-ink ring-0 backdrop-blur-none hover:bg-black/[.08]; }
-  .btn-danger { @apply inline-flex items-center rounded-full px-3 py-1.5 font-medium text-[#D70015] transition hover:bg-[#D70015]/[.08] active:scale-[.97]; }
-  .card { @apply rounded-2xl bg-white shadow-soft ring-1 ring-black/[.04]; }
+  /* Botones: el principal en azul con brillo; el secundario de vidrio. Iguales dentro y fuera de las tarjetas. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 font-semibold text-white transition duration-150 active:scale-[.97] disabled:pointer-events-none disabled:opacity-40;
+    background: var(--dp-accent-grad);
+    box-shadow: 0 8px 20px -10px rgba(28, 102, 228, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn-ghost { @apply inline-flex items-center justify-center gap-2 rounded-full bg-white/[.07] px-3.5 py-1.5 font-medium text-ink ring-1 ring-white/[.12] backdrop-blur transition duration-150 hover:bg-white/[.12] hover:ring-white/20 active:scale-[.97] disabled:opacity-40; }
+  .btn-danger { @apply inline-flex items-center rounded-full px-3 py-1.5 font-medium text-[#FF8F8F] transition hover:bg-[#FF6F6F]/[.12] active:scale-[.97]; }
+  .btn-wa { @apply inline-flex items-center justify-center gap-2 rounded-full px-3.5 py-1.5 font-semibold text-white transition active:scale-[.97]; background: linear-gradient(180deg, #2fd16e, #1ea956); box-shadow: 0 8px 18px -10px rgba(37, 211, 102, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+  .btn-wa:hover { filter: brightness(1.06); }
+
+  /* Superficies de vidrio */
+  .card {
+    @apply rounded-[22px] shadow-soft;
+    background: linear-gradient(180deg, rgba(25, 56, 102, 0.62), rgba(14, 34, 66, 0.5));
+    border: 1px solid var(--dp-line);
+    backdrop-filter: var(--dp-blur);
+    -webkit-backdrop-filter: var(--dp-blur);
+  }
   .card-title { @apply flex items-center justify-between gap-3 px-5 pb-2 pt-4; }
-  .input { @apply w-full rounded-xl border border-transparent bg-black/[.04] px-3 py-2 text-ink transition placeholder:text-muted/70 hover:bg-black/[.06] focus:border-brand/40 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand/10; }
+  .well { @apply rounded-2xl bg-white/[.04] ring-1 ring-white/[.06]; }
+  /* Papel blanco: vista previa de correos y firmas tal como se ven en el buzón del cliente */
+  .paper { @apply rounded-2xl bg-white text-[#14213D] shadow-lift; }
+  .paper .text-muted { color: #5b6b82; }
+
+  .input { @apply w-full rounded-xl border border-white/[.10] bg-white/[.05] px-3 py-2 text-ink transition placeholder:text-faint/80 hover:border-white/[.16] hover:bg-white/[.07] focus:border-brand/60 focus:bg-white/[.08] focus:outline-none focus:ring-4 focus:ring-brand/15; }
   .label { @apply mb-1.5 block text-[13px] font-medium text-muted; }
   .table { @apply w-full border-collapse tabular-nums; }
-  .table th { @apply whitespace-nowrap border-b border-line px-5 py-2.5 text-left text-xs font-medium text-muted; }
-  .table td { @apply whitespace-nowrap border-b border-line/70 px-5 py-3; }
-  .table tbody tr { @apply transition-colors hover:bg-black/[.015]; }
+  .table th { @apply whitespace-nowrap border-b border-line px-5 py-2.5 text-left text-[11.5px] font-semibold uppercase tracking-[.06em] text-faint; }
+  .table td { @apply whitespace-nowrap border-b border-line/60 px-5 py-3; }
+  .table tbody tr { @apply transition-colors hover:bg-white/[.03]; }
   .table tr:last-child td { @apply border-b-0; }
   .sub { @apply mt-1 text-[15px] text-muted; }
-  .seg { @apply inline-flex max-w-full gap-0.5 overflow-x-auto rounded-full bg-white/10 p-1 ring-1 ring-white/10 backdrop-blur-md; }
-  .seg-item { @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-medium text-white/70 transition hover:text-white; }
-  .seg-item[aria-current="page"] { @apply bg-white text-ink shadow-sm; }
-  .seg .count { @apply bg-white/15 text-white/80; }
-  .seg-item[aria-current="page"] .count { @apply bg-black/[.06] text-muted; }
-  .card .seg { @apply bg-black/[.05] ring-0 backdrop-blur-none; }
-  .card .seg-item { @apply text-muted hover:text-ink; }
-  .card .seg-item[aria-current="page"] { @apply text-ink; }
-  .chip { @apply inline-flex items-center gap-1.5 rounded-full bg-black/[.04] px-2.5 py-1 text-xs font-medium text-muted; }
-  .count { @apply rounded-full bg-black/[.06] px-1.5 text-[11px] font-semibold tabular-nums text-muted; }
-  .appear { animation: appear .45s cubic-bezier(.2,.8,.2,1) both; }
+
+  .seg { @apply inline-flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-full bg-white/[.06] p-1 ring-1 ring-white/[.08] backdrop-blur-md; scrollbar-width: none; }
+  .seg::-webkit-scrollbar { display: none; }
+  .seg-item { @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-medium text-muted transition duration-200 hover:text-white; }
+  .seg-item[aria-current="page"] { @apply text-white; background: linear-gradient(180deg, rgba(77, 163, 255, 0.28), rgba(77, 163, 255, 0.14)); box-shadow: inset 0 0 0 1px rgba(120, 185, 255, 0.3), 0 6px 16px -10px rgba(28, 102, 228, 0.9); }
+  .seg .count { @apply bg-white/10 text-muted; }
+  .seg-item[aria-current="page"] .count { @apply bg-white/15 text-white; }
+
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full bg-white/[.06] px-2.5 py-1 text-xs font-medium text-muted ring-1 ring-white/[.06]; }
+  .count { @apply rounded-full bg-white/10 px-1.5 text-[11px] font-semibold tabular-nums text-muted; }
+  .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[.14em] text-faint; }
+  .appear { animation: appear 0.5s var(--dp-ease) both; }
 }
 
-/* Fondo de la app: el mismo degradado azul marino del inicio, con luces suaves que se mueven. */
-.app-bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(120% 90% at 70% -10%, #1B4A85 0%, #13315C 30%, #0B2545 60%, #06162B 100%); }
-.app-bg .login-blob { opacity: .32; }
-.app-bg .login-blob-b { opacity: .2; }
-.app-bg .login-blob-c { opacity: .14; }
-.app-bg .login-grid { opacity: .05; }
+/* Fondo de la app: degradé azul marino con luces suaves (quietas, así el vidrio no se recalcula en cada cuadro). */
+.app-bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: linear-gradient(180deg, #0b2545 0%, #081c38 48%, #040d1e 100%); }
+.app-bg i { position: absolute; width: 86vmax; height: 86vmax; border-radius: 50%; }
+.app-bg i:nth-child(1) { left: -34vmax; top: -48vmax; background: radial-gradient(closest-side, rgba(52, 122, 230, 0.4), rgba(52, 122, 230, 0)); }
+.app-bg i:nth-child(2) { right: -38vmax; top: -36vmax; background: radial-gradient(closest-side, rgba(30, 96, 196, 0.32), rgba(30, 96, 196, 0)); }
+.app-bg i:nth-child(3) { left: 10vmax; bottom: -62vmax; background: radial-gradient(closest-side, rgba(20, 60, 130, 0.3), rgba(20, 60, 130, 0)); }
 
-@keyframes appear { from { opacity: 0; transform: translateY(6px); } }
+@keyframes appear { from { opacity: 0; transform: translateY(8px); } }
+@keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+@keyframes slide-in { from { opacity: 0; transform: translateY(-10px) scale(0.98); } }
+@keyframes campana { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(14deg); } 30% { transform: rotate(-12deg); } 45% { transform: rotate(8deg); } 60% { transform: rotate(-5deg); } 75% { transform: rotate(2deg); } }
 details > summary { list-style: none; }
 details > summary::-webkit-details-marker { display: none; }
-details[open] > .reveal { animation: appear .3s cubic-bezier(.2,.8,.2,1) both; }
+details[open] > .reveal { animation: appear 0.3s var(--dp-ease) both; }
 
 /* Pantalla de entrada: fondo en movimiento y tarjeta de cristal en 3D. */
-.login-bg { background: radial-gradient(120% 120% at 50% 0%, #13315C 0%, #0B2545 45%, #06162B 100%); }
+.login-bg { background: radial-gradient(120% 120% at 50% 0%, #13315c 0%, #0b2545 45%, #06162b 100%); }
 .login-blob { position: absolute; border-radius: 9999px; filter: blur(70px); opacity: 0.55; will-change: transform; }
-.login-blob-a { width: 42vmax; height: 42vmax; left: -12vmax; top: -14vmax; background: #1F6FD1; animation: login-drift-a 18s ease-in-out infinite alternate; }
-.login-blob-b { width: 36vmax; height: 36vmax; right: -10vmax; bottom: -12vmax; background: #3FA7F5; opacity: 0.35; animation: login-drift-b 22s ease-in-out infinite alternate; }
-.login-blob-c { width: 26vmax; height: 26vmax; left: 45%; top: 55%; background: #7B61FF; opacity: 0.25; animation: login-drift-c 26s ease-in-out infinite alternate; }
+.login-blob-a { width: 42vmax; height: 42vmax; left: -12vmax; top: -14vmax; background: #1f6fd1; animation: login-drift-a 18s ease-in-out infinite alternate; }
+.login-blob-b { width: 36vmax; height: 36vmax; right: -10vmax; bottom: -12vmax; background: #3fa7f5; opacity: 0.35; animation: login-drift-b 22s ease-in-out infinite alternate; }
+.login-blob-c { width: 26vmax; height: 26vmax; left: 45%; top: 55%; background: #7b61ff; opacity: 0.25; animation: login-drift-c 26s ease-in-out infinite alternate; }
 .login-grid {
   position: absolute; inset: 0; opacity: 0.12;
-  background-image: linear-gradient(rgba(255,255,255,.35) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.35) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.35) 1px, transparent 1px);
   background-size: 48px 48px;
   mask-image: radial-gradient(60% 60% at 50% 50%, #000 0%, transparent 100%);
   animation: login-pan 40s linear infinite;
@@ -77,18 +120,18 @@ details[open] > .reveal { animation: appear .3s cubic-bezier(.2,.8,.2,1) both; }
   transform: rotateX(var(--rx)) rotateY(var(--ry));
   transition: transform 0.25s ease-out;
   border-radius: 28px; padding: 32px 28px;
-  background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.05));
-  border: 1px solid rgba(255,255,255,.18);
-  box-shadow: 0 40px 80px -20px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.25);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   backdrop-filter: blur(22px) saturate(140%);
   -webkit-backdrop-filter: blur(22px) saturate(140%);
   animation: login-float 7s ease-in-out infinite;
 }
 .login-card > form { transform: translateZ(40px); }
-.login-logo { transform: translateZ(30px); filter: drop-shadow(0 12px 18px rgba(0,0,0,.35)); }
+.login-logo { transform: translateZ(30px); filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.35)); }
 .login-glare {
   position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  background: radial-gradient(circle at var(--gx) var(--gy), rgba(255,255,255,.22), transparent 55%);
+  background: radial-gradient(circle at var(--gx) var(--gy), rgba(255, 255, 255, 0.22), transparent 55%);
 }
 @keyframes login-float { 50% { translate: 0 -8px; } }
 
@@ -96,4 +139,5 @@ details[open] > .reveal { animation: appear .3s cubic-bezier(.2,.8,.2,1) both; }
   .appear, details[open] > .reveal { animation: none; }
   .login-blob, .login-grid, .login-card { animation: none; }
   .login-card { transition: none; }
+  * { scroll-behavior: auto !important; }
 }

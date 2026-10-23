@@ -47,7 +47,8 @@ export async function PeopleTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
               <option value="">Todos los contactos</option>
               {tags.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
-            <p className="text-xs text-muted">Se omiten bajas, rebotados y quienes ya están en esta secuencia. Nadie recibe nada mientras la secuencia esté apagada.</p>
+            <p className="text-xs text-muted">Se omiten bajas, rebotados, quienes ya están en esta secuencia y a quien no le llegaría ningún paso (por ejemplo, sin email válido en una secuencia solo de emails). Nadie recibe nada mientras la secuencia esté apagada.</p>
+            <p className="text-xs text-muted">Para sumar empresas del Radar, usá «Sumar a una secuencia» en el Radar.</p>
             <button className="btn self-end">Inscribir</button>
           </form>
         </details>
@@ -69,8 +70,8 @@ export async function PeopleTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
                   return (
                     <tr key={e.id}>
                       <td>
-                        <Link href={`/contactos?q=${encodeURIComponent(e.contact.email)}`} className="font-medium hover:text-brand">{fullName(e.contact)}</Link>
-                        <div className="text-xs text-muted">{e.contact.email}</div>
+                        <Link href={`/contactos?q=${encodeURIComponent(e.contact.email ?? e.contact.company ?? e.contact.phone ?? "")}`} className="font-medium text-white hover:text-brand-2">{fullName(e.contact)}</Link>
+                        <div className="text-xs text-muted">{e.contact.email ?? e.contact.whatsapp ?? e.contact.phone ?? "Sin datos de contacto"}</div>
                       </td>
                       <td>{e.contact.company ?? <span className="text-muted">–</span>}</td>
                       <td><StatusPill map={ENROLLMENT_STATUS} value={e.status} /></td>
@@ -85,7 +86,7 @@ export async function PeopleTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
                         <div className="flex justify-end gap-1">
                           {e.status === "ACTIVE" && <form action={setEnrollmentStatus.bind(null, e.id, "PAUSED")}><button className="btn-ghost text-[13px]">Pausar</button></form>}
                           {e.status === "PAUSED" && <form action={setEnrollmentStatus.bind(null, e.id, "ACTIVE")}><button className="btn-ghost text-[13px]">Reanudar</button></form>}
-                          <form action={removeEnrollment.bind(null, e.id)}><button className="btn-danger text-[13px]" aria-label={`Quitar a ${e.contact.email} de la secuencia`}>Quitar</button></form>
+                          <form action={removeEnrollment.bind(null, e.id)}><button className="btn-danger text-[13px]" aria-label={`Quitar a ${fullName(e.contact)} de la secuencia`}>Quitar</button></form>
                         </div>
                       </td>
                     </tr>

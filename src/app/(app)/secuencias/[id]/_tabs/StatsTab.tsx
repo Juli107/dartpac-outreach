@@ -74,7 +74,7 @@ export async function StatsTab({ seq }: { seq: Seq }) {
             [`Hoy desde ${box.name}`, `${boxToday} / ${box.limit}`],
             ["Envíos fallidos", String(failed)],
           ].map(([k, v]) => (
-            <div key={k} className="rounded-xl bg-black/[.03] px-4 py-3">
+            <div key={k} className="rounded-xl bg-white/[.05] px-4 py-3">
               <dt className="text-xs text-muted">{k}</dt>
               <dd className="text-lg font-semibold tabular-nums">{v}</dd>
             </div>

@@ -27,7 +27,7 @@ export async function SettingsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
                 <option key={s.id} value={s.id}>{s.name} · {s.email}{s.appPassword || s.googleRefreshToken ? "" : " (sin conectar)"}</option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-muted">Los emails salen de este buzón con su firma. Se gestionan en <Link href="/remitentes" className="text-brand">Remitentes</Link>.</p>
+            <p className="mt-1 text-xs text-muted">Los emails salen de este buzón con su firma. Se gestionan en <Link href="/remitentes" className="text-brand-2">Remitentes</Link>.</p>
           </div>
           <div>
             <label htmlFor="seq-limit" className="label">Máximo de emails al día</label>
@@ -35,7 +35,7 @@ export async function SettingsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
           </div>
         </div>
 
-        <fieldset className="grid gap-4 rounded-2xl bg-black/[.025] p-4">
+        <fieldset className="grid gap-4 rounded-2xl bg-white/[.04] p-4">
           <legend className="sr-only">Horario de envío</legend>
           <h2>Horario de envío</h2>
           <div>
@@ -64,7 +64,7 @@ export async function SettingsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
               {DAYS.map(([n, label]) => (
                 <label key={n} className="cursor-pointer">
                   <input type="checkbox" name="sendDays" value={n} defaultChecked={seq.sendDays.includes(n)} className="peer sr-only" />
-                  <span className="grid h-10 w-10 place-items-center rounded-full bg-black/[.05] font-semibold text-muted transition peer-checked:bg-navy peer-checked:text-white peer-focus-visible:ring-4 peer-focus-visible:ring-brand/20">
+                  <span className="grid h-10 w-10 place-items-center rounded-full bg-white/[.07] font-semibold text-muted transition peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-4 peer-focus-visible:ring-brand/20">
                     {label}
                   </span>
                 </label>
@@ -82,7 +82,7 @@ export async function SettingsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
         {seq.status === "ARCHIVED" ? (
           <form action={setSequenceStatus.bind(null, seq.id, "PAUSED")} className="mt-3"><button className="btn-ghost">Recuperar</button></form>
         ) : (
-          <form action={setSequenceStatus.bind(null, seq.id, "ARCHIVED")} className="mt-3"><button className="btn-danger bg-[#FF3B30]/[.06]">Archivar secuencia</button></form>
+          <form action={setSequenceStatus.bind(null, seq.id, "ARCHIVED")} className="mt-3"><button className="btn-danger bg-bad/[.10]">Archivar secuencia</button></form>
         )}
       </section>
     </div>

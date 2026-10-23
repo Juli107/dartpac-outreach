@@ -91,7 +91,7 @@ async function Outbox({ senderFilter }: { senderFilter: { senderId: string } }) 
                   <tr key={e.id}>
                     <td>{e.sequence.sendingOn ? formatDate(e.nextRunAt!) : <Pill tone="neutral">Secuencia apagada</Pill>}</td>
                     <td>{fullName(e.contact)}<div className="text-xs text-muted">{e.contact.email}</div></td>
-                    <td><Link href={`/secuencias/${e.sequence.id}`} className="hover:text-brand">{e.sequence.name}</Link></td>
+                    <td><Link href={`/secuencias/${e.sequence.id}`} className="hover:text-brand-2">{e.sequence.name}</Link></td>
                     <td className="max-w-[260px] truncate text-muted">{step ? `${e.nextStep} · ${step.type === "EMAIL" ? step.subject || "Re: (mismo hilo)" : "Tarea"}` : "Fin"}</td>
                   </tr>
                 );
@@ -125,9 +125,9 @@ async function Sent({ email }: { email: string }) {
                   <td className="text-muted">{formatDate(m.sentAt)}</td>
                   <td>{fullName(m.enrollment.contact)}<div className="text-xs text-muted">{m.enrollment.contact.email}</div></td>
                   <td className="max-w-[260px] truncate">{m.subject}</td>
-                  <td><Link href={`/secuencias/${m.enrollment.sequence.id}?tab=registro`} className="text-muted hover:text-brand">{m.enrollment.sequence.name}</Link></td>
+                  <td><Link href={`/secuencias/${m.enrollment.sequence.id}?tab=registro`} className="text-muted hover:text-brand-2">{m.enrollment.sequence.name}</Link></td>
                   <td className="max-w-[280px] whitespace-normal">
-                    {m.error ? <><Pill tone="bad">Error</Pill> <span className="text-xs text-[#B0000F]">{m.error}</span></> : m.openedAt ? <Pill tone="ok">Abierto</Pill> : <Pill tone="info">Enviado</Pill>}
+                    {m.error ? <><Pill tone="bad">Error</Pill> <span className="text-xs text-[#FF9A9A]">{m.error}</span></> : m.openedAt ? <Pill tone="ok">Abierto</Pill> : <Pill tone="info">Enviado</Pill>}
                   </td>
                 </tr>
               ))}
@@ -146,9 +146,9 @@ async function Inbox({ email }: { email: string }) {
       {rows.length === 0 ? (
         <Empty title="Sin respuestas en este buzón">Se leen solas cada pocos minutos. Solo se guardan los correos de contactos conocidos.</Empty>
       ) : (
-        <ul className="divide-y divide-line/70">
+        <ul className="divide-y divide-line/60">
           {rows.map((r) => (
-            <li key={r.id} className={`flex gap-3 px-5 py-4 ${r.read ? "" : "bg-brand-soft/50"}`}>
+            <li key={r.id} className={`flex gap-3 px-5 py-4 ${r.read ? "" : "bg-brand/[.07]"}`}>
               <Avatar name={fullName(r.contact)} size={34} />
               <div className="min-w-0 flex-1">
                 <div className="flex justify-between gap-2">

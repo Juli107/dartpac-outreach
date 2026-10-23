@@ -7,6 +7,9 @@ import { pickVariant, stepVariants } from "./variants";
 import { randomUUID } from "node:crypto";
 import { isHardBounce } from "./bounce";
 import { sentToday as countSentToday, minGapMinutes } from "./quota";
+import { sePuedeEnviar } from "./verifier";
+import { contactWa } from "./whatsapp";
+import { eventoRadar } from "./radar/outreach";
 
 const BATCH = 50;
 
@@ -19,7 +22,7 @@ const BATCH = 50;
 export async function runDueSteps(now = new Date()) {
   const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const summary = { sent: 0, tasks: 0, finished: 0, errors: 0, sequencesOn: 0, outsideWindow: 0 };
+  const summary = { sent: 0, tasks: 0, finished: 0, errors: 0, sequencesOn: 0, outsideWindow: 0, skipped: 0 };
   const on = await db.sequence.findMany({
     where: { sendingOn: true, status: "ACTIVE" },
     select: { id: true, dailyLimit: true, sender: true, timeZone: true, startHour: true, endHour: true, sendDays: true },
@@ -78,7 +81,13 @@ export async function runDueSteps(now = new Date()) {
       continue;
     }
 
-    if (step.type === "EMAIL") {
+    const ctx = { sender: sequence.sender, now, timeZone: sequence.timeZone };
+    // Un paso que no se puede hacer por su canal (sin email válido, sin WhatsApp) se saltea y sigue el próximo.
+    const skip = (step.type === "EMAIL" && !sePuedeEnviar(contact)) || (step.type === "WHATSAPP" && !contactWa(contact));
+
+    if (skip) {
+      summary.skipped++;
+    } else if (step.type === "EMAIL") {
       const { box, limit } = mailboxOf(sequence);
       if ((bySequence.get(sequence.id) ?? 0) >= sequence.dailyLimit) continue;
       if ((byMailbox.get(box) ?? 0) >= limit || !paced(box, limit, sequence)) continue;
@@ -87,7 +96,7 @@ export async function runDueSteps(now = new Date()) {
       const previous = step.sameThread
         ? await db.message.findFirst({ where: { enrollmentId: enr.id, error: null }, orderBy: { sentAt: "desc" } })
         : null;
-      const subject = previous ? `Re: ${previous.subject.replace(/^Re:\s*/i, "")}` : renderTemplate(variant.subject, contact);
+      const subject = previous ? `Re: ${previous.subject.replace(/^Re:\s*/i, "")}` : renderTemplate(variant.subject, contact, ctx);
       const trackingId = randomUUID();
       let messageId = `<${trackingId}@sin-enviar>`;
       let error: string | null = null;
@@ -96,12 +105,12 @@ export async function runDueSteps(now = new Date()) {
         messageId = newMessageId(mailbox.user);
         await sendEmail({
           mailbox,
-          to: contact.email,
+          to: contact.email!,
           subject,
-          body: renderTemplate(variant.body, contact),
+          body: renderTemplate(variant.body, contact, ctx),
           plainText: sequence.plainText,
           signature: sequence.sender
-            ? renderSignature(sequence.sender, company, baseUrl, renderTemplate(sequence.sender.signature, contact))
+            ? renderSignature(sequence.sender, company, baseUrl, renderTemplate(sequence.sender.signature, contact, ctx))
             : undefined,
           messageId,
           trackingId,
@@ -123,16 +132,25 @@ export async function runDueSteps(now = new Date()) {
         // El servidor rechazó la dirección: no se reintenta y el contacto queda como rebotado.
         await db.contact.update({ where: { id: contact.id }, data: { bounced: true } });
         await db.enrollment.updateMany({ where: { contactId: contact.id, status: { in: ["ACTIVE", "PAUSED"] } }, data: { status: "BOUNCED", nextRunAt: null } });
+        await eventoRadar(contact, { k: "rebote" });
         continue;
       }
+      if (!error) await eventoRadar(contact, { k: "mail", secuencia: sequence.name, paso: step.order, asunto: subject, por: sequence.sender?.name.split(/\s+/)[0] });
       if (error) {
         // Reintenta en una hora sin avanzar de paso.
         await db.enrollment.update({ where: { id: enr.id }, data: { nextRunAt: new Date(now.getTime() + 3600_000) } });
         continue;
       }
+    } else if (step.type === "WHATSAPP") {
+      // WhatsApp: no hay forma segura de mandarlo solo; queda como tarea con el mensaje listo para abrir.
+      const who = contact.company || [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.phone || "contacto";
+      await db.task.create({
+        data: { enrollmentId: enr.id, kind: "WHATSAPP", title: renderTemplate(step.subject || `WhatsApp a ${who}`, contact, ctx), notes: renderTemplate(step.body, contact, ctx) },
+      });
+      summary.tasks++;
     } else {
       await db.task.create({
-        data: { enrollmentId: enr.id, title: renderTemplate(step.subject || "Tarea manual", contact), notes: renderTemplate(step.body, contact) },
+        data: { enrollmentId: enr.id, kind: "TASK", title: renderTemplate(step.subject || "Tarea manual", contact, ctx), notes: renderTemplate(step.body, contact, ctx) },
       });
       summary.tasks++;
     }
@@ -144,7 +162,10 @@ export async function runDueSteps(now = new Date()) {
         ? { nextStep: following.order, nextRunAt: nextSendTime(now, following.delayDays, window) }
         : { nextStep: step.order + 1, status: "FINISHED", nextRunAt: null },
     });
-    if (!following) summary.finished++;
+    if (!following) {
+      summary.finished++;
+      await eventoRadar(contact, { k: "fin", motivo: "completa" });
+    }
   }
   return summary;
 }

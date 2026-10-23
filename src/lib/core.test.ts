@@ -15,7 +15,7 @@ test("renderTemplate sustituye variables y usa el valor por defecto", () => {
   assert.equal(renderTemplate("Hola {{nombre}} de {{ empresa }}", marta), "Hola Marta de Logisur");
   assert.equal(renderTemplate("Hola {{cargo|equipo}}", marta), "Hola equipo");
   assert.equal(renderTemplate("{{desconocida}}", marta), "{{desconocida}}");
-  assert.deepEqual(unknownVariables("{{nombre}} {{ciudad}}"), ["ciudad"]);
+  assert.deepEqual(unknownVariables("{{nombre}} {{ciudad}} {{color}}"), ["color"]);
 });
 
 test("nextSendTime salta el fin de semana y la noche", () => {
@@ -147,4 +147,33 @@ test("scheduleLabel resume el horario", async () => {
   const { scheduleLabel } = await import("./labels.ts");
   assert.equal(scheduleLabel({ timeZone: "America/Argentina/Buenos_Aires", startHour: 8, endHour: 19, sendDays: [5, 1, 2, 3, 4] }), "Argentina · L–V · 8–19 h");
   assert.equal(scheduleLabel({ timeZone: "Europe/Madrid", startHour: 9, endHour: 14, sendDays: [6, 1] }), "España · L S · 9–14 h");
+});
+
+test("variables del envío: saludo según la hora, vendedor y datos de la empresa", () => {
+  const ctx = { sender: { name: "Luis Mendieta" }, now: new Date("2026-10-23T13:00:00Z"), timeZone: "America/Argentina/Buenos_Aires" };
+  assert.equal(renderTemplate("{{saludo}}, {{empresa}}. Soy {{vendedor}}", { company: "Logisur" }, ctx), "Buenos días, Logisur. Soy Luis");
+  assert.equal(renderTemplate("{{saludo}}", {}, { now: new Date("2026-10-23T18:30:00Z"), timeZone: "America/Argentina/Buenos_Aires" }), "Buenas tardes");
+  assert.equal(renderTemplate("Hola {{nombre|}} de {{ciudad|tu zona}}", { city: "Haedo" }), "Hola  de Haedo");
+  assert.equal(renderTemplate("{{web}}", { website: "https://plupack.com.ar/" }), "plupack.com.ar");
+});
+
+test("waNum arma el número internacional de WhatsApp", async () => {
+  const { waNum } = await import("./whatsapp.ts");
+  assert.equal(waNum("011 15-4444-5555"), "5491144445555");
+  assert.equal(waNum("+54 9 11 4444-5555"), "5491144445555");
+  assert.equal(waNum("(0351) 15 555-1234"), "5493515551234");
+  assert.equal(waNum("0261 4234567"), "5492614234567");
+  assert.equal(waNum("123"), "");
+});
+
+test("verificador: tipeos, inválidos y riesgosos (sin red)", async () => {
+  const { verificarLocal, sePuedeEnviar } = await import("./verifier/index.ts");
+  assert.equal(verificarLocal("ventas@gmial.com").estado, "corregible");
+  assert.equal(verificarLocal("ventas@gmial.com").sugerencia, "ventas@gmail.com");
+  assert.equal(verificarLocal("juan@@x.com").estado, "invalido");
+  assert.equal(verificarLocal("compras@fibertel.com.ar").estado, "riesgoso");
+  assert.equal(verificarLocal("compras@plupackembalajes.com").estado, "valido");
+  assert.equal(sePuedeEnviar({ email: "a@b.com", emailStatus: "invalido" }), false);
+  assert.equal(sePuedeEnviar({ email: "a@b.com", emailStatus: null }), true);
+  assert.equal(sePuedeEnviar({ email: null, emailStatus: null }), false);
 });

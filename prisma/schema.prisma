@@ -8,19 +8,35 @@ datasource db {
 }
 
 model Contact {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  firstName    String?
-  lastName     String?
-  company      String?
-  title        String?
-  phone        String?
-  tags         String[]
-  unsubscribed Boolean      @default(false)
-  bounced      Boolean      @default(false)
-  createdAt    DateTime     @default(now())
-  enrollments  Enrollment[]
-  replies      Reply[]
+  id              String       @id @default(cuid())
+  /// Puede faltar: una empresa con solo teléfono recibe los pasos de WhatsApp y las tareas.
+  email           String?      @unique
+  firstName       String?
+  lastName        String?
+  company         String?
+  title           String?
+  phone           String?
+  /// WhatsApp, si es distinto del teléfono.
+  whatsapp        String?
+  city            String?
+  province        String?
+  website         String?
+  /// Empresa del Radar comercial de la que salió este contacto (una sola por empresa: lo cuida el código).
+  /// Índice común y no único a propósito: agregar un único a una tabla que ya existe frena `prisma db push` en Vercel.
+  radarId         String?
+  tags            String[]
+  unsubscribed    Boolean      @default(false)
+  bounced         Boolean      @default(false)
+  /// Verificador de correos: valido, riesgoso, corregible o invalido (vacío = sin verificar).
+  emailStatus     String?
+  emailReason     String?
+  emailSuggestion String?
+  emailCheckedAt  DateTime?
+  createdAt       DateTime     @default(now())
+  enrollments     Enrollment[]
+  replies         Reply[]
+
+  @@index([radarId])
 }
 
 enum SequenceStatus {
@@ -54,6 +70,8 @@ model Sequence {
 enum StepType {
   EMAIL
   TASK
+  /// Mensaje de WhatsApp: el programador crea una tarea con el mensaje listo para abrir en WhatsApp.
+  WHATSAPP
 }
 
 model Step {
@@ -133,6 +151,8 @@ model Task {
   id           String     @id @default(cuid())
   enrollmentId String
   enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  /// TASK (llamada, visita…) o WHATSAPP (las notas son el mensaje listo para mandar).
+  kind         String     @default("TASK")
   title        String
   notes        String     @default("")
   done         Boolean    @default(false)
@@ -193,6 +213,21 @@ model Sender {
   lastCheckError        String?
   createdAt             DateTime   @default(now())
   sequences             Sequence[]
+}
+
+/// Base del Radar comercial: documentos JSON por colección (prospectos, busquedas, alertas, pedidos, config),
+/// los mismos que usaba el Radar dentro de Claude. `v` sube con cada cambio; los borrados quedan marcados
+/// un tiempo para que las pantallas abiertas se enteren.
+model RadarDoc {
+  col       String
+  id        String
+  data      Json
+  v         Int      @default(1)
+  deleted   Boolean  @default(false)
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@id([col, id])
+  @@index([updatedAt])
 }
 
 /// Ajustes generales de la app (una sola fila, id "app").
