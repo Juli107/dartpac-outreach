@@ -1,8 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { hasSession } from "@/lib/session";
 
-// Rutas públicas: login (también con Google), píxel de apertura, imagen de firma, baja y cron (que se protege con su propio secreto).
-const PUBLIC = [/^\/login/, /^\/api\/t\//, /^\/api\/firma\//, /^\/api\/google\//, /^\/baja\//, /^\/api\/cron/, /^\/_next\//, /^\/icon/, /^\/logo/, /^\/app-\d+\.png$/, /^\/manifest\.webmanifest$/];
+// Rutas públicas: login (también con Google), píxel de apertura, imagen de firma, baja, y los trabajos programados
+// (cron, trabajador y búsqueda semanal del Radar), que se protegen con su propio secreto o el token de GitHub.
+const PUBLIC = [
+  /^\/login/,
+  /^\/api\/t\//,
+  /^\/api\/firma\//,
+  /^\/api\/google\//,
+  /^\/baja\//,
+  /^\/api\/cron/,
+  /^\/api\/radar\/worker$/,
+  /^\/api\/radar\/semanal$/,
+  /^\/_next\//,
+  /^\/icon/,
+  /^\/logo/,
+  /^\/app-\d+\.png$/,
+  /^\/manifest\.webmanifest$/,
+];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

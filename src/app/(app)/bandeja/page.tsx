@@ -43,7 +43,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
         ) : (
           <ul>
             {replies.map((r) => (
-              <li key={r.id} className={`flex gap-3 border-b border-line/70 px-5 py-4 last:border-b-0 ${r.read ? "" : "bg-brand-soft/50"}`}>
+              <li key={r.id} className={`flex gap-3 border-b border-line/60 px-5 py-4 last:border-b-0 ${r.read ? "" : "bg-brand/[.07]"}`}>
                 <Avatar name={fullName(r.contact)} size={36} />
                 <div className="grid min-w-0 flex-1 gap-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">

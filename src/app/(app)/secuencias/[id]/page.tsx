@@ -76,9 +76,9 @@ export default async function SequenceDetail({ params, searchParams }: { params:
               <Dot level={verdict.level === "off" ? "off" : problems.some((p) => p.level === "bad") ? "bad" : problems.some((p) => p.level === "warn") ? "warn" : "info"} />
               Estado de envío: {problems.length} {problems.length === 1 ? "aviso" : "avisos"}
             </span>
-            <span className="text-[13px] text-brand">Ver</span>
+            <span className="text-[13px] text-brand-2">Ver</span>
           </summary>
-          <div className="reveal border-t border-line/70 py-1"><CheckList checks={problems} /></div>
+          <div className="reveal border-t border-line/60 py-1"><CheckList checks={problems} /></div>
         </details>
       )}
 

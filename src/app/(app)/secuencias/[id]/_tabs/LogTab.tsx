@@ -38,7 +38,7 @@ export async function LogTab({ seq }: { seq: Seq }) {
                     <td className="text-muted">{m.fromEmail}</td>
                     <td className="max-w-[320px] whitespace-normal">
                       {m.error ? (
-                        <><Pill tone="bad">Error</Pill> <span className="text-xs text-[#B0000F]">{m.error}</span></>
+                        <><Pill tone="bad">Error</Pill> <span className="text-xs text-[#FF9A9A]">{m.error}</span></>
                       ) : m.openedAt ? (
                         <Pill tone="ok">Abierto{m.openCount > 1 ? ` ×${m.openCount}` : ""}</Pill>
                       ) : (
@@ -55,7 +55,7 @@ export async function LogTab({ seq }: { seq: Seq }) {
       {tasks.length > 0 && (
         <section className="card appear min-w-0 overflow-hidden">
           <div className="card-title"><h2>Tareas creadas</h2></div>
-          <ul className="divide-y divide-line/70">
+          <ul className="divide-y divide-line/60">
             {tasks.map((t) => (
               <li key={t.id} className="flex items-center justify-between gap-3 px-5 py-3">
                 <div className="min-w-0">

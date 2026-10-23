@@ -30,13 +30,16 @@ export default async function Analytics() {
         <Kpi label="Respuesta" value={formatPct(pct(stats.replies, stats.sent))} />
         <Kpi label="Rebotes" value={String(stats.bounced)} />
       </div>
-      <section className="card min-w-0">
-        <h2 className="card-title">Envíos y respuestas por semana</h2>
+      <section className="card appear min-w-0 overflow-hidden">
+        <div className="card-title"><h2>Envíos y respuestas por semana</h2></div>
         <div className="p-4">
           <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Envíos y respuestas por semana">
+            <defs>
+              <linearGradient id="barra" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#8CC9FF" /><stop offset="1" stopColor="#2F7BF6" /></linearGradient>
+            </defs>
             {ticks.map((t) => (
               <g key={t}>
-                <line x1={L} x2={W - 10} y1={y(t)} y2={y(t)} stroke="#DCE3EC" />
+                <line x1={L} x2={W - 10} y1={y(t)} y2={y(t)} stroke="rgba(160,195,255,.14)" />
                 <text x={L - 6} y={y(t) + 3} textAnchor="end" className="fill-muted font-mono text-[10px]">{t}</text>
               </g>
             ))}
@@ -44,10 +47,10 @@ export default async function Analytics() {
               const x = L + i * bw + bw * 0.2;
               return (
                 <g key={i}>
-                  <rect x={x} y={y(s.sent)} width={bw * 0.6} height={y(0) - y(s.sent)} rx={3} fill="#1F6FD1" opacity={0.85}>
+                  <rect x={x} y={y(s.sent)} width={bw * 0.6} height={y(0) - y(s.sent)} rx={4} fill="url(#barra)">
                     <title>{`${s.sent} enviados, ${s.replies} respuestas`}</title>
                   </rect>
-                  <rect x={x + bw * 0.15} y={y(s.replies)} width={bw * 0.3} height={y(0) - y(s.replies)} rx={2} fill="#1E8A5A" />
+                  <rect x={x + bw * 0.15} y={y(s.replies)} width={bw * 0.3} height={y(0) - y(s.replies)} rx={2} fill="#3DDC97" />
                   <text x={x + bw * 0.3} y={H - 8} textAnchor="middle" className="fill-muted font-mono text-[10px]">
                     {s.week.toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                   </text>
@@ -56,19 +59,19 @@ export default async function Analytics() {
             })}
           </svg>
           <div className="mt-2 flex gap-4 text-xs text-muted">
-            <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-brand" />Enviados</span>
-            <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-emerald-700" />Respuestas</span>
+            <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-gradient-to-b from-brand-2 to-brand-deep" />Enviados</span>
+            <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-ok" />Respuestas</span>
           </div>
         </div>
       </section>
-      <section className="card min-w-0">
-        <h2 className="card-title">Por secuencia</h2>
+      <section className="card appear min-w-0 overflow-hidden">
+        <div className="card-title"><h2>Por secuencia</h2></div>
         <div className="overflow-x-auto">
           <table className="table">
             <thead><tr><th>Secuencia</th><th>Contactos</th><th>Enviados</th><th>Apertura</th><th>Respuesta</th></tr></thead>
             <tbody>
               {sequences.map((s) => (
-                <tr key={s.id}><td>{s.name}</td><td>{s._count.enrollments}</td><td>{s.sent}</td><td>{formatPct(s.openRate)}</td><td>{formatPct(s.replyRate)}</td></tr>
+                <tr key={s.id}><td className="font-medium text-white">{s.name}</td><td>{s._count.enrollments}</td><td>{s.sent}</td><td>{formatPct(s.openRate)}</td><td>{formatPct(s.replyRate)}</td></tr>
               ))}
             </tbody>
           </table>

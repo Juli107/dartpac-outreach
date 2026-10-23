@@ -93,6 +93,32 @@ export function buildHtml(body: string, opts: { trackingId: string; contactId: s
   };
 }
 
+/**
+ * Envío suelto (desde el Radar): el texto y el HTML ya vienen armados, con su firma y su pie de baja.
+ * Admite adjuntos en línea (la tarjeta de presentación, con cid).
+ */
+export async function sendRawEmail(args: {
+  mailbox: Mailbox;
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  messageId: string;
+  attachments?: { filename: string; content: Buffer; contentType: string; cid?: string }[];
+  unsubscribe?: string;
+}) {
+  await getTransport(args.mailbox).sendMail({
+    from: args.mailbox.from,
+    to: args.to,
+    subject: args.subject,
+    text: args.text,
+    ...(args.html ? { html: args.html } : {}),
+    messageId: args.messageId,
+    attachments: args.attachments,
+    ...(args.unsubscribe ? { headers: { "List-Unsubscribe": `<${args.unsubscribe}>` } } : {}),
+  });
+}
+
 export async function sendEmail(args: {
   mailbox: Mailbox;
   to: string;

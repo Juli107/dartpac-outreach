@@ -4,6 +4,7 @@ import { db } from "./db";
 import { stripQuoted } from "./strip";
 import { imapAuth, mailboxFor, type Mailbox } from "./mailer";
 import { bouncedAddresses, isBounceSender } from "./bounce";
+import { eventoRadar } from "./radar/outreach";
 
 /**
  * Lee por IMAP el buzón de cada comercial conectado (Google o contraseña), y guarda
@@ -75,6 +76,7 @@ async function syncMailbox(box: Mailbox, sinceDays: number) {
         where: { contactId: contact.id, status: "ACTIVE" },
         data: { status: "REPLIED", nextRunAt: null },
       });
+      await eventoRadar(contact, { k: "respuesta", asunto: env.subject ?? "(sin asunto)" });
       imported++;
     }
   } finally {
@@ -91,13 +93,15 @@ async function markBounced(parsed: Awaited<ReturnType<typeof simpleParser>> | nu
   const header = parsed.headers.get("x-failed-recipients");
   const candidates = bouncedAddresses(parsed.text ?? "", typeof header === "string" ? header : undefined);
   if (candidates.length === 0) return 0;
+  // contactos a los que les escribimos: desde una secuencia, o desde el Radar (quedan vinculados a su empresa)
   const contacts = await db.contact.findMany({
-    where: { email: { in: candidates }, bounced: false, enrollments: { some: { messages: { some: {} } } } },
-    select: { id: true },
+    where: { email: { in: candidates }, bounced: false, OR: [{ enrollments: { some: { messages: { some: {} } } } }, { radarId: { not: null } }] },
+    select: { id: true, radarId: true },
   });
   for (const c of contacts) {
-    await db.contact.update({ where: { id: c.id }, data: { bounced: true } });
+    await db.contact.update({ where: { id: c.id }, data: { bounced: true, emailStatus: "invalido", emailReason: "El mail rebotó: la dirección no existe o no recibe correos" } });
     await db.enrollment.updateMany({ where: { contactId: c.id, status: { in: ["ACTIVE", "PAUSED"] } }, data: { status: "BOUNCED", nextRunAt: null } });
+    await eventoRadar(c, { k: "rebote" });
   }
   return contacts.length;
 }

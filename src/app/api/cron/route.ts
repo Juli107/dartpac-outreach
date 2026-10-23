@@ -1,24 +1,15 @@
 import { NextResponse } from "next/server";
 import { runDueSteps } from "@/lib/engine";
 import { syncInbox } from "@/lib/inbox";
-import { verifyGithubOidc } from "@/lib/github-oidc";
 import { recordRun } from "@/lib/settings";
+import { autorizadoCron } from "@/lib/cron-auth";
+import { despertar, pendientes } from "@/lib/radar/worker";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const REPOSITORY = process.env.GITHUB_REPOSITORY ?? "Juli107/dartpac-outreach";
-
-/** Vale el secreto CRON_SECRET (Vercel, cron-job.org) o un token OIDC del workflow de GitHub. */
-async function authorized(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  if (process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`) return true;
-  const token = auth.replace(/^Bearer\s+/i, "");
-  return token.split(".").length === 3 && (await verifyGithubOidc(token, REPOSITORY).catch(() => false));
-}
-
 export async function GET(req: Request) {
-  if (!(await authorized(req))) {
+  if (!(await autorizadoCron(req))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
   // Primero las respuestas, para no enviar un seguimiento a quien acaba de contestar.
@@ -27,5 +18,12 @@ export async function GET(req: Request) {
   const inbox = checkInbox ? await syncInbox().catch((e) => ({ error: String(e) })) : "omitida";
   const steps = await runDueSteps();
   await recordRun({ at: new Date().toISOString(), steps, inbox, source: "cron" }).catch(() => undefined);
-  return NextResponse.json({ inbox, steps });
+  // Búsquedas del Radar que quedaron a medias (por ejemplo, si se cortó la cadena): se retoman.
+  const radar = await pendientes()
+    .then(async (jobs) => {
+      if (jobs.length) await despertar({ pendientes: true });
+      return jobs.length;
+    })
+    .catch(() => 0);
+  return NextResponse.json({ inbox, steps, radar });
 }

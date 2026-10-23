@@ -25,7 +25,7 @@ function GoogleIcon() {
 function GoogleButton({ senderId, children }: { senderId?: string; children: React.ReactNode }) {
   const href = `/api/google/start?modo=conectar${senderId ? `&remitente=${senderId}` : ""}`;
   return (
-    <a href={href} className="btn-ghost inline-flex items-center gap-2 bg-white shadow-sm ring-1 ring-black/[.06] hover:bg-white">
+    <a href={href} className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-3.5 py-1.5 font-semibold text-[#1F1F1F] shadow-sm transition hover:bg-[#EEF3FA] active:scale-[.97]">
       <GoogleIcon />
       {children}
     </a>
@@ -64,7 +64,7 @@ function Fields({ s, prefix }: { s: SenderFields; prefix: string }) {
       </div>
       )}
 
-      <h3 className="mt-3 border-t border-line/70 pt-4 font-semibold sm:col-span-2">Firma</h3>
+      <h3 className="mt-3 border-t border-line/60 pt-4 font-semibold text-white sm:col-span-2">Firma</h3>
       <div>
         <label htmlFor={`${prefix}-title`} className="label">Cargo</label>
         <input id={`${prefix}-title`} name="jobTitle" defaultValue={s.jobTitle} placeholder="Ejecutivo comercial" className="input" />
@@ -138,11 +138,11 @@ export default async function Senders({
                 <div className="relative">
                   {s.signatureImageType && s.signatureImageMode === "LOGO" ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={`/api/firma/${s.id}?v=${s.signatureImageVersion}`} alt="" width={72} height={72} className="h-[72px] w-[72px] rounded-full object-cover shadow-sm ring-1 ring-black/5" />
+                    <img src={`/api/firma/${s.id}?v=${s.signatureImageVersion}`} alt="" width={72} height={72} className="h-[72px] w-[72px] rounded-full object-cover shadow-sm ring-1 ring-white/10" />
                   ) : (
                     <Avatar name={s.name} size={72} />
                   )}
-                  <span className="absolute bottom-0.5 right-0.5 rounded-full bg-white p-[3px]"><Dot level={level} /></span>
+                  <span className="absolute bottom-0.5 right-0.5 rounded-full bg-[#0e2547] p-[3px]"><Dot level={level} /></span>
                 </div>
                 <div className="min-w-0">
                   <h2 className="truncate text-[19px]">{s.name}</h2>
@@ -160,7 +160,7 @@ export default async function Senders({
                   <span className="tabular-nums">{today} / {s.dailyLimit}</span>
                 </div>
                 <ProgressBar value={(today / Math.max(1, s.dailyLimit)) * 100} tone={today >= s.dailyLimit ? "warn" : "brand"} className="w-full" />
-                <p className={`mt-3 text-xs ${s.lastCheckError ? "text-[#D70015]" : "text-muted"}`}>
+                <p className={`mt-3 text-xs ${s.lastCheckError ? "text-[#FF9A9A]" : "text-muted"}`}>
                   {!connected
                     ? "Conéctalo para que pueda enviar."
                     : s.lastCheckError
@@ -171,22 +171,22 @@ export default async function Senders({
                 </p>
               </div>
 
-              <div className="mt-4 flex flex-wrap justify-center gap-2 border-t border-line/70 px-5 py-3">
+              <div className="mt-4 flex flex-wrap justify-center gap-2 border-t border-line/60 px-5 py-3">
                 <a href={open ? "/remitentes" : `/remitentes?editar=${s.id}#r-${s.id}`} className="btn-ghost">{open ? "Cerrar" : "Editar"}</a>
                 {google && !s.googleRefreshToken && <GoogleButton senderId={s.id}>Conectar</GoogleButton>}
                 {connected && <form action={testSender.bind(null, s.id)}><button className="btn-ghost" title="No envía nada">Probar conexión</button></form>}
               </div>
 
               {open && (
-                <div id={`r-${s.id}`} className="appear grid scroll-mt-6 gap-6 border-t border-line/70 p-5 lg:grid-cols-[1fr_380px]">
+                <div id={`r-${s.id}`} className="appear grid scroll-mt-6 gap-6 border-t border-line/60 p-5 lg:grid-cols-[1fr_380px]">
                   <form action={updateSender.bind(null, s.id)}>
                     <Fields s={{ ...s, hasPassword: !!s.appPassword, hasImage: !!s.signatureImageType, viaGoogle: !!s.googleRefreshToken }} prefix={s.id} />
                     <div className="mt-4"><button className="btn">Guardar cambios</button></div>
                   </form>
                   <div className="flex flex-col gap-4">
-                    <div className="rounded-2xl bg-black/[.025] p-4">
+                    <div className="well p-4">
                       <p className="mb-2 text-xs font-medium text-muted">Así se ve la firma</p>
-                      <div className="rounded-xl bg-white p-4 shadow-sm">
+                      <div className="paper p-4">
                         {/* HTML generado por renderSignature con todos los campos escapados. */}
                         <div dangerouslySetInnerHTML={{ __html: renderSignature(s, company, "").html }} />
                       </div>
@@ -204,15 +204,15 @@ export default async function Senders({
           );
         })}
 
-        <details className="appear group min-w-0 rounded-2xl border-2 border-dashed border-white/25 bg-white/[.06] text-white backdrop-blur transition hover:bg-white/[.1] open:border-solid open:border-transparent open:bg-white open:text-ink open:shadow-soft open:md:col-span-2 open:xl:col-span-3" open={editar === "nuevo"}>
+        <details className="appear group min-w-0 rounded-[22px] border-2 border-dashed border-white/20 bg-white/[.04] backdrop-blur transition hover:bg-white/[.07] open:border-solid open:border-[rgba(160,195,255,.14)] open:bg-[#11284c]/80 open:md:col-span-2 open:xl:col-span-3" open={editar === "nuevo"}>
           <summary className="flex min-h-[260px] cursor-pointer flex-col items-center justify-center gap-3 p-6 text-center group-open:min-h-0 group-open:flex-row group-open:justify-start">
-            <span className="grid h-14 w-14 place-items-center rounded-full bg-white/15 text-2xl font-light transition group-hover:bg-white group-hover:text-navy group-open:bg-navy group-open:text-white">+</span>
+            <span className="grid h-14 w-14 place-items-center rounded-full bg-white/10 text-2xl font-light text-white transition group-hover:bg-brand group-open:bg-brand">+</span>
             <span>
-              <span className="block font-semibold">Nuevo remitente</span>
+              <span className="block font-semibold text-white">Nuevo remitente</span>
               <span className="block text-[13px] opacity-70">Con Google es un clic; también vale una contraseña de aplicación.</span>
             </span>
           </summary>
-          <div className="reveal on-light border-t border-line/70 p-5">
+          <div className="reveal border-t border-line/60 p-5">
             {google && <div className="mb-5"><GoogleButton>Agregar con Google</GoogleButton></div>}
             <form action={createSender}>
               <Fields s={{}} prefix="new" />

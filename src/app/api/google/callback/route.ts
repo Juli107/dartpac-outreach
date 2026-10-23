@@ -4,6 +4,7 @@ import { allowedDomain, callbackUrl, DomainError, exchangeCode, GMAIL_SCOPE, OAU
 import { hasSession, sessionCookie } from "@/lib/session";
 import { encryptSecret } from "@/lib/crypto";
 import { db } from "@/lib/db";
+import { yoCookie } from "@/lib/yo";
 
 function sameState(a: string, b: string) {
   const x = Buffer.from(a);
@@ -39,6 +40,8 @@ export async function GET(req: NextRequest) {
     const res = NextResponse.redirect(new URL("/", req.url));
     res.cookies.delete({ name: OAUTH_COOKIE, path: "/api/google" });
     res.cookies.set(await sessionCookie());
+    // Recuerda quién entró: el Radar elige de entrada su buzón y su firma.
+    res.cookies.set(yoCookie(profile.email, profile.name));
     return res;
   }
 

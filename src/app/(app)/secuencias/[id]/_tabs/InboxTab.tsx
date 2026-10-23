@@ -17,9 +17,9 @@ export async function InboxTab({ seq }: { seq: Seq }) {
       {replies.length === 0 ? (
         <Empty title="Sin respuestas todavía">Cuando un contacto responde, sale de la secuencia y su respuesta aparece aquí y en la Bandeja.</Empty>
       ) : (
-        <ul className="divide-y divide-line/70">
+        <ul className="divide-y divide-line/60">
           {replies.map((r) => (
-            <li key={r.id} className={`flex gap-3 px-5 py-4 ${r.read ? "" : "bg-brand-soft/50"}`}>
+            <li key={r.id} className={`flex gap-3 px-5 py-4 ${r.read ? "" : "bg-brand/[.07]"}`}>
               <Avatar name={fullName(r.contact)} size={36} />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">

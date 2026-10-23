@@ -39,7 +39,7 @@ export function Switch({
           await action();
         });
       }}
-      className={`relative inline-flex shrink-0 items-center rounded-full transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${optimistic ? "bg-go" : "bg-black/[.12]"}`}
+      className={`relative inline-flex shrink-0 items-center rounded-full transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${optimistic ? "bg-go" : "bg-white/[.16]"}`}
       style={{ width: dims.w, height: dims.h }}
     >
       <span

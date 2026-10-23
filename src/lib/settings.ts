@@ -4,7 +4,7 @@ import { db } from "./db";
 /** Resultado de una pasada del programador: envíos y lectura de buzones. */
 export type RunReport = {
   at: string;
-  steps: { sent: number; tasks: number; finished: number; errors: number; sequencesOn: number; outsideWindow: number };
+  steps: { sent: number; tasks: number; finished: number; errors: number; sequencesOn: number; outsideWindow: number; skipped?: number };
   inbox: { imported: number; bounced?: number; errors?: string[]; disabled?: boolean } | "omitida" | { error: string };
   source: "cron" | "manual";
 };

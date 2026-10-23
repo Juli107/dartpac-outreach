@@ -6,24 +6,21 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { nextSendTime, windowFor } from "@/lib/schedule";
 import { nextVariantLabel } from "@/lib/variants";
+import type { Prisma } from "@prisma/client";
+import { eventoRadar } from "@/lib/radar/outreach";
+import { iaConfigurada, parsearJson, pedirTexto } from "@/lib/radar/claude";
+import { quienSoy } from "@/lib/yo";
 
+/**
+ * Secuencia nueva, vacía: los pasos los elige el equipo (email, WhatsApp o tarea), sin nada de fábrica.
+ * Si quien la crea entró con Google y tiene su buzón cargado, sale de entrada desde ese buzón (se cambia en Ajustes).
+ */
 export async function createSequence(form: FormData) {
   const name = String(form.get("name") ?? "").trim();
   if (!name) return;
-  const seq = await db.sequence.create({
-    data: {
-      name,
-      steps: {
-        create: {
-          order: 1,
-          delayDays: 0,
-          subject: "{{empresa}} y Plupack Embalajes",
-          body: "Hola {{nombre|}},\n\nEscribe aquí tu primer mensaje.",
-        },
-      },
-    },
-  });
-  redirect(`/secuencias/${seq.id}`);
+  const yo = await quienSoy().catch(() => null);
+  const seq = await db.sequence.create({ data: { name, senderId: yo?.senderId ?? null } });
+  redirect(`/secuencias/${seq.id}?tab=pasos`);
 }
 
 function refresh(id: string) {
@@ -81,8 +78,10 @@ export async function setPlainText(id: string, on: boolean) {
   refresh(id);
 }
 
+const STEP_TYPES = ["EMAIL", "TASK", "WHATSAPP"] as const;
+
 const stepSchema = z.object({
-  type: z.enum(["EMAIL", "TASK"]),
+  type: z.enum(STEP_TYPES),
   delayDays: z.coerce.number().int().min(0).max(90),
   subject: z.string().default(""),
   body: z.string().default(""),
@@ -101,15 +100,40 @@ function readStep(form: FormData) {
 
 export async function addStep(sequenceId: string, form: FormData) {
   const last = await db.step.findFirst({ where: { sequenceId }, orderBy: { order: "desc" } });
-  await db.step.create({ data: { sequenceId, order: (last?.order ?? 0) + 1, ...readStep(form) } });
+  const step = await db.step.create({ data: { sequenceId, order: (last?.order ?? 0) + 1, ...readStep(form) } });
   refresh(sequenceId);
+  redirect(`/secuencias/${sequenceId}?tab=pasos#paso-${step.id}`);
+}
+
+/** Sube o baja un paso (intercambia el orden con el vecino). */
+export async function moveStep(stepId: string, dir: -1 | 1) {
+  const step = await db.step.findUniqueOrThrow({ where: { id: stepId } });
+  const other = await db.step.findFirst({ where: { sequenceId: step.sequenceId, order: step.order + dir } });
+  if (!other) return;
+  // el orden es único por secuencia: se pasa por un valor temporal. Las esperas quedan en su lugar:
+  // se mueve el contenido del paso, no el calendario.
+  await db.$transaction([
+    db.step.update({ where: { id: step.id }, data: { order: -1 } }),
+    db.step.update({ where: { id: other.id }, data: { order: step.order, delayDays: step.delayDays } }),
+    db.step.update({ where: { id: step.id }, data: { order: other.order, delayDays: other.delayDays } }),
+  ]);
+  refresh(step.sequenceId);
+}
+
+/** Borra los datos de ejemplo que creaba la primera versión (solo si siguen ahí). */
+export async function borrarEjemplos() {
+  const nombres = ["Distribuidores de embalaje · Q4", "Ecommerce · cajas personalizadas"];
+  const emails = ["marta@logisur.es", "jorge@tiendasnordica.es", "lucia@frutaslevante.es", "andres@mueblespena.es", "sara@cosmeticaalba.es", "pablo@vinosduero.es", "elena@papeleriasol.es", "raul@bodegasribera.es"];
+  await db.sequence.deleteMany({ where: { name: { in: nombres } } });
+  await db.contact.deleteMany({ where: { email: { in: emails } } });
+  revalidatePath("/", "layout");
 }
 
 /** Tipo, espera e hilo del paso. */
 export async function updateStepSettings(stepId: string, form: FormData) {
   const data = z
     .object({
-      type: z.enum(["EMAIL", "TASK"]),
+      type: z.enum(STEP_TYPES),
       delayDays: z.coerce.number().int().min(0).max(90),
       sameThread: z.preprocess((v) => v === "on", z.boolean()),
     })
@@ -157,18 +181,25 @@ export async function deleteStep(stepId: string) {
   refresh(step.sequenceId);
 }
 
-/** Inscribe contactos: por etiqueta, o todos si la etiqueta está vacía. Omite bajas, rebotes y ya inscritos. */
+/**
+ * Inscribe contactos: por etiqueta, o todos si la etiqueta está vacía. Omite bajas, rebotes, ya inscritos y a quien
+ * no le llegaría ningún paso (por ejemplo, sin email válido en una secuencia que solo tiene emails).
+ */
 export async function enrollContacts(sequenceId: string, form: FormData) {
   const tag = String(form.get("tag") ?? "").trim();
-  const sequence = await db.sequence.findUniqueOrThrow({ where: { id: sequenceId } });
+  const sequence = await db.sequence.findUniqueOrThrow({ where: { id: sequenceId }, include: { steps: { select: { type: true } } } });
   const first = await db.step.findFirst({ where: { sequenceId }, orderBy: { order: "asc" } });
   if (!first) return;
+  const types = new Set(sequence.steps.map((st) => st.type));
+  const canEmail: Prisma.ContactWhereInput = { email: { not: null }, OR: [{ emailStatus: null }, { emailStatus: { notIn: ["invalido", "corregible"] } }] };
+  const canWa: Prisma.ContactWhereInput = { OR: [{ whatsapp: { not: null } }, { phone: { not: null } }] };
+  const reach: Prisma.ContactWhereInput = types.has("TASK") ? {} : { OR: [...(types.has("EMAIL") ? [canEmail] : []), ...(types.has("WHATSAPP") ? [canWa] : [])] };
   const contacts = await db.contact.findMany({
     where: {
-      unsubscribed: false,
-      bounced: false,
-      ...(tag ? { tags: { has: tag } } : {}),
-      enrollments: { none: { sequenceId } },
+      AND: [
+        { unsubscribed: false, bounced: false, ...(tag ? { tags: { has: tag } } : {}), enrollments: { none: { sequenceId } } },
+        reach,
+      ],
     },
     select: { id: true },
   });
@@ -191,5 +222,26 @@ export async function setEnrollmentStatus(id: string, status: "ACTIVE" | "PAUSED
 /** Saca al contacto de la secuencia (su historial de envíos se borra con la inscripción). */
 export async function removeEnrollment(id: string) {
   const e = await db.enrollment.delete({ where: { id } });
+  await eventoRadar(e.contactId, { k: "fin", motivo: "sacado" });
   refresh(e.sequenceId);
+}
+
+/** "Redactar con IA": propone el texto de un paso (email o WhatsApp) para Plupack Embalajes. */
+export async function redactarConIA(input: { tipo: "EMAIL" | "WHATSAPP" | "TASK"; orden: number; total: number; secuencia: string; borrador?: string }) {
+  if (!iaConfigurada()) return { error: "La IA todavía no está configurada (falta la clave de la API de Claude en Vercel)." };
+  const canal = input.tipo === "EMAIL" ? "email (tono profesional y cercano, 70 a 120 palabras, con asunto corto)" : input.tipo === "WHATSAPP" ? "WhatsApp (tono rioplatense, cercano, 25 a 50 palabras, sin asunto)" : "tarea para el vendedor (qué hacer en la llamada o visita, 1 a 3 frases, con un título corto)";
+  const momento = input.orden <= 1 ? "Es el primer contacto: presentate y pedí el contacto de compras." : input.orden >= input.total ? "Es el último mensaje: cerrá con amabilidad y dejá la puerta abierta." : "Es un seguimiento: referí brevemente al mensaje anterior y aportá algo nuevo.";
+  const prompt = `Sos vendedor B2B en Argentina de ${process.env.COMPANY_NAME ?? "Plupack Embalajes"} (marca DARTPAC), mayorista de film stretch, film PVC, film de polietileno, bolsas, embalaje y descartables con stock permanente y envíos a todo el país.
+Escribí el paso ${input.orden} de ${input.total} de una secuencia de prospección llamada «${input.secuencia}», por ${canal}. ${momento}
+Usá estas variables tal cual, con doble llave, donde correspondan: {{saludo}}, {{empresa}}, {{ciudad}}, {{vendedor}}, {{mi_empresa}}. No inventes precios, descuentos ni datos.
+${input.borrador ? `Tomá como base este borrador y mejoralo: ${input.borrador.slice(0, 1500)}` : ""}
+Respondé solo JSON: {"asunto": "...", "texto": "..."}.`;
+  try {
+    const r = await pedirTexto(prompt, { json: true, rapido: true, maxTokens: 900 });
+    const j = parsearJson(r.text) as { asunto?: string; texto?: string };
+    if (!j?.texto) return { error: "La IA no devolvió un texto. Probá de nuevo." };
+    return { asunto: String(j.asunto ?? "").slice(0, 160), texto: String(j.texto).slice(0, 4000) };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "No se pudo redactar ahora." };
+  }
 }

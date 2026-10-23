@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { verifyId } from "@/lib/tokens";
+import { eventoRadar } from "@/lib/radar/outreach";
 
 export const metadata = { title: "Baja" };
 
@@ -10,6 +11,7 @@ export default async function Unsubscribe({ params }: { params: Promise<{ id: st
     const updated = await db.contact.updateMany({ where: { id }, data: { unsubscribed: true } });
     await db.enrollment.updateMany({ where: { contactId: id, status: "ACTIVE" }, data: { status: "UNSUBSCRIBED", nextRunAt: null } });
     ok = updated.count > 0;
+    if (ok) await eventoRadar(id, { k: "baja" });
   }
   return (
     <div className="grid min-h-screen place-items-center px-4">
