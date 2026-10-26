@@ -76,6 +76,33 @@ export async function setDocs(col: string, docs: { id: string; data: RadarData }
   return docs.map((d) => v.get(d.id) ?? 1);
 }
 
+/** Bajas en bloque (eliminar las empresas marcadas): una sola consulta. */
+export async function deleteDocs(col: string, ids: string[]) {
+  await db.radarDoc.updateMany({ where: { col, id: { in: ids }, deleted: false }, data: { deleted: true, data: {}, v: { increment: 1 } } });
+}
+
+/**
+ * Cambios en bloque (los mismos campos o distintos para cada una): una sola consulta que mezcla los campos de primer
+ * nivel, igual que updateDoc sin versión. Los que no existen se ignoran. Devuelve la versión nueva de cada uno.
+ */
+export async function updateDocs(col: string, docs: { id: string; data: RadarData }[]) {
+  const lote = JSON.stringify(docs.map((d) => ({ id: d.id, patch: clean(d.data) })));
+  const rows = await db.$queryRaw<{ id: string; v: number }[]>`
+    UPDATE "RadarDoc" AS r SET data = r.data || x.patch, v = r.v + 1, "updatedAt" = now()
+    FROM jsonb_to_recordset(${lote}::jsonb) AS x(id text, patch jsonb)
+    WHERE r.col = ${col} AND r.id = x.id AND r.deleted = false
+    RETURNING r.id, r.v`;
+  const v = new Map(rows.map((r) => [r.id, Number(r.v)]));
+  return docs.map((d) => v.get(d.id));
+}
+
+/** ¿Hay algún «borrar este campo» ({__delete__: true}) en el cambio? Esos van por updateDoc, uno por uno. */
+export function borraCampos(d: unknown): boolean {
+  if (Array.isArray(d)) return d.some(borraCampos);
+  if (d && typeof d === "object") return isDelete(d) || Object.values(d as RadarData).some(borraCampos);
+  return false;
+}
+
 export class VersionConflict extends Error {}
 
 /**

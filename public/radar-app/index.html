@@ -93,6 +93,27 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
 #rdr .im-sin>summary{cursor:pointer;color:var(--accent-2);font-size:13.5px;font-weight:600;padding:4px 2px;list-style:none}
 #rdr .im-sin>summary::-webkit-details-marker{display:none}
 #rdr .im-sin p{max-height:180px;overflow:auto;margin:6px 0 0}
+
+/* marcar empresas */
+#rdr .ff-l{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#rdr .selbar{position:sticky;top:78px;z-index:6;display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:18px;border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line));background:color-mix(in srgb,var(--surface) 90%,var(--accent));box-shadow:var(--shadow)}
+#rdr .selbar-c,#rdr .selbar-a{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#rdr .selbar-c b{margin-right:auto;font-size:15px}
+#rdr .sel-op{flex:1 1 170px;min-width:0}
+#rdr .sel-op select{width:100%}
+#rdr .sel-del{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+#rdr .sel-del.sel-ok{background:var(--bad);color:#fff;border-color:var(--bad)}
+#rdr .pc-sel{position:relative}
+#rdr .pc-chk{position:absolute;left:6px;top:6px;width:22px;height:22px;border-radius:7px;border:2px solid var(--line2);background:var(--surface);display:grid;place-items:center;z-index:1}
+#rdr .pc-sel.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--glass))}
+#rdr .pc-sel.on .pc-chk{background:var(--accent);border-color:var(--accent)}
+#rdr .pc-sel.on .pc-chk::after{content:"✓";color:#fff;font-weight:800;font-size:13px;line-height:1}
+@container rdr (max-width:560px){
+  #rdr .selbar{top:70px;gap:8px;padding:10px 12px}
+  #rdr .selbar-a{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  #rdr .selbar-a .btn{justify-content:center}
+  #rdr .sel-op select{font-size:13px;padding-block:8px}
+}
 </style>
 <style>
 /* Radar Comercial DARTPAC (encapsulado en #rdr) */
@@ -1341,18 +1362,21 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
     return {
       set: function (r, d) { ops.push({ op: "set", c: r._c, id: r.id, d: d || {} }); return this; },
       update: function (r, d) { ops.push({ op: "update", c: r._c, id: r.id, d: d || {} }); return this; },
+      delete: function (r) { ops.push({ op: "delete", c: r._c, id: r.id }); return this; },
       commit: async function (alAvanzar) {
-        // las altas entran juntas en la base (de a 500); los cambios van uno por uno del lado del servidor (de a 100)
-        var paso = ops.every(function (o) { return o.op === "set"; }) ? 500 : 100;
+        // del mismo tipo y fuera de los ajustes, el servidor los hace todos juntos: de a 500; si no, de a 100
+        var paso = ops.every(function (o) { return o.op === ops[0].op && o.c === ops[0].c && o.c !== "config"; }) ? 500 : 100;
         for (var i = 0; i < ops.length; i += paso) {
           var parte = ops.slice(i, i + paso), cols = new Set(), keys = new Set(), antes = [];
           parte.forEach(function (o) {
             var k = o.c + "/" + o.id, x = cache.get(k);
-            antes.push([k, x]); cache.set(k, { v: x ? x.v : 0, d: o.op === "update" && x && x.d ? mezclar(x.d, o.d) : mezclar({}, o.d) }); cols.add(o.c); keys.add(k);
+            antes.push([k, x]);
+            cache.set(k, { v: x ? x.v : 0, d: o.op === "delete" ? null : o.op === "update" && x && x.d ? mezclar(x.d, o.d) : mezclar({}, o.d) });
+            cols.add(o.c); keys.add(k);
           });
           avisar(cols, keys);
           try {
-            var j = await api("/doc", { ops: parte.map(function (o) { return { op: o.op, c: o.c, id: o.id, d: o.d }; }) });
+            var j = await api("/doc", { ops: parte.map(function (o) { return o.op === "delete" ? { op: o.op, c: o.c, id: o.id } : { op: o.op, c: o.c, id: o.id, d: o.d }; }) });
             (j.docs || []).forEach(function (r, n) { var o = parte[n], x = o && cache.get(o.c + "/" + o.id); if (r && r.v && x) x.v = Math.max(x.v, r.v); });
           } catch (e) {
             antes.forEach(function (a) { cache.set(a[0], a[1] || { v: 0, d: null }); }); avisar(cols, keys); programar(300);
@@ -3098,7 +3122,8 @@ function vMapa(){
 }
 const ordenP=(a,b)=>(vence(b)-vence(a))||(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1)||String(a.nombre).localeCompare(String(b.nombre));
 function tarjeta(p){ const et=p.etapa||"nuevo", loc=[p.ciudad,(PROV[p.provincia]||{}).c||provNom(p.provincia)].filter(Boolean).join(", ");
-  return `<button class="pc ${vence(p)?"due":""}" data-act="ver" data-id="${esc(p.id)}"><span class="pc-ic" aria-hidden="true">${rubIc(p.rubro)}</span><span class="pc-t"><b>${esc(p.nombre)}</b><small>${esc(rubNom(p.rubro))}</small><small class="pc-loc">${IC.pin}${esc(loc)}</small>${yaContactado(p)&&ultimoC(p)?`<small class="pc-cont">✓ Contactado el ${esc(fCorta(ultimoC(p)))}</small>`:""}</span>
+  const sm=S.selMode&&S.tab==="lista", on=sm&&S.sel.has(p.id);
+  return `<button class="pc ${vence(p)?"due":""}${sm?" pc-sel"+(on?" on":""):""}" data-act="${sm?"selT":"ver"}" data-id="${esc(p.id)}"${sm?` aria-pressed="${on}"`:""}>${sm?`<span class="pc-chk" aria-hidden="true"></span>`:""}<span class="pc-ic" aria-hidden="true">${rubIc(p.rubro)}</span><span class="pc-t"><b>${esc(p.nombre)}</b><small>${esc(rubNom(p.rubro))}</small><small class="pc-loc">${IC.pin}${esc(loc)}</small>${yaContactado(p)&&ultimoC(p)?`<small class="pc-cont">✓ Contactado el ${esc(fCorta(ultimoC(p)))}</small>`:""}</span>
    <span class="pc-r">${ptBadge(p)}<span class="pill et ${et}">${ETN[et]||et}</span>${vence(p)?`<span class="pill pot-alto">Seguir hoy</span>`:p.potencial?`<span class="pot-dot pot-${p.potencial}" title="${POT[p.potencial]}"><i></i>${{alto:"Alto",medio:"Medio",bajo:"Bajo"}[p.potencial]}</span>`:""}</span></button>`; }
 const pct=(a,b)=>b?Math.round(a/b*100):0;
 function cabecera(eyebrow,titulo,sub,acc){ return `<header class="vh"><div class="vh-t"><p class="eyebrow">${eyebrow}</p><h1 class="h1">${titulo}</h1>${sub?`<p class="vh-sub">${sub}</p>`:""}</div>${acc?`<div class="vh-acc">${acc}</div>`:""}</header>`; }
@@ -3182,8 +3207,8 @@ function vLista(){ const q=norm(S.q), LE=S.listaIds?"todos":(S.lEst||"pend"), nC
    <div class="fsel-row">${sel("f-prov",S.fProv,Object.entries(PROV).map(([k,p])=>[k,p.n]).sort((a,b)=>a[1].localeCompare(b[1])),"Todas las provincias")}${sel("f-rub",S.fRub,Object.entries(RUB).map(([k,r])=>[k,r.n]),"Todos los rubros")}${sel("f-et",S.fEt,[...ETAPAS,["descartado","Descartado"]],"Todas las etapas")}${sel("f-pot",S.fPot,[["alto","Potencial alto"],["medio","Potencial medio"],["bajo","Potencial bajo"]],"Cualquier potencial")}</div>
    <div class="lst-ctl"><div class="seg" role="group" aria-label="Ordenar">${[["pt","Por puntaje"],["pot","Por potencial"],["rec","Más nuevos"]].map(([k,t])=>`<button data-act="ordenL" data-v="${k}" aria-selected="${(S.ordenL||"pt")===k}">${t}</button>`).join("")}</div>${(S.cfg.vendedores||[]).length?`<div class="chips">${S.cfg.vendedores.map(v=>`<button class="chip" data-act="fAsig" data-v="${esc(v.n)}" aria-pressed="${S.fAsig===v.n}">${esc(v.n)}</button>`).join("")}</div>`:""}</div>
     ${S.listaIds?`<div class="filtro"><span>Mostrando ${L.length} empresas de una alerta</span><button class="btn sm" data-act="quitarIds">${IC.x}Ver todas</button></div>`:""}
-    <div class="filt-foot"><span class="hint"><b class="num" style="color:var(--fg)">${L.length}</b> resultado${L.length===1?"":"s"}</span>${L.some(p=>vivoP(p)&&!seqActiva(p))?`<button class="btn sm" data-act="seqSumarLista">⚡ Sumar ${L.filter(p=>vivoP(p)&&!seqActiva(p)).length} a una secuencia</button>`:""}${hayF?`<button class="btn sm ghost" data-act="limpiarF">${IC.x}Limpiar filtros</button>`:""}</div></div>
-   ${L.length?`<div class="list grid-l">${L.slice(0,300).map(tarjeta).join("")}</div>${L.length>300?`<p class="hint">Mostrando 300 de ${L.length}. Usá los filtros para acotar.</p>`:""}`:`<div class="empty"><b>${S.P.length?"Ningún prospecto con esos filtros":"Tu base está vacía"}</b><span class="hint">${S.P.length?"Probá sacar algún filtro.":"Pedile a Claude una búsqueda desde el mapa o agregá prospectos a mano."}</span></div>`}
+    <div class="filt-foot"><span class="ff-l"><span class="hint"><b class="num" style="color:var(--fg)">${L.length}</b> resultado${L.length===1?"":"s"}</span>${S.P.length?`<button class="btn sm${S.selMode?" primary":""}" data-act="selModo" aria-pressed="${S.selMode}">${S.selMode?"Terminar de marcar":"☑ Marcar"}</button>`:""}</span>${L.some(p=>vivoP(p)&&!seqActiva(p))?`<button class="btn sm" data-act="seqSumarLista">⚡ Sumar ${L.filter(p=>vivoP(p)&&!seqActiva(p)).length} a una secuencia</button>`:""}${hayF?`<button class="btn sm ghost" data-act="limpiarF">${IC.x}Limpiar filtros</button>`:""}</div></div>
+   ${S.selMode?selBarra(L):""}${L.length?`<div class="list grid-l">${L.slice(0,300).map(tarjeta).join("")}</div>${L.length>300?`<p class="hint">Mostrando 300 de ${L.length}. Usá los filtros para acotar.</p>`:""}`:`<div class="empty"><b>${S.P.length?"Ningún prospecto con esos filtros":"Tu base está vacía"}</b><span class="hint">${S.P.length?"Probá sacar algún filtro.":"Pedile a Claude una búsqueda desde el mapa o agregá prospectos a mano."}</span></div>`}
   </section>`; }
 function vEmbudo(){ const A=S.P.filter(p=>p.etapa!=="descartado"), T=A.length, c=k=>A.filter(p=>(p.etapa||"nuevo")===k).length;
   const des=S.P.length-T, n={}; ETAPAS.forEach(([k])=>n[k]=c(k));
@@ -3985,6 +4010,43 @@ function importar(){
       if(hechos) toast(`Se cargaron ${nf(hechos)} de ${nf(total)}. Tocá el botón de nuevo: lo que ya entró no se repite.`);
       setTimeout(calcular,600); };
   }); }
+/* Marcar empresas en la Lista (web): con «Marcar», cada tarjeta se marca o desmarca al tocarla, y la barra de arriba
+   permite eliminarlas, cambiarles etapa, rubro, provincia o potencial, o sumarlas a una secuencia, todas juntas. */
+S.selMode=false; S.sel=new Set();
+const selL=()=>S.P.filter(p=>S.sel.has(p.id));
+const selPl=(n,a,b)=>n.toLocaleString("es-AR")+" "+(n===1?a:b);
+function selBarra(L){ const n=S.sel.size, vis=L.length, todasVis=vis&&L.every(p=>S.sel.has(p.id));
+  const op=(k,t,arr)=>`<label class="fsel sel-op"><select data-selset="${k}" aria-label="${t}" ${n?"":"disabled"}><option value="">${t}</option>${arr.map(([v,x])=>`<option value="${v}">${esc(x)}</option>`).join("")}</select></label>`;
+  return `<div class="selbar" role="toolbar" aria-label="Acciones con las empresas marcadas">
+    <div class="selbar-c"><b class="num">${selPl(n,"marcada","marcadas")}</b>
+      ${vis&&!todasVis?`<button class="btn sm ghost" data-act="selTodas">Marcar las ${vis.toLocaleString("es-AR")} de la lista</button>`:""}${n?`<button class="btn sm ghost" data-act="selNinguna">Desmarcar todo</button>`:""}
+      <button class="btn sm" data-act="selModo">Listo</button></div>
+    <div class="selbar-a">
+      ${op("etapa","Cambiar etapa…",[...ETAPAS,["descartado","Descartado"]])}
+      ${op("rubro","Cambiar rubro…",Object.entries(RUB).map(([k,r])=>[k,r.n]))}
+      ${op("provincia","Cambiar provincia…",Object.entries(PROV).map(([k,p])=>[k,p.n]).sort((a,b)=>a[1].localeCompare(b[1])))}
+      ${op("potencial","Cambiar potencial…",[["alto","Potencial alto"],["medio","Potencial medio"],["bajo","Potencial bajo"]])}
+      <button class="btn sm" data-act="selSecuencia" ${n?"":"disabled"}>⚡ Sumar a una secuencia</button>
+      <button class="btn sm sel-del" data-act="selBorrar" ${n?"":"disabled"}>${IC.x}Eliminar</button>
+    </div></div>`; }
+async function selAplicar(campo,valor){ const L=selL(); if(!L.length) return toast("Marcá al menos una empresa.");
+  const t=Date.now(), por=S.yo||S.cfg.vendedor||"", b=S.db.batch();
+  const NOM={etapa:ETN,rubro:Object.fromEntries(Object.entries(RUB).map(([k,r])=>[k,r.n])),provincia:Object.fromEntries(Object.entries(PROV).map(([k,p])=>[k,p.n])),potencial:{alto:"alto",medio:"medio",bajo:"bajo"}}[campo]||{};
+  const texto=campo==="etapa"?`Pasó a ${ETN[valor]}`:`${{rubro:"Rubro",provincia:"Provincia",potencial:"Potencial"}[campo]}: ${NOM[valor]||valor}`;
+  L.forEach(p=>{ const upd={[campo]:valor,actualizado:t};
+    if(campo==="etapa"){ if(p.seq&&!p.seq.fin&&!["nuevo","contactado"].includes(valor)) upd.seq=Object.assign({},p.seq,{fin:valor}); if(valor==="cliente"&&!p.clienteEl) upd.clienteEl=t;
+      if(valor==="cliente"||valor==="descartado") upd.proximo=""; if(valor==="respondio"&&!p.proximo) upd.proximo=addDays(hoy(),1); if(valor==="cotizado") upd.proximo=addDays(hoy(),3); }
+    upd.historial=[...(p.historial||[]),{t,tipo:campo==="etapa"?"etapa":"dato",texto:texto+" (cambio en grupo)",por}];
+    b.update(S.db.doc("prospectos/"+p.id),upd); });
+  if(await guardar(()=>b.commit(),`${selPl(L.length,"empresa","empresas")} → ${campo==="etapa"?ETN[valor]:NOM[valor]||valor}`)) render(); }
+async function selBorrar(btn){ const L=selL(); if(!L.length) return;
+  if(btn.dataset.ok!=="1"){ btn.dataset.ok="1"; btn.classList.add("sel-ok"); btn.textContent=`¿Eliminar ${selPl(L.length,"empresa","empresas")}? Tocá de nuevo`;
+    setTimeout(()=>{ if(btn.isConnected&&btn.dataset.ok==="1"){ btn.dataset.ok=""; btn.classList.remove("sel-ok"); btn.innerHTML=IC.x+"Eliminar"; } },6000); return; }
+  btn.disabled=true; btn.textContent="Eliminando…";
+  const b=S.db.batch(); L.forEach(p=>b.delete(S.db.doc("prospectos/"+p.id)));
+  if(await guardar(()=>b.commit(),`${selPl(L.length,"empresa eliminada","empresas eliminadas")} del Radar`)){ S.sel.clear(); render(); } else render(); }
+document.addEventListener("change",e=>{ const el=e.target; if(!el||!el.matches||!el.matches("[data-selset]")||!RROOT.contains(el)) return; const v=el.value; el.value=""; if(v) selAplicar(el.dataset.selset,v); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&S.selMode&&S.tab==="lista"&&$("#sheet").hidden){ S.selMode=false; S.sel.clear(); render(); } });
 function partirZona(deps,n){ if(n<=1||deps.length<=1) return [deps.slice()];
   /* agrupa partidos vecinos: ordena sobre el eje más largo de la zona y corta en tramos parejos */
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9; deps.forEach(i=>{ const d=ADM.D[i]; x0=Math.min(x0,d.x); x1=Math.max(x1,d.x); y0=Math.min(y0,d.y); y1=Math.max(y1,d.y); });
@@ -4116,6 +4178,10 @@ function ajustes(){ const c=S.cfg;
 
 /* ---------- eventos ---------- */
 const ACT={
+ selModo:()=>{ S.selMode=!S.selMode; if(!S.selMode) S.sel.clear(); render(); },
+ selT:d=>{ if(S.sel.has(d.id)) S.sel.delete(d.id); else S.sel.add(d.id); render(); },
+ selTodas:()=>{ (S.listaVis||[]).forEach(p=>S.sel.add(p.id)); render(); }, selNinguna:()=>{ S.sel.clear(); render(); },
+ selBorrar:(d,b)=>selBorrar(b), selSecuencia:()=>{ const ids=[...S.sel]; if(ids.length) seqIniciar(ids); },
  zonaSel:z=>{ if(!z||!ADM.D[z.d]) return; S.zona={tipo:z.tipo,i:z.i,d:z.d}; S.min=false; render(); try{ if(z.tipo==="dep") MAP3D.irZona(z.d); }catch(e){} },
  zonaVer:d=>{ const i=+d.i; if(!ADM.D[i]) return; if(S.prov!==ADM.D[i].prov){ S.prov=ADM.D[i].prov; LS.set("prov",S.prov); } S.zona={tipo:"dep",i,d:i}; S.min=false; render(); setTimeout(()=>{ try{ MAP3D.irZona(i); }catch(e){} },80); },
  zonaCerrar:()=>{ S.zona=null; render(); try{ if(S.prov) MAP3D.enfocar(S.prov); }catch(e){} },
