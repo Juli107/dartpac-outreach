@@ -122,6 +122,8 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
 #rdr .m3-tip>span{color:rgba(225,236,250,.8)}
 #rdr .m3-tip .num{color:#8CC9FF;font-weight:650}
 #rdr .prov-list .prov-item small{display:block;font-size:11.5px;color:var(--muted);font-weight:500;margin-top:2px}
+
+#rdr .todos-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
 </style>
 <style>
 /* Radar Comercial DARTPAC (encapsulado en #rdr) */
@@ -3034,6 +3036,11 @@ function infoMapa(pv,z){ const P=PROV[pv]; if(!P) return ""; const pr=n=>`<span 
   if(z&&ADM.D[z.d]){ if(z.tipo==="loc"&&ADM.L[z.i]){ const l=ADM.L[z.i]; return `<b>${esc(l.n)}</b><span>Localidad · ${esc(depNom(z.d,true))}</span>${l.p?`<span>Unos ${fmtHab(l.p)} habitantes</span>`:""}`; }
     const hd=habDep(z.d); return `<b>${esc(depNom(z.d,true))}</b><span>${esc(DEP_T(pv))} · ${esc(P.n)}</span><span>${hd?`<span class="num">${fmtHab(hd)}</span> habitantes · `:""}${pr(cntDep()[z.d]||0)}</span>`; }
   const hp=habProv(pv); return `<b>${esc(P.n)}</b><span>${hp?`<span class="num">${fmtHab(hp)}</span> habitantes · `:""}${pr(S.P.filter(p=>p.provincia===pv).length)}</span>`; }
+/* «Marcar todos» / «Desmarcar todos» de una lista de casillas (data-todos = id de la lista) */
+const todosTxt=(b,box)=>{ const ins=[...box.querySelectorAll('input[type="checkbox"]')]; b.textContent=ins.length&&ins.every(x=>x.checked)?"Desmarcar todos":"Marcar todos"; };
+document.addEventListener("click",e=>{ const b=e.target&&e.target.closest?e.target.closest("[data-todos]"):null; if(!b||!RROOT.contains(b)) return; const box=document.getElementById(b.dataset.todos); if(!box) return;
+  const ins=[...box.querySelectorAll('input[type="checkbox"]')], todos=ins.every(x=>x.checked); ins.forEach(x=>{ x.checked=!todos; }); box.dispatchEvent(new Event("change",{bubbles:true})); todosTxt(b,box); });
+document.addEventListener("change",e=>{ const box=e.target&&e.target.closest?e.target.closest(".rubros[id]"):null; if(!box||!RROOT.contains(box)) return; const b=RROOT.querySelector(`[data-todos="${box.id}"]`); if(b) todosTxt(b,box); });
 function depsLista(pv){ const idx=ADM.porProv[pv]||[]; if(idx.length<2) return ""; const cnt={}; let sin=0;
   S.P.forEach(p=>{ if(p.provincia!==pv) return; const d=depDeP(p); if(d<0) sin++; else cnt[d]=(cnt[d]||0)+1; });
   const vacios=idx.filter(i=>!cnt[i]), q=norm(S.depQ||""), orden=idx.slice().sort((a,b)=>(cnt[b]||0)-(cnt[a]||0)||habDep(b)-habDep(a)||ADM.D[a].n.localeCompare(ADM.D[b].n,"es",{numeric:true}));
@@ -4101,7 +4108,7 @@ function pedirBusqueda(prov,o){ o=o||{}; const reg=o.reg?ADM.R.find(r=>r.id===o.
    <div class="stack"><span class="eyebrow">Zona</span><div class="zona-ops" role="radiogroup" aria-label="Zona de la búsqueda">${ops}</div>
     ${multi&&!reg?`<div class="zona-dep" id="b-deps" ${modo==="elegir"?"":"hidden"}><div class="row zd-acc"><div class="search">${IC.search}<input id="b-dq" type="search" placeholder="Buscar ${esc(DEP_TS1(prov))} o localidad" autocomplete="off"></div><button type="button" class="btn sm" data-zd="vacios">Los que no tienen prospectos</button><button type="button" class="btn sm ghost" data-zd="ninguno">Ninguno</button></div>
       <div class="zd-list">${orden.map(i=>`<label class="zd-item" data-q="${esc(norm(ADM.D[i].n+" "+(ADM.D[i].b||[]).join(" ")+" "+(ADM.locsDe[i]||[]).map(j=>ADM.L[j].n).join(" ")))}"><input type="checkbox" value="${i}" ${elegidos.has(i)?"checked":""}><span>${esc(depNom(i,true))}</span><span class="num ${cntD[i]?"":"muted"}">${cntD[i]||0}</span></label>`).join("")}</div></div>`:""}</div>
-   <div class="stack"><span class="eyebrow">Rubros</span><div class="rubros" id="b-ru">${rub0.concat(Object.keys(RUB).filter(k=>!rub0.includes(k)&&k!=="otro")).map((r,i)=>`<label class="rubro" style="cursor:pointer"><input type="checkbox" value="${r}" ${i<Math.min(6,rub0.length)||r==="revendedor"||r==="papelera"||r==="descartables"?"checked":""} style="accent-color:var(--accent)"> ${rubIc(r)} ${esc(rubNom(r))}</label>`).join("")}</div></div>
+   <div class="stack"><div class="todos-h"><span class="eyebrow">Rubros</span><button type="button" class="btn sm ghost" data-todos="b-ru">Marcar todos</button></div><div class="rubros" id="b-ru">${rub0.concat(Object.keys(RUB).filter(k=>!rub0.includes(k)&&k!=="otro")).map((r,i)=>`<label class="rubro" style="cursor:pointer"><input type="checkbox" value="${r}" ${i<Math.min(6,rub0.length)||r==="revendedor"||r==="papelera"||r==="descartables"?"checked":""} style="accent-color:var(--accent)"> ${rubIc(r)} ${esc(rubNom(r))}</label>`).join("")}</div></div>
    <div class="stack"><span class="eyebrow">Dónde buscar</span><div class="rubros" id="b-fu">${FUENTES.map(([k,t,d])=>`<label class="rubro" style="cursor:pointer" title="${esc(d)}"><input type="checkbox" value="${k}" ${(LS.get("fuentes",FUENTES_DEF)).includes(k)?"checked":""} style="accent-color:var(--accent)"> ${esc(t)}</label>`).join("")}</div><p class="hint">Web y Google siempre está incluida. Los teléfonos y emails se verifican en la web o el perfil oficial de cada empresa.</p></div>
    <label class="fld"><span>¿Algo puntual? (opcional)</span><textarea id="b-n" rows="2" placeholder="Ej: priorizar empresas grandes o las que venden por mayor"></textarea></label>
    <p class="hint b-plan" id="b-plan" aria-live="polite"></p>
@@ -4136,7 +4143,7 @@ function buscarRed(red){ const NOM={tiktok:"TikTok",instagram:"Instagram",facebo
   const def=LS.get("redRub",["papelera","descartables","revendedor","catering","gastronomia","carniceria"]);
   abrir("Buscar clientes en "+NOM,`<p class="hint">Claude busca cuentas comerciales argentinas en ${NOM} de estos rubros, con el teléfono o WhatsApp que publican, y las carga en esta pestaña sin repetir a tus clientes de DARTPAC.</p>
    <label class="fld"><span>Provincia</span><select id="r-p">${provs.map(([pid,p])=>`<option value="${pid}" ${pid===pre?"selected":""}>${esc(p.n)} (${cnt[pid]||0})</option>`).join("")}</select></label>
-   <div class="stack"><span class="eyebrow">Rubros</span><div class="rubros" id="r-r">${Object.keys(RUB).filter(k=>k!=="otro").map(r=>`<label class="rubro" style="cursor:pointer"><input type="checkbox" value="${r}" ${def.includes(r)?"checked":""} style="accent-color:var(--accent)"> ${rubIc(r)} ${esc(rubNom(r))}</label>`).join("")}</div></div>
+   <div class="stack"><div class="todos-h"><span class="eyebrow">Rubros</span><button type="button" class="btn sm ghost" data-todos="r-r">${Object.keys(RUB).filter(k=>k!=="otro").every(r=>def.includes(r))?"Desmarcar todos":"Marcar todos"}</button></div><div class="rubros" id="r-r">${Object.keys(RUB).filter(k=>k!=="otro").map(r=>`<label class="rubro" style="cursor:pointer"><input type="checkbox" value="${r}" ${def.includes(r)?"checked":""} style="accent-color:var(--accent)"> ${rubIc(r)} ${esc(rubNom(r))}</label>`).join("")}</div></div>
    <label class="fld"><span>¿Algo puntual? (opcional)</span><textarea id="r-n" rows="2" placeholder="Ej: cuentas que venden por mayor, zona Rosario"></textarea></label>
    <div class="b-go"><button class="btn primary block" id="r-go">${IC.search}Buscar en ${NOM}</button></div>
    <p class="hint">Tarda entre 10 y 20 minutos. Podés seguir usando la app: las cuentas van apareciendo solas acá.</p>`,root=>{
