@@ -28,7 +28,8 @@ export async function POST(req: Request) {
       } else if (o.op === "set") {
         out.push({ id: o.id, v: await setDoc(o.c, o.id, o.d ?? {}) });
       } else {
-        const v = await updateDoc(o.c, o.id, o.d ?? {}, { ifVersion: o.v });
+        // Los ajustes del Radar (config/empresa…) se crean con el primer cambio: la base importada no los trae.
+        const v = await updateDoc(o.c, o.id, o.d ?? {}, { ifVersion: o.v, create: o.c === "config" });
         out.push({ id: o.id, v: v ?? undefined });
       }
     } catch (e) {

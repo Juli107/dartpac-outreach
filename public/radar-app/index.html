@@ -1273,7 +1273,8 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
 
   async function escribir(op, col, id, d) {
     var k = col + "/" + id, antes = cache.get(k), nuevo;
-    if (op === "update") { if (!antes || !antes.d) throw err("not_found", "Ese registro ya no existe"); nuevo = { v: antes.v, d: mezclar(antes.d, d) }; }
+    // Los ajustes (config/…) se crean con el primer cambio: la base del Radar llega sin ellos. El resto tiene que existir.
+    if (op === "update") { if (!antes || !antes.d) { if (col !== "config") throw err("not_found", "Ese registro ya no existe"); nuevo = { v: 0, d: mezclar({}, d) }; } else nuevo = { v: antes.v, d: mezclar(antes.d, d) }; }
     else if (op === "set") nuevo = { v: antes ? antes.v : 0, d: mezclar({}, d) };
     else nuevo = { v: antes ? antes.v : 0, d: null };
     cache.set(k, nuevo); avisar(new Set([col]), new Set([k]));
