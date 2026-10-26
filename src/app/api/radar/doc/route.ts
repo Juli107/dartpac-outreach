@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { deleteDoc, NotFound, setDoc, setDocs, updateDoc, validPath, VersionConflict } from "@/lib/radar/store";
+import { borraCampos, deleteDoc, deleteDocs, NotFound, setDoc, setDocs, updateDoc, updateDocs, validPath, VersionConflict } from "@/lib/radar/store";
 
 export const dynamic = "force-dynamic";
 // completar muchas empresas de una base son cambios uno por uno: con 100 por pedido alcanza y sobra
@@ -23,9 +23,19 @@ export async function POST(req: Request) {
   const ops = "ops" in parsed.data ? parsed.data.ops : [parsed.data];
   const out: { id: string; v?: number }[] = [];
   for (const o of ops) if (!validPath(o.c, o.id)) return NextResponse.json({ error: "invalid_argument", detail: `${o.c}/${o.id}` }, { status: 400 });
-  // Altas en bloque de una misma colección (importar una base): todas juntas en vez de una consulta por documento.
-  if (ops.length > 1 && ops.every((o) => o.op === "set" && o.c === ops[0].c)) {
-    const vs = await setDocs(ops[0].c, ops.map((o) => ({ id: o.id, data: o.d ?? {} })));
+  // En bloque, del mismo tipo y la misma colección (importar una base, eliminar o cambiar las marcadas):
+  // una consulta para todas en vez de una por documento. Los ajustes (config) y los cambios con versión van uno por uno.
+  const c0 = ops[0].c, mismo = (op: string) => ops.length > 1 && c0 !== "config" && ops.every((o) => o.op === op && o.c === c0);
+  if (mismo("set")) {
+    const vs = await setDocs(c0, ops.map((o) => ({ id: o.id, data: o.d ?? {} })));
+    return NextResponse.json({ ok: true, docs: ops.map((o, i) => ({ id: o.id, v: vs[i] })), now: Date.now() });
+  }
+  if (mismo("delete")) {
+    await deleteDocs(c0, ops.map((o) => o.id));
+    return NextResponse.json({ ok: true, docs: ops.map((o) => ({ id: o.id })), now: Date.now() });
+  }
+  if (mismo("update") && ops.every((o) => o.v == null && !borraCampos(o.d ?? {}))) {
+    const vs = await updateDocs(c0, ops.map((o) => ({ id: o.id, data: o.d ?? {} })));
     return NextResponse.json({ ok: true, docs: ops.map((o, i) => ({ id: o.id, v: vs[i] })), now: Date.now() });
   }
   for (const o of ops) {
