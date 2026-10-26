@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { sequenceHealthMap, sequenceVerdict } from "@/lib/health";
-import { CONFIRM_ON, scheduleLabel } from "@/lib/labels";
+import { CONFIRM_ON, nombreDeCopia, scheduleLabel } from "@/lib/labels";
 import { PageHeader, Segmented, CheckList, Dot } from "@/components/ui";
 import { Switch } from "@/components/Switch";
-import { toggleSequence } from "../actions";
+import { DuplicarSecuencia } from "@/components/DuplicarSecuencia";
+import { AvisoDeUnaVez } from "@/components/AvisoDeUnaVez";
+import { duplicateSequence, toggleSequence } from "../actions";
 import { StepsTab } from "./_tabs/StepsTab";
 import { PeopleTab } from "./_tabs/PeopleTab";
 import { PreviewTab } from "./_tabs/PreviewTab";
@@ -39,10 +41,11 @@ export default async function SequenceDetail({ params, searchParams }: { params:
   if (!seq) notFound();
   const tab = TABS.some(([k]) => k === sp.tab) ? sp.tab! : "pasos";
 
-  const [health, people, unread] = await Promise.all([
+  const [health, people, unread, nombres] = await Promise.all([
     sequenceHealthMap([seq]),
     db.enrollment.count({ where: { sequenceId: id } }),
     db.reply.count({ where: { read: false, contact: { enrollments: { some: { sequenceId: id } } } } }),
+    db.sequence.findMany({ select: { name: true } }),
   ]);
   const checks = health.get(id) ?? [];
   const verdict = sequenceVerdict(checks);
@@ -67,7 +70,15 @@ export default async function SequenceDetail({ params, searchParams }: { params:
             <span>· máx. {seq.dailyLimit} al día</span>
           </span>
         }
-      />
+      >
+        <DuplicarSecuencia action={duplicateSequence.bind(null, seq.id)} nombre={seq.name} sugerido={nombreDeCopia(seq.name, nombres.map((n) => n.name))} pasos={seq.steps.length} />
+      </PageHeader>
+
+      {sp.copia && (
+        <AvisoDeUnaVez params={["copia"]} className="card appear px-4 py-3 text-sm text-ink ring-1 ring-ok/25">
+          <b className="font-semibold text-[#7BE3B4]">✓ Copia lista.</b> Tiene los mismos pasos, variantes y ajustes que la original. Está apagada y sin contactos: revisala, cambiale el nombre en Ajustes si hace falta y sumá contactos en Personas.
+        </AvisoDeUnaVez>
+      )}
 
       {problems.length > 0 && (
         <details className="card appear" open={problems.some((p) => p.level === "bad")}>

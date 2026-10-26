@@ -10,6 +10,7 @@ import { sentToday as countSentToday, minGapMinutes } from "./quota";
 import { sePuedeEnviar } from "./verifier";
 import { contactWa } from "./whatsapp";
 import { eventoRadar } from "./radar/outreach";
+import { cargarVariables } from "./variables";
 
 const BATCH = 50;
 
@@ -23,6 +24,8 @@ export async function runDueSteps(now = new Date()) {
   const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
   const summary = { sent: 0, tasks: 0, finished: 0, errors: 0, sequencesOn: 0, outsideWindow: 0, skipped: 0 };
+  // Variables del equipo ({{catalogo}}, «si falta», saludo): se leen una vez por pasada.
+  const vars = await cargarVariables();
   const on = await db.sequence.findMany({
     where: { sendingOn: true, status: "ACTIVE" },
     select: { id: true, dailyLimit: true, sender: true, timeZone: true, startHour: true, endHour: true, sendDays: true },
@@ -81,7 +84,7 @@ export async function runDueSteps(now = new Date()) {
       continue;
     }
 
-    const ctx = { sender: sequence.sender, now, timeZone: sequence.timeZone };
+    const ctx = { sender: sequence.sender, now, timeZone: sequence.timeZone, vars };
     // Un paso que no se puede hacer por su canal (sin email válido, sin WhatsApp) se saltea y sigue el próximo.
     const skip = (step.type === "EMAIL" && !sePuedeEnviar(contact)) || (step.type === "WHATSAPP" && !contactWa(contact));
 

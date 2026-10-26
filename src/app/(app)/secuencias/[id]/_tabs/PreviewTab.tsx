@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { renderSignature } from "@/lib/signature";
 import { renderTemplate } from "@/lib/template";
+import { cargarVariables } from "@/lib/variables";
 import { stepDays, stepVariants } from "@/lib/variants";
 import { fullName } from "@/lib/labels";
 import { Empty } from "@/components/ui";
@@ -9,23 +10,26 @@ import { base, type Seq, type TabParams } from "./types";
 const SAMPLE = { id: "", email: "compras@logisur.com.ar", firstName: "Marta", lastName: "Ruiz", company: "Logisur", title: "Jefa de compras", city: "Haedo", province: "Buenos Aires", website: null, phone: null };
 
 export async function PreviewTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
-  const people = await db.enrollment.findMany({
-    where: { sequenceId: seq.id },
-    include: { contact: true },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
+  const [people, vars] = await Promise.all([
+    db.enrollment.findMany({
+      where: { sequenceId: seq.id },
+      include: { contact: true },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    }),
+    cargarVariables(),
+  ]);
   const contact = people.find((p) => p.contactId === sp.contacto)?.contact ?? people[0]?.contact ?? SAMPLE;
   const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
   const from = seq.sender ? `${seq.sender.name} <${seq.sender.email}>` : "(sin remitente: elígelo en Ajustes)";
-  const signature = seq.sender ? renderSignature(seq.sender, company, "", renderTemplate(seq.sender.signature, contact, { sender: seq.sender })) : null;
+  const signature = seq.sender ? renderSignature(seq.sender, company, "", renderTemplate(seq.sender.signature, contact, { sender: seq.sender, vars })) : null;
   const days = stepDays(seq.steps);
   // Igual que el motor: un seguimiento en el mismo hilo reutiliza el asunto del email anterior con "Re:".
   const threaded = new Map<string, string>();
   let previous = "";
   for (const step of seq.steps.filter((s) => s.type === "EMAIL")) {
     if (step.sameThread && previous) threaded.set(step.id, `Re: ${previous.replace(/^Re:\s*/i, "")}`);
-    else previous = renderTemplate(step.subject, contact, { sender: seq.sender, timeZone: seq.timeZone });
+    else previous = renderTemplate(step.subject, contact, { sender: seq.sender, timeZone: seq.timeZone, vars });
   }
 
   return (
@@ -45,7 +49,7 @@ export async function PreviewTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
       {seq.steps.length === 0 && <div className="card"><Empty title="Sin pasos que mostrar" /></div>}
 
       {seq.steps.map((step, i) => {
-        const ctx = { sender: seq.sender, timeZone: seq.timeZone };
+        const ctx = { sender: seq.sender, timeZone: seq.timeZone, vars };
         if (step.type === "WHATSAPP") {
           return (
             <article key={step.id} className="card appear px-5 py-4">

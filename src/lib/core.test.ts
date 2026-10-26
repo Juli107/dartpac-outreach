@@ -6,6 +6,7 @@ import { parseContactsCsv } from "./csv.ts";
 import { stripQuoted } from "./strip.ts";
 import { withSignature, renderSignature } from "./signature.ts";
 import { imageSize } from "./image-size.ts";
+import { nombreDeCopia } from "./labels.ts";
 import { authUrl, readIdToken, DomainError, GMAIL_SCOPE } from "./google.ts";
 
 const marta = { email: "marta@logisur.es", firstName: "Marta", company: "Logisur" };
@@ -176,4 +177,26 @@ test("verificador: tipeos, inválidos y riesgosos (sin red)", async () => {
   assert.equal(sePuedeEnviar({ email: "a@b.com", emailStatus: "invalido" }), false);
   assert.equal(sePuedeEnviar({ email: "a@b.com", emailStatus: null }), true);
   assert.equal(sePuedeEnviar({ email: null, emailStatus: null }), false);
+});
+
+test("variables del equipo: propias, «si falta», saludo propio y nombres con números", () => {
+  const vars = {
+    propias: [{ clave: "catalogo", valor: "plupack.com.ar/catalogo" }, { clave: "oferta_2", valor: "10 % en la primera compra" }, { clave: "mi_empresa", valor: "DARTPAC" }],
+    siFalta: { nombre: "equipo de compras", ciudad: "tu zona" },
+    saludo: { manana: "Buen día" },
+  };
+  const ctx = { vars, now: new Date("2026-10-26T13:00:00Z"), timeZone: "America/Argentina/Buenos_Aires" };
+  assert.equal(renderTemplate("{{saludo}}, {{nombre}}: {{catalogo}} · {{oferta_2}} — {{mi_empresa}}", {}, ctx), "Buen día, equipo de compras: plupack.com.ar/catalogo · 10 % en la primera compra — DARTPAC");
+  // el valor puntual del mensaje gana al «si falta» general, también cuando es vacío a propósito
+  assert.equal(renderTemplate("Hola {{nombre|amigos}} de {{ciudad}}", {}, ctx), "Hola amigos de tu zona");
+  assert.equal(renderTemplate("Hola {{nombre|}}!", {}, ctx), "Hola !");
+  // con el dato, el «si falta» no se usa; la tarde sigue con el texto de fábrica
+  assert.equal(renderTemplate("{{saludo}}, {{nombre}}", { firstName: "Marta" }, { ...ctx, now: new Date("2026-10-26T18:00:00Z") }), "Buenas tardes, Marta");
+  assert.deepEqual(unknownVariables("{{catalogo}} {{oferta_2}} {{color}}", ["catalogo", "oferta_2"]), ["color"]);
+});
+
+test("nombre libre para la copia de una secuencia", () => {
+  assert.equal(nombreDeCopia("Frigoríficos", []), "Frigoríficos (copia)");
+  assert.equal(nombreDeCopia("Frigoríficos", ["Frigoríficos (copia)"]), "Frigoríficos (copia 2)");
+  assert.equal(nombreDeCopia("Frigoríficos (copia)", ["Frigoríficos (copia)", "Frigoríficos (copia 2)"]), "Frigoríficos (copia 3)");
 });

@@ -10,6 +10,9 @@ import type { Prisma } from "@prisma/client";
 import { eventoRadar } from "@/lib/radar/outreach";
 import { iaConfigurada, parsearJson, pedirTexto } from "@/lib/radar/claude";
 import { quienSoy } from "@/lib/yo";
+import { nombreDeCopia } from "@/lib/labels";
+import { CLAVE_VALIDA, RESERVADAS } from "@/lib/template";
+import { cargarVariables, normalizarVariables } from "@/lib/variables";
 
 /**
  * Secuencia nueva, vacía: los pasos los elige el equipo (email, WhatsApp o tarea), sin nada de fábrica.
@@ -21,6 +24,51 @@ export async function createSequence(form: FormData) {
   const yo = await quienSoy().catch(() => null);
   const seq = await db.sequence.create({ data: { name, senderId: yo?.senderId ?? null } });
   redirect(`/secuencias/${seq.id}?tab=pasos`);
+}
+
+/**
+ * Duplica una secuencia con sus pasos, variantes, horario, remitente y límite diario. La copia nace apagada y sin
+ * contactos, para revisarla antes de encenderla.
+ */
+export async function duplicateSequence(id: string, form: FormData) {
+  const src = await db.sequence.findUnique({
+    where: { id },
+    include: { steps: { orderBy: { order: "asc" }, include: { variants: { orderBy: { label: "asc" } } } } },
+  });
+  if (!src) redirect("/secuencias");
+  let name = String(form.get("name") ?? "").trim().slice(0, 120);
+  if (!name) {
+    const usados = await db.sequence.findMany({ where: { name: { startsWith: src.name.replace(/\s+\(copia(?: \d+)?\)$/i, "") } }, select: { name: true } });
+    name = nombreDeCopia(src.name, usados.map((u) => u.name));
+  }
+  const copia = await db.sequence.create({
+    data: {
+      name,
+      status: "DRAFT",
+      sendingOn: false,
+      dailyLimit: src.dailyLimit,
+      senderId: src.senderId,
+      timeZone: src.timeZone,
+      startHour: src.startHour,
+      endHour: src.endHour,
+      sendDays: src.sendDays,
+      plainText: src.plainText,
+      steps: {
+        create: src.steps.map((st) => ({
+          order: st.order,
+          type: st.type,
+          delayDays: st.delayDays,
+          subject: st.subject,
+          body: st.body,
+          sameThread: st.sameThread,
+          variants: { create: st.variants.map((v) => ({ label: v.label, subject: v.subject, body: v.body })) },
+        })),
+      },
+    },
+  });
+  revalidatePath("/secuencias");
+  revalidatePath("/");
+  redirect(`/secuencias/${copia.id}?tab=pasos&copia=1`);
 }
 
 function refresh(id: string) {
@@ -102,7 +150,7 @@ export async function addStep(sequenceId: string, form: FormData) {
   const last = await db.step.findFirst({ where: { sequenceId }, orderBy: { order: "desc" } });
   const step = await db.step.create({ data: { sequenceId, order: (last?.order ?? 0) + 1, ...readStep(form) } });
   refresh(sequenceId);
-  redirect(`/secuencias/${sequenceId}?tab=pasos#paso-${step.id}`);
+  redirect(`/secuencias/${sequenceId}?tab=pasos&nuevo=${step.id}#paso-${step.id}`);
 }
 
 /** Sube o baja un paso (intercambia el orden con el vecino). */
@@ -158,7 +206,7 @@ export async function addVariant(stepId: string) {
   if (!label) return;
   await db.stepVariant.create({ data: { stepId, label, subject: step.subject, body: step.body } });
   refresh(step.sequenceId);
-  redirect(`/secuencias/${step.sequenceId}?tab=pasos&paso=${stepId}&variante=${label}`);
+  redirect(`/secuencias/${step.sequenceId}?tab=pasos&paso=${stepId}&variante=${label}&creada=1#paso-${stepId}`);
 }
 
 export async function updateVariant(id: string, form: FormData) {
@@ -170,7 +218,7 @@ export async function updateVariant(id: string, form: FormData) {
 export async function deleteVariant(id: string) {
   const v = await db.stepVariant.delete({ where: { id }, include: { step: { select: { sequenceId: true } } } });
   refresh(v.step.sequenceId);
-  redirect(`/secuencias/${v.step.sequenceId}?tab=pasos&paso=${v.stepId}`);
+  redirect(`/secuencias/${v.step.sequenceId}?tab=pasos&paso=${v.stepId}&borrada=${v.label}#paso-${v.stepId}`);
 }
 
 export async function deleteStep(stepId: string) {
@@ -226,14 +274,32 @@ export async function removeEnrollment(id: string) {
   refresh(e.sequenceId);
 }
 
+/** Guarda las variables del equipo (propias, «si falta» y saludo). Valen para todas las secuencias. */
+export async function guardarVariables(input: unknown): Promise<{ ok: true } | { error: string }> {
+  const propias = ((input as { propias?: { clave?: unknown }[] })?.propias ?? []).map((p) => String(p?.clave ?? "").trim().toLowerCase());
+  const vistas = new Set<string>();
+  for (const clave of propias) {
+    if (!clave) continue;
+    if (!CLAVE_VALIDA.test(clave)) return { error: `«${clave}» no sirve como nombre: usá letras sin tilde, números o guion bajo, empezando con una letra.` };
+    if (RESERVADAS.has(clave)) return { error: `{{${clave}}} ya existe: sale de los datos de cada contacto o del envío. Elegí otro nombre.` };
+    if (vistas.has(clave)) return { error: `{{${clave}}} está dos veces.` };
+    vistas.add(clave);
+  }
+  const variables = normalizarVariables(input) as Prisma.InputJsonValue;
+  await db.setting.upsert({ where: { id: "app" }, update: { variables }, create: { id: "app", variables } });
+  revalidatePath("/secuencias", "layout");
+  return { ok: true };
+}
+
 /** "Redactar con IA": propone el texto de un paso (email o WhatsApp) para Plupack Embalajes. */
 export async function redactarConIA(input: { tipo: "EMAIL" | "WHATSAPP" | "TASK"; orden: number; total: number; secuencia: string; borrador?: string }) {
   if (!iaConfigurada()) return { error: "La IA todavía no está configurada (falta la clave de la API de Claude en Vercel)." };
+  const propias = ((await cargarVariables().catch(() => null))?.propias ?? []).filter((p) => p.clave !== "mi_empresa").slice(0, 12);
   const canal = input.tipo === "EMAIL" ? "email (tono profesional y cercano, 70 a 120 palabras, con asunto corto)" : input.tipo === "WHATSAPP" ? "WhatsApp (tono rioplatense, cercano, 25 a 50 palabras, sin asunto)" : "tarea para el vendedor (qué hacer en la llamada o visita, 1 a 3 frases, con un título corto)";
   const momento = input.orden <= 1 ? "Es el primer contacto: presentate y pedí el contacto de compras." : input.orden >= input.total ? "Es el último mensaje: cerrá con amabilidad y dejá la puerta abierta." : "Es un seguimiento: referí brevemente al mensaje anterior y aportá algo nuevo.";
   const prompt = `Sos vendedor B2B en Argentina de ${process.env.COMPANY_NAME ?? "Plupack Embalajes"} (marca DARTPAC), mayorista de film stretch, film PVC, film de polietileno, bolsas, embalaje y descartables con stock permanente y envíos a todo el país.
 Escribí el paso ${input.orden} de ${input.total} de una secuencia de prospección llamada «${input.secuencia}», por ${canal}. ${momento}
-Usá estas variables tal cual, con doble llave, donde correspondan: {{saludo}}, {{empresa}}, {{ciudad}}, {{vendedor}}, {{mi_empresa}}. No inventes precios, descuentos ni datos.
+Usá estas variables tal cual, con doble llave, donde correspondan: {{saludo}}, {{empresa}}, {{ciudad}}, {{vendedor}}, {{mi_empresa}}.${propias.length ? ` El equipo también tiene estas (usalas solo si encajan): ${propias.map((p) => `{{${p.clave}}} = «${p.valor.slice(0, 80)}»`).join("; ")}.` : ""} No inventes precios, descuentos ni datos.
 ${input.borrador ? `Tomá como base este borrador y mejoralo: ${input.borrador.slice(0, 1500)}` : ""}
 Respondé solo JSON: {"asunto": "...", "texto": "..."}.`;
   try {

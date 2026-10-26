@@ -3,6 +3,7 @@ import { db } from "./db";
 import { sentToday } from "./quota";
 import { isInWindow, nextSendTime, windowFor } from "./schedule";
 import { unknownVariables } from "./template";
+import { cargarVariables, clavesPropias } from "./variables";
 import { mailboxFor, senderConnected, verifyMailbox } from "./mailer";
 import { lastRun } from "./settings";
 
@@ -104,7 +105,7 @@ type SequenceForHealth = {
 /** Problemas de la secuencia que impiden (o frenan) sus envíos. */
 export function sequenceChecks(
   sq: SequenceForHealth,
-  ctx: { now: Date; box?: MailboxInfo; boxToday: number; seqToday: number; waiting: number; failures: number },
+  ctx: { now: Date; box?: MailboxInfo; boxToday: number; seqToday: number; waiting: number; failures: number; propias?: string[] },
 ): Check[] {
   const checks: Check[] = [];
   if (sq.status === "ARCHIVED") return [{ level: "off", title: "Archivada" }];
@@ -118,7 +119,7 @@ export function sequenceChecks(
     if (texts.some((t) => !t.body.trim() || (needsSubject && !t.subject.trim()))) {
       checks.push({ level: "bad", title: `El paso ${s.order} tiene el asunto o el mensaje vacío` });
     }
-    const unknown = unknownVariables(texts.map((t) => t.subject + t.body).join(" "));
+    const unknown = unknownVariables(texts.map((t) => t.subject + t.body).join(" "), ctx.propias);
     if (unknown.length) checks.push({ level: "warn", title: `Variables desconocidas en el paso ${s.order}`, detail: unknown.map((v) => `{{${v}}}`).join(", ") });
   }
 
@@ -151,12 +152,14 @@ export function sequenceVerdict(checks: Check[]): { level: Level; text: string }
 }
 
 export async function sequenceHealthMap(sequences: SequenceForHealth[], now = new Date()) {
-  const [boxes, today, failures, waiting] = await Promise.all([
+  const [boxes, today, failures, waiting, vars] = await Promise.all([
     mailboxes(),
     sentToday(now),
     recentFailures(now),
     db.enrollment.groupBy({ by: ["sequenceId"], where: { status: "ACTIVE", sequenceId: { in: sequences.map((s) => s.id) } }, _count: true }),
+    cargarVariables(),
   ]);
+  const propias = clavesPropias(vars);
   const waitingBy = new Map(waiting.map((w) => [w.sequenceId, w._count]));
   const map = new Map<string, Check[]>();
   for (const sq of sequences) {
@@ -170,6 +173,7 @@ export async function sequenceHealthMap(sequences: SequenceForHealth[], now = ne
         seqToday: today.bySequence.get(sq.id) ?? 0,
         waiting: waitingBy.get(sq.id) ?? 0,
         failures: failures.bySequence.get(sq.id) ?? 0,
+        propias,
       }),
     );
   }
