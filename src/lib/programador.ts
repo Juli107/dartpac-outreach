@@ -57,8 +57,9 @@ export async function programadorSiHaceFalta(now = new Date()) {
 export async function latido(now = new Date()) {
   const { at } = await lastRun();
   const pasada = !at || now.getTime() - at.getTime() >= CADA_MS;
-  if (pasada) await pasadaProgramador({ bandeja: true, fuente: "latido" });
-  await semanalSiHaceFalta(now);
+  const r = pasada ? await pasadaProgramador({ bandeja: true, fuente: "latido" }) : null;
+  const semanal = await semanalSiHaceFalta(now);
+  return { pasada: !!r && !("omitida" in r), ...(semanal ? { semanal: semanal.busquedas ?? semanal.omitida ?? null } : {}) };
 }
 
 /**

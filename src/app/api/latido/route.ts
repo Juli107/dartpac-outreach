@@ -9,6 +9,7 @@ export const maxDuration = 60;
  * los 30 segundos) y después hace la pasada que falte y la búsqueda de los lunes. No devuelve datos.
  */
 export async function GET() {
-  after(() => latido().catch((e) => console.error("latido", e)));
+  // Una línea por latido en los registros de Vercel: así se ve que cron-job.org está llamando.
+  after(() => latido().then((r) => console.log("latido", JSON.stringify(r)), (e) => console.error("latido", e)));
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }
