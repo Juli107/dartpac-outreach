@@ -68,6 +68,27 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
 #rdr .mas-o svg{width:22px;height:22px;color:var(--accent-2)}
 #rdr .mas-o:hover{border-color:var(--line2);background:rgba(255,255,255,.06)}
 #rdr .mas-o:active{transform:scale(.97)}
+
+/* importar empresas */
+#rdr .im-drop{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px;border:1.5px dashed var(--line2);border-radius:18px;background:rgba(47,128,247,.07);transition:background .2s,border-color .2s}
+#rdr .im-drop.on{background:rgba(47,128,247,.18);border-color:var(--accent-2)}
+#rdr .im-drop>div{flex:1 1 220px;min-width:0;display:flex;flex-direction:column;gap:4px}
+#rdr .im-ic{font-size:28px;line-height:1}
+#rdr .im-btn{cursor:pointer;flex:none}
+#rdr .im-pegar>summary{cursor:pointer;color:var(--accent-2);font-size:14px;font-weight:600;padding:8px 2px;list-style:none}
+#rdr .im-pegar>summary::-webkit-details-marker{display:none}
+#rdr .im-pegar[open]>summary{margin-bottom:8px}
+#rdr .im-map{display:flex;flex-direction:column;gap:12px;padding:14px}
+#rdr .im-src{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;min-width:0}
+#rdr .im-src b{overflow-wrap:anywhere}
+#rdr .im-chk{display:flex;align-items:center;gap:8px;font-size:14px}
+#rdr .im-chk input{width:18px;height:18px;accent-color:var(--accent)}
+#rdr .im-campos{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:10px}
+#rdr .im-prev{display:flex;flex-direction:column;gap:6px}
+#rdr .im-prev .r{padding:9px 11px;border-radius:12px;background:var(--raise);border:1px solid var(--line);font-size:13.5px;min-width:0}
+#rdr .im-prev .r b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rdr .im-prev .r small{display:block;color:var(--muted);overflow-wrap:anywhere}
+#rdr .im-res{font-weight:500;color:var(--fg)}
 </style>
 <style>
 /* Radar Comercial DARTPAC (encapsulado en #rdr) */
@@ -1298,6 +1319,7 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
     var col = p[0], id = p[1], k = col + "/" + id;
     return {
       id: id,
+      _c: col,
       get: async function () { if (!listo) await new Promise(function (r) { listosCb.push(r); }); return snapDoc(k); },
       set: function (d) { return escribir("set", col, id, d || {}); },
       update: function (d) { return escribir("update", col, id, d || {}); },
@@ -1309,8 +1331,36 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
       }
     };
   }
+  /* Escrituras en lote (importar una base): de a 100 por pedido, con el mismo estado optimista que una escritura suelta. */
+  function lote() {
+    var ops = [];
+    return {
+      set: function (r, d) { ops.push({ op: "set", c: r._c, id: r.id, d: d || {} }); return this; },
+      commit: async function (alAvanzar) {
+        for (var i = 0; i < ops.length; i += 100) {
+          var parte = ops.slice(i, i + 100), cols = new Set(), keys = new Set(), antes = [];
+          parte.forEach(function (o) {
+            var k = o.c + "/" + o.id, x = cache.get(k);
+            antes.push([k, x]); cache.set(k, { v: x ? x.v : 0, d: mezclar({}, o.d) }); cols.add(o.c); keys.add(k);
+          });
+          avisar(cols, keys);
+          try {
+            var j = await api("/doc", { ops: parte.map(function (o) { return { op: o.op, c: o.c, id: o.id, d: o.d }; }) });
+            (j.docs || []).forEach(function (r, n) { var o = parte[n], x = o && cache.get(o.c + "/" + o.id); if (r && r.v && x) x.v = Math.max(x.v, r.v); });
+          } catch (e) {
+            antes.forEach(function (a) { cache.set(a[0], a[1] || { v: 0, d: null }); }); avisar(cols, keys); programar(300);
+            if (e.code === "invalid_argument") e.code = "bad_request";
+            throw e;
+          }
+          if (alAvanzar) try { alAvanzar(Math.min(ops.length, i + 100), ops.length); } catch (x) {}
+        }
+        programar(400);
+      }
+    };
+  }
   var db = {
     doc: ref,
+    batch: lote,
     collection: function (col) {
       return {
         doc: function (id) { return ref(col + "/" + id); },
@@ -1414,6 +1464,176 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
   } catch (e) {}
 
   sync();
+})();
+</script>
+<script>
+/* Dartpac Outreach (web): leer bases en CSV o Excel para importarlas al Radar.
+   Sin librerías: el Excel (.xlsx) es un ZIP de XML y se abre con DecompressionStream del navegador.
+   Las columnas se reconocen por el título, en cualquier orden; si no hay títulos, se usan por posición. */
+(function () {
+  "use strict";
+  var norm = function (s) {
+    return String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9ñ@]+/g, " ").trim();
+  };
+  var limpiarFila = function (f) { return f.map(function (x) { return String(x == null ? "" : x).replace(/ /g, " ").trim(); }); };
+  var conDatos = function (f) { return f.some(function (x) { return x !== ""; }); };
+
+  /* ---------------------------------------------------------------- CSV */
+  function decodificar(buf) {
+    var u8 = new Uint8Array(buf);
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(u8).replace(/^﻿/, ""); }
+    catch (e) { return new TextDecoder("windows-1252").decode(u8); } // el «CSV» de Excel en Windows
+  }
+  function contarFuera(l, c) { var n = 0, q = false; for (var i = 0; i < l.length; i++) { if (l[i] === '"') q = !q; else if (l[i] === c && !q) n++; } return n; }
+  function separador(texto) {
+    var lineas = texto.split(/\r?\n/).filter(function (l) { return l.trim(); }).slice(0, 5), mejor = ",", max = 0;
+    ["\t", ";", ",", "|"].forEach(function (c) {
+      var n = lineas.reduce(function (a, l) { return a + contarFuera(l, c); }, 0);
+      if (n > max) { max = n; mejor = c; }
+    });
+    return mejor;
+  }
+  function csv(texto, sep) {
+    sep = sep || separador(texto);
+    var filas = [], fila = [], campo = "", q = false, i = 0, n = texto.length;
+    while (i < n) {
+      var ch = texto[i];
+      if (q) {
+        if (ch === '"') { if (texto[i + 1] === '"') { campo += '"'; i += 2; continue; } q = false; i++; continue; }
+        campo += ch; i++; continue;
+      }
+      if (ch === '"' && campo.trim() === "") { q = true; campo = ""; i++; continue; }
+      if (ch === sep) { fila.push(campo); campo = ""; i++; continue; }
+      if (ch === "\r") { i++; continue; }
+      if (ch === "\n") { fila.push(campo); filas.push(fila); fila = []; campo = ""; i++; continue; }
+      campo += ch; i++;
+    }
+    if (campo !== "" || fila.length) { fila.push(campo); filas.push(fila); }
+    return filas.map(limpiarFila).filter(conDatos);
+  }
+
+  /* ---------------------------------------------------------------- Excel (.xlsx) */
+  async function inflar(datos) {
+    var flujo = new Blob([datos]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Uint8Array(await new Response(flujo).arrayBuffer());
+  }
+  function abrirZip(buf) {
+    var dv = new DataView(buf), u8 = new Uint8Array(buf), fin = -1, dec = new TextDecoder();
+    for (var i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { fin = i; break; }
+    if (fin < 0) throw new Error("El archivo no es un Excel válido.");
+    var total = dv.getUint16(fin + 10, true), p = dv.getUint32(fin + 16, true), archivos = {};
+    for (var k = 0; k < total && dv.getUint32(p, true) === 0x02014b50; k++) {
+      var nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+      archivos[dec.decode(u8.subarray(p + 46, p + 46 + nl))] = { metodo: dv.getUint16(p + 10, true), comp: dv.getUint32(p + 20, true), off: dv.getUint32(p + 42, true) };
+      p += 46 + nl + xl + cl;
+    }
+    return async function leer(nombre) {
+      var a = archivos[nombre]; if (!a) return null;
+      var ini = a.off + 30 + dv.getUint16(a.off + 26, true) + dv.getUint16(a.off + 28, true), datos = u8.subarray(ini, ini + a.comp);
+      if (a.metodo === 0) return dec.decode(datos);
+      if (a.metodo !== 8) throw new Error("Ese Excel usa una compresión que no se puede leer: guardalo como CSV.");
+      return dec.decode(await inflar(datos));
+    };
+  }
+  var xml = function (t) { return new DOMParser().parseFromString(t || "<x/>", "application/xml"); };
+  var todos = function (nodo, tag) { return Array.prototype.slice.call(nodo.getElementsByTagNameNS("*", tag)); };
+  var textoDe = function (nodo) { // los <t> de un texto con formato, sin la guía fonética (rPh)
+    return todos(nodo, "t").filter(function (t) { return !(t.parentNode && t.parentNode.localName === "rPh"); }).map(function (t) { return t.textContent; }).join("");
+  };
+  function columna(ref) { var m = /^([A-Z]+)/.exec(ref || ""), n = 0; if (!m) return -1; for (var i = 0; i < m[1].length; i++) n = n * 26 + (m[1].charCodeAt(i) - 64); return n - 1; }
+  function numero(v) { // 5.4911555E+12 → 5491155500000 (los teléfonos guardados como número)
+    if (/e/i.test(v)) { var n = Number(v); if (isFinite(n) && Math.abs(n) < 1e21) return Number.isInteger(n) ? n.toFixed(0) : String(n); }
+    return v;
+  }
+  async function excel(buf) {
+    if (typeof DecompressionStream === "undefined") throw new Error("Este navegador no puede abrir Excel: guardalo como CSV o actualizá el navegador.");
+    var leer = abrirZip(buf), wb = xml(await leer("xl/workbook.xml"));
+    var hojas = todos(wb, "sheet");
+    if (!hojas.length) throw new Error("El Excel no tiene hojas.");
+    var hoja = hojas.find(function (h) { return (h.getAttribute("state") || "visible") === "visible"; }) || hojas[0];
+    var rid = hoja.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") || hoja.getAttribute("r:id");
+    var ruta = "xl/worksheets/sheet1.xml", rels = await leer("xl/_rels/workbook.xml.rels");
+    if (rels && rid) {
+      var rel = todos(xml(rels), "Relationship").find(function (r) { return r.getAttribute("Id") === rid; });
+      if (rel) { var tg = rel.getAttribute("Target") || ""; ruta = tg.charAt(0) === "/" ? tg.slice(1) : "xl/" + tg.replace(/^\.\//, ""); }
+    }
+    var compartidos = [], sst = await leer("xl/sharedStrings.xml");
+    if (sst) compartidos = todos(xml(sst), "si").map(textoDe);
+    var filas = [];
+    todos(xml(await leer(ruta)), "row").forEach(function (r) {
+      var fila = [];
+      todos(r, "c").forEach(function (c) {
+        var i = columna(c.getAttribute("r")); if (i < 0) i = fila.length;
+        var t = c.getAttribute("t"), v = todos(c, "v")[0], val = "";
+        if (t === "s") val = compartidos[+(v && v.textContent)] || "";
+        else if (t === "inlineStr") val = textoDe(todos(c, "is")[0] || c);
+        else if (t === "b") val = v && v.textContent === "1" ? "Sí" : "No";
+        else if (t !== "e" && v) val = t === "str" ? v.textContent : numero(v.textContent);
+        fila[i] = val;
+      });
+      for (var k = 0; k < fila.length; k++) if (fila[k] == null) fila[k] = "";
+      filas.push(fila);
+    });
+    var visibles = hojas.filter(function (h) { return (h.getAttribute("state") || "visible") === "visible"; }).length;
+    return { filas: filas.map(limpiarFila).filter(conDatos), hoja: hoja.getAttribute("name") || "", hojas: visibles };
+  }
+
+  /* ---------------------------------------------------------------- archivo → filas */
+  async function leerArchivo(file) {
+    var buf = await file.arrayBuffer(), u8 = new Uint8Array(buf.slice(0, 8));
+    if (u8[0] === 0xd0 && u8[1] === 0xcf && u8[2] === 0x11 && u8[3] === 0xe0)
+      throw new Error("Es un Excel viejo (.xls). Abrilo y guardalo como «Libro de Excel (.xlsx)» o «CSV UTF-8», y subilo de nuevo.");
+    if (u8[0] === 0x50 && u8[1] === 0x4b) {
+      var r = await excel(buf);
+      return { filas: r.filas, detalle: r.hojas > 1 ? "hoja «" + r.hoja + "», la primera de " + r.hojas + " (para usar otra, ponela primera o guardala como CSV)" : "" };
+    }
+    return { filas: csv(decodificar(buf)), detalle: "" };
+  }
+
+  /* ---------------------------------------------------------------- columnas por título */
+  var CAMPOS = [
+    ["nombre", "Empresa", ["empresa", "razon social", "nombre empresa", "nombre de la empresa", "nombre comercial", "nombre de fantasia", "fantasia", "cliente", "compania", "company", "company name", "organizacion", "organization", "account name", "negocio", "comercio", "establecimiento", "prospecto", "nombre", "name"]],
+    ["telefono", "Teléfono", ["telefono", "telefonos", "tel", "telefono fijo", "phone", "phone number", "numero de telefono", "nro telefono", "telefono 1", "fijo"]],
+    ["whatsapp", "WhatsApp", ["whatsapp", "wsp", "wpp", "wa", "celular", "cel", "movil", "telefono celular", "telefono movil", "mobile"]],
+    ["email", "Email", ["email", "e mail", "mail", "correo", "correo electronico", "email address", "emails", "mail de contacto", "email de contacto"]],
+    ["ciudad", "Ciudad o localidad", ["ciudad", "localidad", "city", "town", "partido", "municipio", "departamento", "barrio", "poblacion"]],
+    ["provincia", "Provincia", ["provincia", "prov", "state", "estado", "region", "jurisdiccion"]],
+    ["direccion", "Dirección", ["direccion", "domicilio", "address", "calle", "ubicacion", "direccion completa"]],
+    ["rubro", "Rubro", ["rubro", "actividad", "categoria", "category", "industria", "industry", "sector", "giro", "tipo", "tipo de negocio", "segmento", "actividad principal"]],
+    ["web", "Web", ["web", "sitio", "sitio web", "pagina", "pagina web", "website", "url", "dominio", "site"]],
+    ["contacto", "Persona de contacto", ["contacto", "persona de contacto", "nombre de contacto", "nombre y apellido", "apellido y nombre", "responsable", "encargado", "comprador", "contact", "contact name", "nombre", "name"]],
+    ["cargo", "Cargo", ["cargo", "puesto", "title", "job title", "posicion", "funcion"]],
+    ["notas", "Notas", ["notas", "nota", "observaciones", "observacion", "comentarios", "comentario", "notes", "obs", "descripcion", "detalle"]]
+  ];
+  /* Sin títulos (la lista pegada de siempre): Empresa; teléfono; ciudad; provincia; rubro; web. */
+  var POR_POSICION = { nombre: 0, telefono: 1, ciudad: 2, provincia: 3, rubro: 4, web: 5 };
+
+  function detectar(encabezado) {
+    var h = encabezado.map(norm), usado = {}, map = {}, aciertos = 0;
+    var exacto = function (a, x) { return x === a; };
+    var contiene = function (a, x) { return a.length > 2 && (" " + x + " ").indexOf(" " + a + " ") >= 0; };
+    [exacto, contiene].forEach(function (igual) {
+      CAMPOS.forEach(function (c) {
+        if (map[c[0]] != null) return;
+        for (var k = 0; k < c[2].length; k++) for (var j = 0; j < h.length; j++) {
+          if (!usado[j] && h[j] && igual(c[2][k], h[j])) { map[c[0]] = j; usado[j] = 1; aciertos++; return; }
+        }
+      });
+    });
+    // un celular sin columna de teléfono va como teléfono
+    if (map.telefono == null && map.whatsapp != null) { map.telefono = map.whatsapp; delete map.whatsapp; }
+    return { map: map, aciertos: aciertos, conTitulos: aciertos >= 2 && map.nombre != null };
+  }
+  /* Qué hacer con las filas: títulos detectados o, si no hay, la posición de siempre. */
+  function plan(filas) {
+    var d = detectar(filas[0] || []);
+    if (d.conTitulos) return { map: d.map, conTitulos: true };
+    var map = {}, ancho = (filas[0] || []).length;
+    Object.keys(POR_POSICION).forEach(function (k) { if (POR_POSICION[k] < Math.max(ancho, 1)) map[k] = POR_POSICION[k]; });
+    return { map: map, conTitulos: false };
+  }
+
+  window.DPImport = { leerArchivo: leerArchivo, csv: csv, plan: plan, detectar: detectar, CAMPOS: CAMPOS.map(function (c) { return [c[0], c[1]]; }), norm: norm };
 })();
 </script>
 <script>
@@ -2921,7 +3141,7 @@ function vLista(){ const q=norm(S.q), LE=S.listaIds?"todos":(S.lEst||"pend"), nC
   L.sort(S.ordenL==="pot"?ordenP:S.ordenL==="rec"?((a,b)=>(b.creado||0)-(a.creado||0)):ordenPt); S.listaVis=L; const hayF=S.fProv||S.fRub||S.fEt||S.fPot||S.q||S.fAsig;
   const sel=(id,val,opts,todos)=>`<label class="fsel ${val?"on":""}"><select id="${id}" aria-label="${todos}"><option value="">${todos}</option>${opts.map(([v,t])=>`<option value="${v}" ${v===val?"selected":""}>${esc(t)}</option>`).join("")}</select></label>`;
   const conTel=S.P.filter(p=>p.telefono||p.whatsapp).length, alto=S.P.filter(p=>p.potencial==="alto").length;
-  return `<section class="view">${cabecera("Base de prospectos",`${S.P.length} empresas`,`${alto} de potencial alto · ${conTel} con teléfono · ${Object.keys(cuentaProv()).length} provincias`,`<button class="btn sm" data-act="importar">Pegar lista</button><button class="btn sm primary" data-act="nuevo">${IC.plus}Agregar</button>`)}
+  return `<section class="view">${cabecera("Base de prospectos",`${S.P.length} empresas`,`${alto} de potencial alto · ${conTel} con teléfono · ${Object.keys(cuentaProv()).length} provincias`,`<button class="btn sm" data-act="importar" title="Subí un CSV o Excel, o pegá una lista">Importar</button><button class="btn sm primary" data-act="nuevo">${IC.plus}Agregar</button>`)}
    ${S.P.length&&!S.listaIds?estSwitch("lEst","",LE,S.P.length-nC,nC):""}
    <div class="panel filt"><div class="search">${IC.search}<input id="q" type="search" placeholder="Buscar por nombre, ciudad o rubro" value="${esc(S.q)}" autocomplete="off"></div>
    <div class="fsel-row">${sel("f-prov",S.fProv,Object.entries(PROV).map(([k,p])=>[k,p.n]).sort((a,b)=>a[1].localeCompare(b[1])),"Todas las provincias")}${sel("f-rub",S.fRub,Object.entries(RUB).map(([k,r])=>[k,r.n]),"Todos los rubros")}${sel("f-et",S.fEt,[...ETAPAS,["descartado","Descartado"]],"Todas las etapas")}${sel("f-pot",S.fPot,[["alto","Potencial alto"],["medio","Potencial medio"],["bajo","Potencial bajo"]],"Cualquier potencial")}</div>
@@ -3586,21 +3806,101 @@ function form(p,pre){ const e=!!p; p=p||Object.assign({rubro:"otro",potencial:"m
       if(await guardar(()=>e?S.db.doc("prospectos/"+id).update(d):S.db.doc("prospectos/"+id).set(d),e?"Cambios guardados":"Prospecto agregado")){ cerrar(); if(e) ver(id); } });
     const del=root.querySelector("#pf-del"); if(del) del.onclick=async()=>{ if(del.dataset.ok!=="1"){del.dataset.ok="1";del.textContent="Tocá de nuevo para borrarlo";return;} if(await guardar(()=>S.db.doc("prospectos/"+p.id).delete(),"Prospecto borrado")) cerrar(); };
   }); }
-function importar(){ abrir("Pegar una lista",`<p class="hint">Pegá una empresa por renglón, con los datos separados por punto y coma, en este orden: <b>Empresa; teléfono; ciudad; provincia; rubro; web</b>. Sirve copiar desde Excel. Si un renglón trae un email (en cualquier lugar), el Verificador lo revisa antes de cargarlo.</p>
-   <label class="fld"><span>Lista</span><textarea id="im-t" rows="8" placeholder="Bodega Los Álamos; 261 555 1234; Maipú; Mendoza; bodega; bodegalosalamos.com"></textarea></label>
-   <p class="hint" id="im-r"></p><button class="btn primary block" id="im-go">Revisar e importar</button>`,root=>{
-    const ta=root.querySelector("#im-t"), out=root.querySelector("#im-r"); let filas=[];
-    const leer=()=>{ filas=ta.value.split(/\n/).map(l=>l.trim()).filter(Boolean).map(l=>{ const c=l.split(/\t|;|\|/).map(x=>x.trim()); const f={nombre:c[0]||"",telefono:c[1]||"",ciudad:c[2]||"",provincia:provDeTexto(c[3]||c[2]||""),rubro:rubDeTexto(c[4]||""),web:c[5]||""};
-        if(vfyOn()){ const em=window.DPV.extraer(l)[0]; if(em){ if(f.web.includes("@")) f.web=""; const r=window.DPV.verificar(em); const fin=r.estado==="corregible"?r.sugerencia:r.normal;
-          if(r.estado==="invalido"||r.estado==="vacio"){ f._emailMalo=em; } else { f.email=fin; f.emailCheck=vfyMarca(r.estado==="corregible"?window.DPV.verificar(fin):r); if(r.estado==="corregible") f._emailFix=em+" → "+fin; } } }
-        return f; }).filter(f=>f.nombre);
-      const sinP=filas.filter(f=>!f.provincia).length, rep=filas.filter(f=>S.P.some(x=>norm(x.nombre)===norm(f.nombre))).length;
-      const nFix=filas.filter(f=>f._emailFix).length, nMal=filas.filter(f=>f._emailMalo).length;
-      out.textContent=filas.length?`${filas.length} empresas${sinP?` · ${sinP} sin provincia reconocida`:""}${rep?` · ${rep} ya están cargadas (se saltean)`:""}${nFix?` · ${nFix} email${nFix===1?"":"s"} con tipeo corregido`:""}${nMal?` · ${nMal} email${nMal===1?"":"s"} inválido${nMal===1?"":"s"} (se cargan sin email)`:""}`:""; };
-    ta.addEventListener("input",leer);
-    root.querySelector("#im-go").onclick=async()=>{ leer(); const nuevas=filas.filter(f=>f.provincia&&!S.P.some(x=>norm(x.nombre)===norm(f.nombre))); if(!nuevas.length) return toast("No hay empresas nuevas con provincia reconocida.");
-      const t=Date.now(); if(await guardar(async()=>{ for(const f of nuevas){ const h=[{t,tipo:"alta",texto:"Importado de una lista",por:S.yo||S.cfg.vendedor||""}]; if(f._emailFix) h.push({t,tipo:"dato",texto:"Email corregido: "+f._emailFix,por:"Verificador"}); if(f._emailMalo) h.push({t,tipo:"dato",texto:"Email descartado por inválido: "+f._emailMalo,por:"Verificador"});
-        const {_emailFix,_emailMalo,...doc}=f; await S.db.doc("prospectos/"+nuevoId()).set(Object.assign(doc,{etapa:"nuevo",potencial:"medio",creado:t,fuente:"Lista pegada",historial:h})); } },`${nuevas.length} prospectos importados`)) cerrar(); }; }); }
+/* Importar empresas (web): subir un CSV o Excel, con las columnas en cualquier orden (se reconocen por el título),
+   o pegar una lista copiada de Excel. Muestra qué columna va en cada dato, deduce la provincia por la ciudad,
+   verifica los emails y saltea las empresas que ya están. Guarda de a 100 por pedido. */
+let IM_LOC=null;
+function provDeCiudad(t){ const v=norm(t); if(!v) return "";
+  if(!IM_LOC){ IM_LOC=new Map();
+    ADM.L.forEach(l=>{ const k=norm(l.n), x=IM_LOC.get(k); if(!x||l.p>x.p) IM_LOC.set(k,{p:l.p,prov:(ADM.D[l.d]||{}).prov||""}); });
+    ADM.D.forEach(d=>{ const k=norm(d.n); if(!IM_LOC.has(k)) IM_LOC.set(k,{p:0,prov:d.prov}); }); }
+  const x=IM_LOC.get(v); return x?x.prov:""; }
+function importar(){
+  const PROVS=Object.entries(PROV).map(([k,x])=>[k,x.n]).sort((a,b)=>a[1].localeCompare(b[1]));
+  abrir("Importar empresas",`<div class="im-drop" id="im-drop"><span class="im-ic" aria-hidden="true">📄</span>
+     <div><b>Subí tu base en CSV o Excel</b><span class="hint">Las columnas pueden estar en cualquier orden: se reconocen por el título (Empresa, Teléfono, Email, Ciudad, Provincia, Rubro, Web…). También podés arrastrar el archivo acá.</span></div>
+     <label class="btn primary im-btn">Elegir archivo<input type="file" id="im-f" accept=".csv,.tsv,.txt,.xlsx,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></label></div>
+   <details class="im-pegar"><summary>O pegá una lista copiada de Excel</summary>
+     <label class="fld"><span>Lista</span><textarea id="im-t" rows="6" placeholder="Empresa;Teléfono;Ciudad;Provincia;Rubro;Web&#10;Bodega Los Álamos;261 555 1234;Maipú;Mendoza;bodega;bodegalosalamos.com"></textarea></label>
+     <p class="hint">Si copiás también la fila de títulos, las columnas van en cualquier orden. Sin títulos, en este orden: Empresa; teléfono; ciudad; provincia; rubro; web.</p></details>
+   <div id="im-cfg"></div>
+   <p class="hint im-res" id="im-r" aria-live="polite"></p>
+   <button class="btn primary block" id="im-go" disabled>Importar</button>`,root=>{
+    let FILAS=[], MAP={}, TIT=false, ORIGEN="", DET="", DP="", nuevas=[];
+    const out=root.querySelector("#im-r"), cfg=root.querySelector("#im-cfg"), go=root.querySelector("#im-go"), MAXF=20000;
+    const letra=j=>{ let s="",n=j+1; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; };
+    const datos=()=>TIT?FILAS.slice(1):FILAS;
+    const v=(f,k)=>MAP[k]==null?"":String(f[MAP[k]]||"").trim();
+    const digitos=t=>String(t||"").replace(/\D/g,"");
+    const pintarCfg=()=>{ const ancho=Math.max(0,...FILAS.slice(0,60).map(f=>f.length));
+      const nom=j=>TIT&&FILAS[0][j]?FILAS[0][j]:"Columna "+letra(j), ej=j=>{ const d=datos().find(f=>f[j]); return d?String(d[j]).slice(0,28):""; };
+      const opts=k=>`<option value="">— No usar —</option>`+Array.from({length:ancho},(_,j)=>`<option value="${j}" ${MAP[k]===j?"selected":""}>${esc(nom(j))}${ej(j)?" · ej.: "+esc(ej(j)):""}</option>`).join("");
+      cfg.innerHTML=`<div class="panel im-map"><div class="im-src"><b>${esc(ORIGEN)}</b><span class="hint">${datos().length.toLocaleString("es-AR")} filas${DET?" · "+esc(DET):""}</span></div>
+        <label class="im-chk"><input type="checkbox" id="im-h" ${TIT?"checked":""}> La primera fila son los títulos</label>
+        <p class="hint">Revisá qué columna va en cada dato: solo «Empresa» es obligatoria. La persona de contacto, el cargo y las notas quedan en las notas de la ficha.</p>
+        <div class="im-campos">${window.DPImport.CAMPOS.map(([k,t])=>`<label class="fld"><span>${esc(t)}${k==="nombre"?" *":""}</span><select data-c="${k}">${opts(k)}</select></label>`).join("")}</div>
+        <label class="fld"><span>Si una fila no trae provincia ni se deduce de la ciudad</span><select id="im-dp"><option value="">No cargarla</option>${PROVS.map(([k,n])=>`<option value="${k}" ${DP===k?"selected":""}>Cargarla en ${esc(n)}</option>`).join("")}</select></label>
+        <div class="im-prev" id="im-prev"></div></div>`;
+      cfg.querySelectorAll("select[data-c]").forEach(s=>s.onchange=()=>{ const k=s.dataset.c, j=s.value===""?null:+s.value;
+        Object.keys(MAP).forEach(x=>{ if(j!=null&&x!==k&&MAP[x]===j) delete MAP[x]; }); if(j==null) delete MAP[k]; else MAP[k]=j; pintarCfg(); calcular(); });
+      cfg.querySelector("#im-h").onchange=e=>{ TIT=e.target.checked; if(TIT){ const d=window.DPImport.detectar(FILAS[0]||[]); if(d.map.nombre!=null) MAP=d.map; } pintarCfg(); calcular(); };
+      cfg.querySelector("#im-dp").onchange=e=>{ DP=e.target.value; calcular(); }; };
+    const calcular=()=>{ nuevas=[];
+      const yaN=new Set(S.P.map(p=>norm(p.nombre)+"|"+(p.provincia||""))), yaT=new Set(S.P.map(p=>digitos(p.telefono)).filter(t=>t.length>=8)), yaE=new Set(S.P.map(p=>String(p.email||"").toLowerCase()).filter(Boolean));
+      const st={filas:0,rep:0,sinP:0,deduc:0,porDef:0,fix:0,mal:0};
+      if(MAP.nombre!=null) for(const f of datos()){ const nombre=v(f,"nombre"); if(!nombre) continue; st.filas++;
+        const ciudad=v(f,"ciudad"), dir=v(f,"direccion");
+        let prov=provDeTexto(v(f,"provincia"));
+        if(!prov){ prov=provDeTexto(ciudad)||provDeCiudad(ciudad.split(/[,(\/-]/)[0])||provDeTexto(dir); if(prov) st.deduc++; }
+        if(!prov&&DP){ prov=DP; st.porDef++; }
+        if(!prov){ st.sinP++; continue; }
+        const p={nombre,telefono:v(f,"telefono"),ciudad,provincia:prov,rubro:rubDeTexto(v(f,"rubro")),web:v(f,"web")};
+        const wa=v(f,"whatsapp"); if(wa) p.whatsapp=wa; if(dir) p.direccion=dir;
+        const ct=v(f,"contacto"), cg=v(f,"cargo"), notas=[v(f,"notas"),ct||cg?"Contacto: "+[ct,cg?"("+cg+")":""].filter(Boolean).join(" "):""].filter(Boolean).join("\n"); if(notas) p.notas=notas;
+        const emTxt=MAP.email!=null?v(f,"email"):f.join(" ");
+        if(vfyOn()){ const em=window.DPV.extraer(emTxt)[0]; if(em){ const r=window.DPV.verificar(em), fin=r.estado==="corregible"?r.sugerencia:r.normal;
+            if(r.estado==="invalido"||r.estado==="vacio"){ p._emailMalo=em; st.mal++; } else { p.email=fin; p.emailCheck=vfyMarca(r.estado==="corregible"?window.DPV.verificar(fin):r); if(r.estado==="corregible"){ p._emailFix=em+" → "+fin; st.fix++; } } } }
+        else { const m=/[^\s@,;<>()"']+@[^\s@,;<>()"']+\.[a-z]{2,}/i.exec(emTxt); if(m) p.email=m[0].toLowerCase(); }
+        if(p.web.includes("@")) p.web="";
+        const kN=norm(nombre)+"|"+prov, kT=digitos(p.telefono), kE=String(p.email||"").toLowerCase();
+        if(yaN.has(kN)||(kT.length>=8&&yaT.has(kT))||(kE&&yaE.has(kE))){ st.rep++; continue; }
+        yaN.add(kN); if(kT.length>=8) yaT.add(kT); if(kE) yaE.add(kE); nuevas.push(p); }
+      const n=x=>x.toLocaleString("es-AR"), partes=[];
+      if(MAP.nombre==null) partes.push("Elegí qué columna tiene el nombre de la empresa.");
+      else { partes.push(`${n(st.filas)} empresas en el archivo`, `${n(nuevas.length)} nuevas`);
+        if(st.rep) partes.push(`${n(st.rep)} ya estaban (se saltean)`); if(st.sinP) partes.push(`${n(st.sinP)} sin provincia (no se cargan)`);
+        if(st.deduc) partes.push(`${n(st.deduc)} con la provincia deducida de la ciudad`); if(st.porDef) partes.push(`${n(st.porDef)} van a ${provNom(DP)}`);
+        if(st.fix) partes.push(`${n(st.fix)} email${st.fix===1?"":"s"} con tipeo corregido`); if(st.mal) partes.push(`${n(st.mal)} email${st.mal===1?"":"s"} inválido${st.mal===1?"":"s"} (se cargan sin email)`); }
+      out.textContent=partes.join(" · ");
+      const pv=root.querySelector("#im-prev");
+      if(pv) pv.innerHTML=nuevas.length?`<span class="hint">Así van a quedar las primeras:</span>`+nuevas.slice(0,4).map(p=>`<div class="r"><b>${esc(p.nombre)}</b><small>${esc([p.ciudad,provNom(p.provincia)].filter(Boolean).join(", "))}${p.telefono?" · "+esc(p.telefono):""}${p.email?" · "+esc(p.email):""} · ${esc((RUB[p.rubro]||{}).n||"Otro rubro")}</small></div>`).join(""):"";
+      go.disabled=!nuevas.length; go.textContent=nuevas.length?`Importar ${n(nuevas.length)} empresa${nuevas.length===1?"":"s"}`:"No hay empresas nuevas para importar"; };
+    const cargar=(filas,origen,det)=>{ DET=det||""; if(filas.length>MAXF+1){ DET=[DET,`se leen las primeras ${MAXF.toLocaleString("es-AR")}: volvé a subirlo para el resto (las repetidas se saltean)`].filter(Boolean).join(" · "); filas=filas.slice(0,MAXF+1); }
+      FILAS=filas; ORIGEN=origen; const pl=window.DPImport.plan(FILAS); MAP=pl.map; TIT=pl.conTitulos; pintarCfg(); calcular(); };
+    const leerArchivo=async file=>{ out.textContent="Leyendo «"+file.name+"»…"; cfg.innerHTML=""; go.disabled=true;
+      try{ const r=await window.DPImport.leerArchivo(file); if(!r.filas.length){ out.textContent="El archivo está vacío."; return; } cargar(r.filas,file.name,r.detalle); }
+      catch(err){ out.textContent=(err&&err.message)||"No se pudo leer el archivo."; } };
+    root.querySelector("#im-f").onchange=e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=""; if(file) leerArchivo(file); };
+    const drop=root.querySelector("#im-drop");
+    root.addEventListener("dragover",e=>{ if(e.dataTransfer&&[...(e.dataTransfer.types||[])].includes("Files")){ e.preventDefault(); drop.classList.add("on"); } });
+    root.addEventListener("dragleave",e=>{ if(!e.relatedTarget||!root.contains(e.relatedTarget)) drop.classList.remove("on"); });
+    root.addEventListener("drop",e=>{ const file=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(!file) return; e.preventDefault(); drop.classList.remove("on"); leerArchivo(file); });
+    const ta=root.querySelector("#im-t"); let tPeg=0;
+    ta.addEventListener("input",()=>{ clearTimeout(tPeg); tPeg=setTimeout(()=>{ const t=ta.value.trim(); if(!t){ cfg.innerHTML=""; out.textContent=""; go.disabled=true; go.textContent="Importar"; return; }
+      cargar(window.DPImport.csv(t,/\t/.test(t)?"\t":undefined),"Lista pegada",""); },250); });
+    go.onclick=async()=>{ if(!nuevas.length) return; go.disabled=true;
+      const total=nuevas.length, t=Date.now(), por=S.yo||S.cfg.vendedor||"", pegada=ORIGEN==="Lista pegada", base=nuevoId();
+      const docs=nuevas.map(f=>{ const h=[{t,tipo:"alta",texto:pegada?"Importado de una lista":"Importado de «"+ORIGEN+"»",por}];
+        if(f._emailFix) h.push({t,tipo:"dato",texto:"Email corregido: "+f._emailFix,por:"Verificador"}); if(f._emailMalo) h.push({t,tipo:"dato",texto:"Email descartado por inválido: "+f._emailMalo,por:"Verificador"});
+        const {_emailFix,_emailMalo,...doc}=f; return Object.assign(doc,{etapa:"nuevo",potencial:"medio",creado:t,fuente:pegada?"Lista pegada":"Archivo «"+ORIGEN+"»",historial:h}); });
+      let hechos=0; const n=x=>x.toLocaleString("es-AR");
+      const ok=await guardar(async()=>{
+        if(S.db.batch){ const b=S.db.batch(); docs.forEach((d,i)=>b.set(S.db.doc("prospectos/"+base+i.toString(36)),d)); await b.commit((k,tot)=>{ hechos=k; go.textContent=`Importando ${n(k)} de ${n(tot)}…`; }); }
+        else for(const [i,d] of docs.entries()){ await S.db.doc("prospectos/"+base+i.toString(36)).set(d); hechos=i+1; if(hechos%20===0) go.textContent=`Importando ${n(hechos)} de ${n(total)}…`; } },`${n(total)} empresa${total===1?"":"s"} importada${total===1?"":"s"} al Radar`);
+      if(ok){ cerrar(); render(); return; }
+      if(hechos) toast(`Se importaron ${n(hechos)} de ${n(total)}. Tocá «Importar» de nuevo: las que ya están se saltean.`);
+      setTimeout(calcular,600); };
+  }); }
 function partirZona(deps,n){ if(n<=1||deps.length<=1) return [deps.slice()];
   /* agrupa partidos vecinos: ordena sobre el eje más largo de la zona y corta en tramos parejos */
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9; deps.forEach(i=>{ const d=ADM.D[i]; x0=Math.min(x0,d.x); x1=Math.max(x1,d.x); y0=Math.min(y0,d.y); y1=Math.max(y1,d.y); });
