@@ -46,11 +46,18 @@ export async function programadorSiHaceFalta(now = new Date()) {
     const { at } = await lastRun();
     if (!at || now.getTime() - at.getTime() >= CADA_MS) await pasadaProgramador({ bandeja: true, fuente: "app" });
   }
-  if (esHoraSemanal(now)) {
-    const marca = await getDoc("config", "semanal");
-    if (marca?.data.ultima !== hoyAR(now)) {
-      const { jobs } = await armarSemanal();
-      for (const job of jobs) await despertar({ job });
-    }
-  }
+  await semanalSiHaceFalta(now);
+}
+
+/**
+ * La búsqueda automática de los lunes, si ya es la hora y todavía no corrió hoy. La piden el programador externo
+ * (cada 10 minutos) y la app; armarSemanal reserva el día, así que corre una sola vez.
+ */
+export async function semanalSiHaceFalta(now = new Date()) {
+  if (!esHoraSemanal(now)) return null;
+  const marca = await getDoc("config", "semanal");
+  if (marca?.data.ultima === hoyAR(now)) return null;
+  const { jobs, ...r } = await armarSemanal();
+  for (const job of jobs) await despertar({ job });
+  return r;
 }
