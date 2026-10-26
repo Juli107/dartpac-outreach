@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ENROLLMENT_STATUS, fullName, formatDate, relativeTime } from "@/lib/labels";
 import { Empty, Segmented, StatusPill } from "@/components/ui";
+import { AnadirPersonas } from "@/components/AnadirPersonas";
 import { enrollContacts, removeEnrollment, setEnrollmentStatus } from "../../actions";
 import { base, type Seq, type TabParams } from "./types";
 
@@ -39,25 +40,13 @@ export async function PeopleTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
           active={active[0]}
           items={FILTERS.map(([k, label], i) => ({ key: k, label, count: counts[i], href: `${base(seq.id)}?tab=personas&filtro=${k}` }))}
         />
-        <details className="relative">
-          <summary className="btn cursor-pointer">Añadir contactos</summary>
-          <form action={enrollContacts.bind(null, seq.id)} className="reveal card absolute right-0 z-20 mt-2 flex w-[320px] flex-col gap-3 p-4 shadow-lift">
-            <label htmlFor="tag" className="label">Desde la etiqueta</label>
-            <select id="tag" name="tag" className="input">
-              <option value="">Todos los contactos</option>
-              {tags.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-            <p className="text-xs text-muted">Se omiten bajas, rebotados, quienes ya están en esta secuencia y a quien no le llegaría ningún paso (por ejemplo, sin email válido en una secuencia solo de emails). Nadie recibe nada mientras la secuencia esté apagada.</p>
-            <p className="text-xs text-muted">Para sumar empresas del Radar, usá «Sumar a una secuencia» en el Radar.</p>
-            <button className="btn self-end">Inscribir</button>
-          </form>
-        </details>
+        <AnadirPersonas sequenceId={seq.id} tags={tags} porEtiqueta={enrollContacts.bind(null, seq.id)} />
       </div>
 
       <section className="card appear min-w-0 overflow-hidden">
         {enrollments.length === 0 ? (
           <Empty title={active[0] === "todos" ? "Nadie inscrito todavía" : "Nadie en este filtro"}>
-            {active[0] === "todos" ? "Usa “Añadir contactos” para empezar." : null}
+            {active[0] === "todos" ? "Usá «Añadir personas» para empezar: una persona a mano, contactos que ya tenés o empresas del Radar." : null}
           </Empty>
         ) : (
           <div className="overflow-x-auto">

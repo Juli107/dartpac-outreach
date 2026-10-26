@@ -56,7 +56,7 @@ export default async function Mailboxes() {
     errores30 > 0
       ? { level: errores30 > Math.max(5, enviados30 * 0.05) ? "bad" : "warn", title: `${errores30} envíos con error en 30 días`, detail: "Míralos en la pestaña Registro de cada secuencia o en el buzón." }
       : { level: "ok", title: "Sin errores de envío en 30 días", detail: `${enviados30.toLocaleString("es-AR")} correos enviados sin problemas.` },
-    { level: "info", title: `${bajas} ${bajas === 1 ? "contacto pidió la baja" : "contactos pidieron la baja"}`, detail: "Cada correo lleva su enlace de baja y la cabecera List-Unsubscribe." },
+    { level: "info", title: `${bajas} ${bajas === 1 ? "contacto pidió la baja" : "contactos pidieron la baja"}`, detail: "Los correos no llevan pie de baja visible; la baja viaja en la cabecera List-Unsubscribe (Gmail muestra «Anular suscripción»)." },
   ];
   const vfyN = (k: string | null) => vfy.find((r) => r.emailStatus === k)?._count ?? 0;
   const totalEmails = vfy.reduce((a, r) => a + r._count, 0);

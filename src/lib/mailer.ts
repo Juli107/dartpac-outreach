@@ -76,7 +76,10 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 
-/** Convierte el texto plano del paso en HTML sencillo, con píxel de apertura y enlace de baja. */
+/**
+ * Convierte el texto plano del paso en HTML sencillo, con píxel de apertura. Sin pie de baja visible (así lo pidió el
+ * equipo): la baja viaja en la cabecera List-Unsubscribe, que Gmail muestra como «Anular suscripción».
+ */
 export function buildHtml(body: string, opts: { trackingId: string; contactId: string; signatureHtml?: string }) {
   const base = process.env.APP_URL ?? "http://localhost:3000";
   const paragraphs = body
@@ -87,7 +90,6 @@ export function buildHtml(body: string, opts: { trackingId: string; contactId: s
   return {
     html:
       `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#14213D">${paragraphs}${opts.signatureHtml ?? ""}` +
-      `<p style="margin:24px 0 0;font-size:11px;color:#8792A2">Si no quieres recibir más correos, <a href="${unsubscribe}" style="color:#8792A2">date de baja aquí</a>.</p>` +
       `<img src="${base}/api/t/${opts.trackingId}" width="1" height="1" alt="" style="display:block"></div>`,
     unsubscribe,
   };
@@ -129,7 +131,7 @@ export async function sendEmail(args: {
   contactId: string;
   inReplyTo?: string;
   signature?: { text: string; html: string };
-  /** Solo texto: sin HTML ni píxel de apertura; el enlace de baja va al final del texto. */
+  /** Solo texto: sin HTML ni píxel de apertura. */
   plainText?: boolean;
 }) {
   const { html, unsubscribe } = buildHtml(args.body, { ...args, signatureHtml: args.signature?.html });
@@ -138,7 +140,7 @@ export async function sendEmail(args: {
     from: args.mailbox.from,
     to: args.to,
     subject: args.subject,
-    text: args.plainText ? `${text}\n\n--\nSi no quieres recibir más correos: ${unsubscribe}` : text,
+    text,
     ...(args.plainText ? {} : { html }),
     messageId: args.messageId,
     inReplyTo: args.inReplyTo,
