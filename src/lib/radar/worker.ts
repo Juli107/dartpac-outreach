@@ -10,7 +10,7 @@ import { sumarUsoDia, topeDiario, topeDiarioSuperado } from "./uso";
  * empresas reales de los rubros pedidos, verifica los datos en su web o perfil oficial y las carga sin repetir.
  * Trabaja de a tramos (cada invocación dura unos minutos) y se encadena sola hasta terminar.
  */
-type Job = { col: "busquedas" | "pedidos"; id: string };
+export type Job = { col: "busquedas" | "pedidos"; id: string };
 const LEASE_MS = 6 * 60_000;
 const PRODUCTOS = ["Film stretch", "Film stretch de máquina", "Film PVC", "Film de polietileno", "Bolsas de polietileno", "Bolsas camiseta", "Embalaje", "Descartables", "Vasos y potes descartables"];
 const SOCIAL = /(^|\.)(facebook|instagram|tiktok|linktr|wa|whatsapp|google|goo|maps\.app|mercadolibre|mercadoshops|youtube|twitter|x|linkedin|paginasamarillas|guiaoleo|cylex|foursquare|tripadvisor)\./i;
