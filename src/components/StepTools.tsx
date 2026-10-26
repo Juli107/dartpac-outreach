@@ -1,41 +1,89 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { redactarConIA } from "@/app/(app)/secuencias/actions";
+import { BotonGuardar } from "./BotonGuardar";
 
-export const VARS: [string, string][] = [
-  ["saludo", "Buenos días / Buenas tardes, según la hora"],
-  ["empresa", "Nombre de la empresa"],
-  ["nombre", "Nombre de la persona (si se conoce)"],
-  ["ciudad", "Ciudad o localidad"],
-  ["provincia", "Provincia"],
-  ["vendedor", "Tu nombre (quien envía)"],
-  ["mi_empresa", "Plupack Embalajes"],
-  ["web", "Web de la empresa"],
-  ["cargo", "Cargo de la persona"],
-];
+export type VarChip = { clave: string; ayuda: string };
 
-/** Inserta {{variable}} donde está el cursor del campo indicado (o al final). */
-function insertar(id: string, texto: string) {
-  const el = document.getElementById(id) as HTMLTextAreaElement | HTMLInputElement | null;
-  if (!el) return;
-  const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? el.value.length;
-  el.value = el.value.slice(0, a) + texto + el.value.slice(b);
+/** Pide abrir el diálogo de variables (hay uno solo por página). */
+export const abrirVariables = () => window.dispatchEvent(new CustomEvent("dp:variables"));
+
+/** Enlace dentro de un texto que abre el diálogo de variables. */
+export function AbrirVariables({ children }: { children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={abrirVariables} className="font-semibold underline decoration-dotted underline-offset-2 hover:text-white">
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Escribe {{variable}} donde está el cursor. Si el cursor está dentro de otra {{…}}, la reemplaza: así se cambia
+ * una variable por otra sin borrarla a mano. Con texto seleccionado, reemplaza la selección.
+ */
+function insertar(el: HTMLInputElement | HTMLTextAreaElement, texto: string) {
+  const v = el.value;
+  let a = el.selectionStart ?? v.length, b = el.selectionEnd ?? v.length;
+  if (a === b) {
+    const abre = a > 0 ? v.lastIndexOf("{{", a - 1) : -1;
+    const cierra = abre >= 0 ? v.indexOf("}}", abre + 2) : -1;
+    if (abre >= 0 && cierra >= 0 && a < cierra + 2 && !v.slice(abre + 2, cierra).includes("{{")) {
+      a = abre;
+      b = cierra + 2;
+    }
+  }
+  el.value = v.slice(0, a) + texto + v.slice(b);
   el.focus();
   const p = a + texto.length;
   el.setSelectionRange(p, p);
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-/** Chips de variables: tocá uno y se escribe en el mensaje. */
-export function VarChips({ targetId }: { targetId: string }) {
+/**
+ * Chips de variables: tocá uno y se escribe en el asunto o en el mensaje (donde estabas escribiendo).
+ * Al final, «Variables» abre el diálogo para agregar las propias o cambiar qué escribe cada una.
+ */
+export function VarChips({ campos, lista }: { campos: string[]; lista: VarChip[] }) {
+  const ultimo = useRef<string | null>(null);
+  const clave = campos.join("|");
+  useEffect(() => {
+    const els = clave.split("|").map((id) => document.getElementById(id)).filter((el): el is HTMLElement => !!el);
+    const recordar = (e: FocusEvent) => {
+      ultimo.current = (e.target as HTMLElement).id;
+    };
+    els.forEach((el) => el.addEventListener("focus", recordar));
+    return () => els.forEach((el) => el.removeEventListener("focus", recordar));
+  }, [clave]);
+  const destino = () => {
+    const activo = document.activeElement as HTMLElement | null;
+    const id = activo && campos.includes(activo.id) ? activo.id : ultimo.current && campos.includes(ultimo.current) ? ultimo.current : campos[campos.length - 1];
+    return document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null;
+  };
+  const fijas = new Set(["saludo", "nombre", "empresa", "ciudad", "provincia", "cargo", "web", "vendedor", "mi_empresa"]);
   return (
     <div className="flex flex-wrap gap-1" role="group" aria-label="Variables para personalizar">
-      {VARS.map(([v, help]) => (
-        <button key={v} type="button" title={help} onMouseDown={(e) => e.preventDefault()} onClick={() => insertar(targetId, `{{${v}}}`)} className="chip font-mono transition hover:bg-brand/20 hover:text-white">
+      {lista.map(({ clave: v, ayuda }) => (
+        <button
+          key={v}
+          type="button"
+          title={ayuda}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            const el = destino();
+            if (el) insertar(el, `{{${v}}}`);
+          }}
+          className={`chip font-mono transition hover:bg-brand/20 hover:text-white ${fijas.has(v) ? "" : "bg-brand/[.12] text-brand-2 ring-brand/25"}`}
+        >
           {`{{${v}}}`}
         </button>
       ))}
+      <button type="button" onClick={abrirVariables} title="Agregar variables propias o cambiar qué escribe cada una" className="chip transition hover:bg-white/[.1] hover:text-white">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Variables
+      </button>
     </div>
   );
 }
@@ -88,7 +136,7 @@ const TIPOS: { k: "EMAIL" | "WHATSAPP" | "TASK"; t: string; d: string; icon: Rea
 ];
 
 /** Formulario para sumar un paso: elegís el canal, cuándo sale y qué dice. */
-export function StepComposer({ action, orden, total, secuencia, abierto = false }: { action: (f: FormData) => Promise<void>; orden: number; total: number; secuencia: string; abierto?: boolean }) {
+export function StepComposer({ action, orden, total, secuencia, vars, abierto = false }: { action: (f: FormData) => Promise<void>; orden: number; total: number; secuencia: string; vars: VarChip[]; abierto?: boolean }) {
   const [tipo, setTipo] = useState<"EMAIL" | "WHATSAPP" | "TASK" | null>(abierto ? "EMAIL" : null);
   const ref = useRef<HTMLFormElement>(null);
   const primero = orden === 1;
@@ -155,10 +203,10 @@ export function StepComposer({ action, orden, total, secuencia, abierto = false 
             <textarea id="new-body" name="body" rows={tipo === "TASK" ? 3 : 7} required={tipo !== "TASK"} className="input leading-relaxed" placeholder={tipo === "WHATSAPP" ? "{{saludo}}, ¿cómo va? Soy {{vendedor}} de {{mi_empresa}}…" : "{{saludo}},\n\n"} />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-3">
-            <VarChips targetId="new-body" />
+            <VarChips campos={["new-subject", "new-body"]} lista={vars} />
             <div className="flex flex-wrap items-center gap-2">
               <AiButton tipo={tipo} orden={orden} total={Math.max(total, orden)} secuencia={secuencia} subjectId="new-subject" bodyId="new-body" />
-              <button className="btn">Agregar paso</button>
+              <BotonGuardar enviando="Agregando…" listo="Paso agregado" avisarCambios={false} onListo={() => setTipo(null)}>Agregar paso</BotonGuardar>
             </div>
           </div>
         </form>

@@ -244,4 +244,6 @@ model Setting {
   lastInboxAt       DateTime?
   generalCheckAt    DateTime?
   generalCheckError String?
+  /// Variables del equipo para los mensajes: las propias ({{catalogo}}…), qué escribir si falta un dato y el saludo.
+  variables         Json?
 }

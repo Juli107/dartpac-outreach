@@ -78,6 +78,23 @@
   .count { @apply rounded-full bg-white/10 px-1.5 text-[11px] font-semibold tabular-nums text-muted; }
   .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[.14em] text-faint; }
   .appear { animation: appear 0.5s var(--dp-ease) both; }
+
+  /* Recuadros flotantes y diálogos: fondo sólido. El vidrio no desenfoca lo que queda fuera de su capa (los
+     encabezados animados crean una propia) y sin fondo sólido se transparentaba el texto de la tabla de abajo. */
+  .pop {
+    @apply rounded-[20px] shadow-lift;
+    background: linear-gradient(180deg, #183766 0%, #10274b 100%);
+    border: 1px solid var(--dp-line-2);
+  }
+  .dlg {
+    /* whitespace-normal y text-left: un diálogo puede vivir dentro de una celda de tabla (que no corta líneas) */
+    @apply m-auto max-h-[min(88vh,760px)] w-[calc(100vw-32px)] max-w-[560px] overflow-hidden whitespace-normal rounded-[22px] p-0 text-left font-normal text-ink;
+    background: linear-gradient(180deg, #183766 0%, #10274b 100%);
+    border: 1px solid var(--dp-line-2);
+    box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  }
+  .dlg[open] { @apply flex flex-col; animation: slide-in 0.25s var(--dp-ease) both; }
+  .dlg::backdrop { background: rgba(3, 10, 23, 0.62); backdrop-filter: blur(3px); }
 }
 
 /* Fondo de la app: degradé azul marino con luces suaves (quietas, así el vidrio no se recalcula en cada cuadro). */

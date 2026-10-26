@@ -3,9 +3,13 @@ import { db } from "@/lib/db";
 import { variantStats, formatPct, pct, type Funnel } from "@/lib/stats";
 import { stepDays, stepVariants } from "@/lib/variants";
 import { scheduleLabel } from "@/lib/labels";
-import { unknownVariables } from "@/lib/template";
+import { MI_EMPRESA, unknownVariables } from "@/lib/template";
+import { cargarVariables, chipsDeVariables, clavesPropias } from "@/lib/variables";
 import { Switch } from "@/components/Switch";
-import { AiButton, StepComposer, VarChips } from "@/components/StepTools";
+import { AbrirVariables, AiButton, StepComposer, VarChips } from "@/components/StepTools";
+import { BotonGuardar } from "@/components/BotonGuardar";
+import { VariablesDialog } from "@/components/VariablesDialog";
+import { AvisoDeUnaVez } from "@/components/AvisoDeUnaVez";
 import {
   addStep, addVariant, deleteStep, deleteVariant, moveStep, setPlainText, updateStepContent, updateStepSettings, updateVariant,
 } from "../../actions";
@@ -52,8 +56,8 @@ function StepSettings({ step }: { step: Seq["steps"][number] }) {
           <input name="sameThread" type="checkbox" defaultChecked={step.sameThread} className="h-4 w-4" />
           <span>Responder en el mismo hilo</span>
         </label>
-        <div className="flex gap-2 sm:col-span-3">
-          <button className="btn">Guardar</button>
+        <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
+          <BotonGuardar listo="Ajustes del paso guardados">Guardar</BotonGuardar>
         </div>
       </form>
     </details>
@@ -61,10 +65,13 @@ function StepSettings({ step }: { step: Seq["steps"][number] }) {
 }
 
 export async function StepsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
-  const [stats, atStep] = await Promise.all([
+  const [stats, atStep, vars] = await Promise.all([
     variantStats(seq.id),
     db.enrollment.groupBy({ by: ["nextStep"], where: { sequenceId: seq.id, status: { in: ["ACTIVE", "PAUSED"] } }, _count: true }),
+    cargarVariables(),
   ]);
+  const chips = chipsDeVariables(vars);
+  const propias = clavesPropias(vars);
   const waiting = new Map(atStep.map((r) => [r.nextStep, r._count]));
   const days = stepDays(seq.steps);
   const href = (q: string) => `${base(seq.id)}?tab=pasos&${q}`;
@@ -115,7 +122,9 @@ export async function StepsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
           const isEmail = step.type === "EMAIL";
           const isWa = step.type === "WHATSAPP";
           const needsSubject = isEmail && !(step.sameThread && step.order > 1);
-          const unknown = unknownVariables(selected.subject + selected.body);
+          const unknown = unknownVariables(selected.subject + selected.body, propias);
+          const esNuevo = sp.nuevo === step.id;
+          const aviso = sp.paso === step.id ? (sp.creada && extra ? "creada" : sp.borrada ? "borrada" : null) : null;
           const sId = `s-${step.id}-${selected.label}`, bId = `b-${step.id}-${selected.label}`;
           return (
             <li key={step.id} id={`paso-${step.id}`} className="card appear scroll-mt-6" style={{ animationDelay: `${i * 40}ms` }}>
@@ -127,6 +136,11 @@ export async function StepsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
                   <div className="min-w-0">
                     <div className="font-semibold text-white">
                       Paso {step.order} <span className="font-normal text-muted">· Día {days[i]} · {TIPO[step.type].t}</span>
+                      {esNuevo && (
+                        <AvisoDeUnaVez span params={["nuevo"]} segundos={8} className="ml-2 rounded-full bg-ok/15 px-2 py-0.5 align-middle text-[11.5px] font-semibold text-[#7BE3B4] ring-1 ring-ok/25">
+                          ✓ Paso agregado
+                        </AvisoDeUnaVez>
+                      )}
                     </div>
                     <div className="text-xs text-muted">{delayText(step.order, step.delayDays)}{isEmail && step.order > 1 && step.sameThread ? " · en el mismo hilo" : ""}{isWa ? " · aparece en Tareas con el mensaje listo" : ""}</div>
                   </div>
@@ -160,8 +174,20 @@ export async function StepsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
               )}
 
               <form action={extra ? updateVariant.bind(null, extra.id) : updateStepContent.bind(null, step.id)} className="grid gap-3 p-5">
+                {aviso === "creada" && (
+                  <AvisoDeUnaVez params={["creada"]} className="rounded-xl bg-ok/[.12] px-3 py-2 text-[13px] text-[#9BEBC6] ring-1 ring-ok/25">
+                    ✓ Se creó la <b className="font-semibold text-white">variante {selected.label}</b> como copia de la A. Cambiale el asunto o el texto y tocá «Guardar variante {selected.label}». Los contactos se reparten entre las variantes.
+                  </AvisoDeUnaVez>
+                )}
+                {aviso === "borrada" && (
+                  <AvisoDeUnaVez params={["borrada"]} segundos={8} className="rounded-xl bg-white/[.06] px-3 py-2 text-[13px] text-muted ring-1 ring-white/[.08]">
+                    Se eliminó la variante {sp.borrada}.
+                  </AvisoDeUnaVez>
+                )}
                 {unknown.length > 0 && (
-                  <p className="rounded-xl bg-warn/[.12] px-3 py-2 text-[13px] text-[#FFD587] ring-1 ring-warn/20">Variables desconocidas: {unknown.map((u) => `{{${u}}}`).join(", ")}.</p>
+                  <p className="rounded-xl bg-warn/[.12] px-3 py-2 text-[13px] text-[#FFD587] ring-1 ring-warn/20">
+                    Variables desconocidas: {unknown.map((u) => `{{${u}}}`).join(", ")}. Corregila o <AbrirVariables>agregala en Variables</AbrirVariables>.
+                  </p>
                 )}
                 <div>
                   <label htmlFor={sId} className="label">
@@ -174,11 +200,13 @@ export async function StepsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
                   <textarea id={bId} name="body" rows={isEmail ? 8 : isWa ? 5 : 3} defaultValue={selected.body} key={`b-${selected.label}`} className="input leading-relaxed" />
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <VarChips targetId={bId} />
+                  <VarChips campos={[sId, bId]} lista={chips} />
                   <div className="flex flex-wrap items-center gap-2">
                     <AiButton tipo={step.type} orden={step.order} total={total} secuencia={seq.name} subjectId={sId} bodyId={bId} />
                     {extra && <button formAction={deleteVariant.bind(null, extra.id)} className="btn-danger text-[13px]">Eliminar variante {extra.label}</button>}
-                    <button className="btn">Guardar{isEmail && variants.length > 1 ? ` variante ${selected.label}` : ""}</button>
+                    <BotonGuardar key={`${step.id}-${selected.label}`} listo={isEmail && variants.length > 1 ? `Variante ${selected.label} guardada` : "Paso guardado"}>
+                      Guardar{isEmail && variants.length > 1 ? ` variante ${selected.label}` : ""}
+                    </BotonGuardar>
                   </div>
                 </div>
               </form>
@@ -187,7 +215,8 @@ export async function StepsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
         })}
       </ol>
 
-      <StepComposer action={addStep.bind(null, seq.id)} orden={total + 1} total={total + 1} secuencia={seq.name} />
+      <StepComposer action={addStep.bind(null, seq.id)} orden={total + 1} total={total + 1} secuencia={seq.name} vars={chips} />
+      <VariablesDialog config={vars} miEmpresa={MI_EMPRESA()} />
     </div>
   );
 }

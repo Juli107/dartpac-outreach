@@ -65,3 +65,14 @@ export function relativeTime(d: Date) {
 export function formatDate(d: Date) {
   return d.toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: process.env.SEND_TIMEZONE ?? "America/Argentina/Buenos_Aires" });
 }
+
+/** Nombre libre para una copia: «X (copia)», y si ya está, «X (copia 2)», «X (copia 3)»… */
+export function nombreDeCopia(nombre: string, usados: Iterable<string>) {
+  const raiz = nombre.replace(/\s+\(copia(?: \d+)?\)$/i, "").trim() || nombre;
+  const ya = new Set(usados);
+  for (let n = 1; n < 1000; n++) {
+    const candidato = `${raiz} (copia${n > 1 ? ` ${n}` : ""})`;
+    if (!ya.has(candidato)) return candidato;
+  }
+  return `${raiz} (copia)`;
+}

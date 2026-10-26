@@ -13,6 +13,11 @@ export type TabParams = {
   contacto?: string;
   error?: string;
   guardado?: string;
+  /** Confirmaciones que vuelven por la dirección: paso agregado, variante creada o borrada, copia lista. */
+  nuevo?: string;
+  creada?: string;
+  borrada?: string;
+  copia?: string;
 };
 
 export const base = (id: string) => `/secuencias/${id}`;

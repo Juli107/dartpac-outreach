@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { sequenceStats, formatPct, pct } from "@/lib/stats";
-import { CONFIRM_ON } from "@/lib/labels";
+import { CONFIRM_ON, nombreDeCopia } from "@/lib/labels";
 import { sequenceHealthMap, sequenceVerdict } from "@/lib/health";
 import { PageHeader, ProgressBar, Empty, Dot, Flash } from "@/components/ui";
 import { Switch } from "@/components/Switch";
-import { borrarEjemplos, createSequence, toggleSequence } from "./actions";
+import { NuevaSecuencia } from "@/components/NuevaSecuencia";
+import { DuplicarSecuencia } from "@/components/DuplicarSecuencia";
+import { borrarEjemplos, createSequence, duplicateSequence, toggleSequence } from "./actions";
 
 export const metadata = { title: "Secuencias" };
 
@@ -28,18 +30,11 @@ export default async function Sequences({ searchParams }: { searchParams: Promis
   ]);
   const health = await sequenceHealthMap(sequences);
   const on = sequences.filter((s) => s.sendingOn).length;
+  const nombres = sequences.map((s) => s.name);
   return (
     <>
       <PageHeader title="Secuencias" sub={`${sequences.length} ${sequences.length === 1 ? "secuencia" : "secuencias"} · ${on} encendidas. Las arman ustedes: pasos, días y mensajes propios.`}>
-        <details className="relative" open={!!nueva}>
-          <summary className="btn cursor-pointer">Nueva secuencia</summary>
-          <form action={createSequence} className="reveal card absolute right-0 z-20 mt-2 flex w-[320px] flex-col gap-3 p-4 shadow-lift">
-            <label htmlFor="name" className="label">Nombre</label>
-            <input id="name" name="name" required autoFocus placeholder="Frigoríficos del GBA · noviembre" className="input" />
-            <p className="text-xs text-muted">Nace vacía y apagada: después elegís cada paso (email, WhatsApp o llamada) y sus mensajes.</p>
-            <button className="btn self-end">Crear</button>
-          </form>
-        </details>
+        <NuevaSecuencia action={createSequence} abierta={!!nueva} />
       </PageHeader>
 
       {ejemplos > 0 && (
@@ -79,6 +74,7 @@ export default async function Sequences({ searchParams }: { searchParams: Promis
                           {s.unread > 0 && (
                             <Link href={`/secuencias/${s.id}?tab=bandeja`} className="rounded-full bg-brand px-1.5 text-[11px] font-semibold text-white" title="Respuestas sin leer">{s.unread}</Link>
                           )}
+                          <DuplicarSecuencia compacto action={duplicateSequence.bind(null, s.id)} nombre={s.name} sugerido={nombreDeCopia(s.name, nombres)} pasos={s._count.steps} />
                         </div>
                         <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
                           <Dot level={verdict.level} pulse={verdict.level === "ok" && s.sendingOn} />
