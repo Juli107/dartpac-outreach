@@ -89,6 +89,10 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
 #rdr .im-prev .r b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #rdr .im-prev .r small{display:block;color:var(--muted);overflow-wrap:anywhere}
 #rdr .im-res{font-weight:500;color:var(--fg)}
+
+#rdr .im-sin>summary{cursor:pointer;color:var(--accent-2);font-size:13.5px;font-weight:600;padding:4px 2px;list-style:none}
+#rdr .im-sin>summary::-webkit-details-marker{display:none}
+#rdr .im-sin p{max-height:180px;overflow:auto;margin:6px 0 0}
 </style>
 <style>
 /* Radar Comercial DARTPAC (encapsulado en #rdr) */
@@ -1336,12 +1340,15 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
     var ops = [];
     return {
       set: function (r, d) { ops.push({ op: "set", c: r._c, id: r.id, d: d || {} }); return this; },
+      update: function (r, d) { ops.push({ op: "update", c: r._c, id: r.id, d: d || {} }); return this; },
       commit: async function (alAvanzar) {
-        for (var i = 0; i < ops.length; i += 100) {
-          var parte = ops.slice(i, i + 100), cols = new Set(), keys = new Set(), antes = [];
+        // las altas entran juntas en la base (de a 500); los cambios van uno por uno del lado del servidor (de a 100)
+        var paso = ops.every(function (o) { return o.op === "set"; }) ? 500 : 100;
+        for (var i = 0; i < ops.length; i += paso) {
+          var parte = ops.slice(i, i + paso), cols = new Set(), keys = new Set(), antes = [];
           parte.forEach(function (o) {
             var k = o.c + "/" + o.id, x = cache.get(k);
-            antes.push([k, x]); cache.set(k, { v: x ? x.v : 0, d: mezclar({}, o.d) }); cols.add(o.c); keys.add(k);
+            antes.push([k, x]); cache.set(k, { v: x ? x.v : 0, d: o.op === "update" && x && x.d ? mezclar(x.d, o.d) : mezclar({}, o.d) }); cols.add(o.c); keys.add(k);
           });
           avisar(cols, keys);
           try {
@@ -1352,7 +1359,7 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
             if (e.code === "invalid_argument") e.code = "bad_request";
             throw e;
           }
-          if (alAvanzar) try { alAvanzar(Math.min(ops.length, i + 100), ops.length); } catch (x) {}
+          if (alAvanzar) try { alAvanzar(Math.min(ops.length, i + paso), ops.length); } catch (x) {}
         }
         programar(400);
       }
@@ -1593,7 +1600,7 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
   /* ---------------------------------------------------------------- columnas por título */
   var CAMPOS = [
     ["nombre", "Empresa", ["empresa", "razon social", "nombre empresa", "nombre de la empresa", "nombre comercial", "nombre de fantasia", "fantasia", "cliente", "compania", "company", "company name", "organizacion", "organization", "account name", "negocio", "comercio", "establecimiento", "prospecto", "nombre", "name"]],
-    ["telefono", "Teléfono", ["telefono", "telefonos", "tel", "telefono fijo", "phone", "phone number", "numero de telefono", "nro telefono", "telefono 1", "fijo"]],
+    ["telefono", "Teléfono", ["telefono", "telefonos", "tel", "telef", "telefono fijo", "phone", "phone number", "numero de telefono", "nro telefono", "nro de telefono", "telefono 1", "fijo", "tel cel", "telefono celular"]],
     ["whatsapp", "WhatsApp", ["whatsapp", "wsp", "wpp", "wa", "celular", "cel", "movil", "telefono celular", "telefono movil", "mobile"]],
     ["email", "Email", ["email", "e mail", "mail", "correo", "correo electronico", "email address", "emails", "mail de contacto", "email de contacto"]],
     ["ciudad", "Ciudad o localidad", ["ciudad", "localidad", "city", "town", "partido", "municipio", "departamento", "barrio", "poblacion"]],
@@ -1624,13 +1631,41 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
     if (map.telefono == null && map.whatsapp != null) { map.telefono = map.whatsapp; delete map.whatsapp; }
     return { map: map, aciertos: aciertos, conTitulos: aciertos >= 2 && map.nombre != null };
   }
-  /* Qué hacer con las filas: títulos detectados o, si no hay, la posición de siempre. */
-  function plan(filas) {
-    var d = detectar(filas[0] || []);
-    if (d.conTitulos) return { map: d.map, conTitulos: true };
-    var map = {}, ancho = (filas[0] || []).length;
-    Object.keys(POR_POSICION).forEach(function (k) { if (POR_POSICION[k] < Math.max(ancho, 1)) map[k] = POR_POSICION[k]; });
-    return { map: map, conTitulos: false };
+  /* Columnas que el título no dejó claras: se miran los datos (emails, teléfonos y webs se reconocen solos). */
+  var NO_ADIVINAR = /\b(cuit|cuil|dni|codigo|cod|cp|postal|id|legajo|nro cliente|numero de cliente|cliente nro|fecha|monto|importe|total|precio|cantidad)\b/;
+  var PRUEBAS = [
+    ["email", function (x) { return /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(x); }],
+    ["telefono", function (x) { var d = x.replace(/\D/g, ""); return /^[+()\d\s.\/-]+$/.test(x) && d.length >= 7 && d.length <= 15 && !/^\d{2}-?\d{8}-?\d$/.test(x); }],
+    ["web", function (x) { return x.indexOf("@") < 0 && /^(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(x) && /[a-z]/i.test(x); }]
+  ];
+  function porContenido(filas, map, desde, encabezado) {
+    var usados = {}, muestra = filas.slice(desde, desde + 300), ancho = 0;
+    Object.keys(map).forEach(function (k) { usados[map[k]] = 1; });
+    muestra.forEach(function (f) { if (f.length > ancho) ancho = f.length; });
+    PRUEBAS.forEach(function (p) {
+      if (map[p[0]] != null) return;
+      var mejor = -1, puntaje = 0;
+      for (var j = 0; j < ancho; j++) {
+        if (usados[j] || (encabezado && NO_ADIVINAR.test(norm(encabezado[j])))) continue;
+        var vals = muestra.map(function (f) { return f[j] || ""; }).filter(Boolean);
+        if (vals.length < 2) continue;
+        var ok = vals.filter(p[1]).length / vals.length;
+        if (ok >= 0.6 && ok > puntaje) { puntaje = ok; mejor = j; }
+      }
+      if (mejor >= 0) { map[p[0]] = mejor; usados[mejor] = 1; }
+    });
+    return map;
+  }
+  /* Qué hacer con las filas: los títulos detectados o, si no hay, la posición de siempre; y lo que falte, por los datos.
+     conTitulos: true/false fuerza la lectura de la primera fila como títulos (o no). */
+  function plan(filas, conTitulos) {
+    var d = detectar(filas[0] || []), tit = conTitulos == null ? d.conTitulos : !!conTitulos, map = {};
+    if (tit) map = d.map;
+    else {
+      var ancho = (filas[0] || []).length;
+      Object.keys(POR_POSICION).forEach(function (k) { if (POR_POSICION[k] < Math.max(ancho, 1)) map[k] = POR_POSICION[k]; });
+    }
+    return { map: porContenido(filas, map, tit ? 1 : 0, tit ? filas[0] : null), conTitulos: tit };
   }
 
   window.DPImport = { leerArchivo: leerArchivo, csv: csv, plan: plan, detectar: detectar, CAMPOS: CAMPOS.map(function (c) { return [c[0], c[1]]; }), norm: norm };
@@ -2787,7 +2822,7 @@ function lgHtml(p){ const n=String(p.nombre||p.id); let h=0; for(const c of n) h
   return `<span class="lg" style="background:linear-gradient(140deg,${c1},${c2===c1?"#5B9BFF":c2})">${esc(lgIni(n))}<em aria-hidden="true">${rubIc(p.rubro)}</em></span>`; }
 function llegNuevos(docs){ const ids=new Set(docs.map(p=>p.id));
   if(!LLEG.vistos){ LLEG.vistos=ids; return; }
-  const nuevos=docs.filter(p=>!LLEG.vistos.has(p.id)&&(!p.creado||p.creado>Date.now()-6*3600e3)); LLEG.vistos=ids;
+  const nuevos=docs.filter(p=>!LLEG.vistos.has(p.id)&&(!p.creado||p.creado>Date.now()-6*3600e3)&&!/^(Archivo|Lista pegada|Cargado a mano)/.test(p.fuente||"")); LLEG.vistos=ids;
   if(!nuevos.length) return;
   try{ const p0=nuevos[0]; avisar("Nueva empresa: "+(p0.nombre||"sin nombre"),{key:"lleg",n:nuevos.length,ic:"📡",tono:"ok",d:[rubNom(p0.rubro),p0.ciudad||provNom(p0.provincia)].filter(Boolean).join(" · "),tN:"{n} empresas nuevas en el Radar",dN:"Recién encontradas. Tocá para verlas.",ir:{ver:p0.id},irN:{tab:"lista"}}); }catch(e){}
   LLEG.cola.push(...nuevos); llegCorre(); }
@@ -3806,15 +3841,32 @@ function form(p,pre){ const e=!!p; p=p||Object.assign({rubro:"otro",potencial:"m
       if(await guardar(()=>e?S.db.doc("prospectos/"+id).update(d):S.db.doc("prospectos/"+id).set(d),e?"Cambios guardados":"Prospecto agregado")){ cerrar(); if(e) ver(id); } });
     const del=root.querySelector("#pf-del"); if(del) del.onclick=async()=>{ if(del.dataset.ok!=="1"){del.dataset.ok="1";del.textContent="Tocá de nuevo para borrarlo";return;} if(await guardar(()=>S.db.doc("prospectos/"+p.id).delete(),"Prospecto borrado")) cerrar(); };
   }); }
-/* Importar empresas (web): subir un CSV o Excel, con las columnas en cualquier orden (se reconocen por el título),
-   o pegar una lista copiada de Excel. Muestra qué columna va en cada dato, deduce la provincia por la ciudad,
-   verifica los emails y saltea las empresas que ya están. Guarda de a 100 por pedido. */
+/* Importar empresas (web): subir un CSV o Excel, con las columnas en cualquier orden (se reconocen por el título y
+   por los datos), o pegar una lista copiada de Excel. No se pierde ninguna fila: la que ya está en el Radar completa
+   los datos que le faltaban (y suma el contacto nuevo a sus notas), las repetidas del archivo se juntan, y las que no
+   traen provincia se cargan igual. Las nuevas entran de a 500 por pedido. */
 let IM_LOC=null;
 function provDeCiudad(t){ const v=norm(t); if(!v) return "";
   if(!IM_LOC){ IM_LOC=new Map();
     ADM.L.forEach(l=>{ const k=norm(l.n), x=IM_LOC.get(k); if(!x||l.p>x.p) IM_LOC.set(k,{p:l.p,prov:(ADM.D[l.d]||{}).prov||""}); });
     ADM.D.forEach(d=>{ const k=norm(d.n); if(!IM_LOC.has(k)) IM_LOC.set(k,{p:0,prov:d.prov}); }); }
   const x=IM_LOC.get(v); return x?x.prov:""; }
+const imDig=t=>String(t||"").replace(/\D/g,"");
+/* Lo que una fila suma a una empresa que ya existe: los datos que le faltan y, si trae otra persona, otro teléfono
+   u otro email, una línea «Otro contacto» en las notas. Devuelve solo lo que cambia. */
+function imCompletar(b,r){ const d={}, notas=String(b.notas||""), bajo=notas.toLowerCase();
+  ["telefono","whatsapp","email","web","direccion","ciudad"].forEach(k=>{ if(r[k]&&!String(b[k]||"").trim()) d[k]=r[k]; });
+  if(d.email&&r.emailCheck) d.emailCheck=r.emailCheck;
+  if(r.provincia&&!b.provincia) d.provincia=r.provincia;
+  if(r.rubro&&r.rubro!=="otro"&&(!b.rubro||b.rubro==="otro")) d.rubro=r.rubro;
+  const tel=r.telefono&&b.telefono&&imDig(r.telefono)!==imDig(b.telefono)&&!bajo.includes(r.telefono.toLowerCase())?r.telefono:"";
+  const mail=r.email&&b.email&&r.email!==String(b.email).toLowerCase()&&!bajo.includes(r.email)?r.email:"";
+  const persona=r.contacto&&!bajo.includes(r.contacto.toLowerCase())?r.contacto+(r.cargo?" ("+r.cargo+")":""):"";
+  const extra=[];
+  if(persona||tel||mail) extra.push((/contacto:/i.test(notas)?"Otro contacto: ":"Contacto: ")+[persona,tel,mail].filter(Boolean).join(" · "));
+  if(r.notas&&!bajo.includes(r.notas.toLowerCase())) extra.push(r.notas);
+  if(extra.length) d.notas=[notas,...extra].filter(Boolean).join("\n");
+  return d; }
 function importar(){
   const PROVS=Object.entries(PROV).map(([k,x])=>[k,x.n]).sort((a,b)=>a[1].localeCompare(b[1]));
   abrir("Importar empresas",`<div class="im-drop" id="im-drop"><span class="im-ic" aria-hidden="true">📄</span>
@@ -3825,59 +3877,82 @@ function importar(){
      <p class="hint">Si copiás también la fila de títulos, las columnas van en cualquier orden. Sin títulos, en este orden: Empresa; teléfono; ciudad; provincia; rubro; web.</p></details>
    <div id="im-cfg"></div>
    <p class="hint im-res" id="im-r" aria-live="polite"></p>
+   <div id="im-det"></div>
    <button class="btn primary block" id="im-go" disabled>Importar</button>`,root=>{
-    let FILAS=[], MAP={}, TIT=false, ORIGEN="", DET="", DP="", nuevas=[];
-    const out=root.querySelector("#im-r"), cfg=root.querySelector("#im-cfg"), go=root.querySelector("#im-go"), MAXF=20000;
+    let FILAS=[], MAP={}, TIT=false, ORIGEN="", DET="", DP="", NUEVAS=[], CAMBIOS=new Map(), SIN=[];
+    const out=root.querySelector("#im-r"), cfg=root.querySelector("#im-cfg"), det=root.querySelector("#im-det"), go=root.querySelector("#im-go"), MAXF=20000;
     const letra=j=>{ let s="",n=j+1; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; };
     const datos=()=>TIT?FILAS.slice(1):FILAS;
     const v=(f,k)=>MAP[k]==null?"":String(f[MAP[k]]||"").trim();
-    const digitos=t=>String(t||"").replace(/\D/g,"");
+    const nf=x=>x.toLocaleString("es-AR");
     const pintarCfg=()=>{ const ancho=Math.max(0,...FILAS.slice(0,60).map(f=>f.length));
       const nom=j=>TIT&&FILAS[0][j]?FILAS[0][j]:"Columna "+letra(j), ej=j=>{ const d=datos().find(f=>f[j]); return d?String(d[j]).slice(0,28):""; };
       const opts=k=>`<option value="">— No usar —</option>`+Array.from({length:ancho},(_,j)=>`<option value="${j}" ${MAP[k]===j?"selected":""}>${esc(nom(j))}${ej(j)?" · ej.: "+esc(ej(j)):""}</option>`).join("");
-      cfg.innerHTML=`<div class="panel im-map"><div class="im-src"><b>${esc(ORIGEN)}</b><span class="hint">${datos().length.toLocaleString("es-AR")} filas${DET?" · "+esc(DET):""}</span></div>
+      cfg.innerHTML=`<div class="panel im-map"><div class="im-src"><b>${esc(ORIGEN)}</b><span class="hint">${nf(datos().length)} filas${DET?" · "+esc(DET):""}</span></div>
         <label class="im-chk"><input type="checkbox" id="im-h" ${TIT?"checked":""}> La primera fila son los títulos</label>
-        <p class="hint">Revisá qué columna va en cada dato: solo «Empresa» es obligatoria. La persona de contacto, el cargo y las notas quedan en las notas de la ficha.</p>
-        <div class="im-campos">${window.DPImport.CAMPOS.map(([k,t])=>`<label class="fld"><span>${esc(t)}${k==="nombre"?" *":""}</span><select data-c="${k}">${opts(k)}</select></label>`).join("")}</div>
-        <label class="fld"><span>Si una fila no trae provincia ni se deduce de la ciudad</span><select id="im-dp"><option value="">No cargarla</option>${PROVS.map(([k,n])=>`<option value="${k}" ${DP===k?"selected":""}>Cargarla en ${esc(n)}</option>`).join("")}</select></label>
+        <p class="hint">Revisá qué columna va en cada dato. La persona de contacto, el cargo y las notas quedan en las notas de la ficha.</p>
+        <div class="im-campos">${window.DPImport.CAMPOS.map(([k,t])=>`<label class="fld"><span>${esc(t)}</span><select data-c="${k}">${opts(k)}</select></label>`).join("")}</div>
+        <label class="fld"><span>Las filas que no traen provincia (ni se deduce de la ciudad)</span><select id="im-dp"><option value="">Se cargan sin provincia (la completás después)</option>${PROVS.map(([k,n])=>`<option value="${k}" ${DP===k?"selected":""}>Se cargan en ${esc(n)}</option>`).join("")}</select></label>
         <div class="im-prev" id="im-prev"></div></div>`;
       cfg.querySelectorAll("select[data-c]").forEach(s=>s.onchange=()=>{ const k=s.dataset.c, j=s.value===""?null:+s.value;
         Object.keys(MAP).forEach(x=>{ if(j!=null&&x!==k&&MAP[x]===j) delete MAP[x]; }); if(j==null) delete MAP[k]; else MAP[k]=j; pintarCfg(); calcular(); });
-      cfg.querySelector("#im-h").onchange=e=>{ TIT=e.target.checked; if(TIT){ const d=window.DPImport.detectar(FILAS[0]||[]); if(d.map.nombre!=null) MAP=d.map; } pintarCfg(); calcular(); };
+      cfg.querySelector("#im-h").onchange=e=>{ const pl=window.DPImport.plan(FILAS,e.target.checked); MAP=pl.map; TIT=pl.conTitulos; pintarCfg(); calcular(); };
       cfg.querySelector("#im-dp").onchange=e=>{ DP=e.target.value; calcular(); }; };
-    const calcular=()=>{ nuevas=[];
-      const yaN=new Set(S.P.map(p=>norm(p.nombre)+"|"+(p.provincia||""))), yaT=new Set(S.P.map(p=>digitos(p.telefono)).filter(t=>t.length>=8)), yaE=new Set(S.P.map(p=>String(p.email||"").toLowerCase()).filter(Boolean));
-      const st={filas:0,rep:0,sinP:0,deduc:0,porDef:0,fix:0,mal:0};
-      if(MAP.nombre!=null) for(const f of datos()){ const nombre=v(f,"nombre"); if(!nombre) continue; st.filas++;
-        const ciudad=v(f,"ciudad"), dir=v(f,"direccion");
-        let prov=provDeTexto(v(f,"provincia"));
-        if(!prov){ prov=provDeTexto(ciudad)||provDeCiudad(ciudad.split(/[,(\/-]/)[0])||provDeTexto(dir); if(prov) st.deduc++; }
-        if(!prov&&DP){ prov=DP; st.porDef++; }
-        if(!prov){ st.sinP++; continue; }
-        const p={nombre,telefono:v(f,"telefono"),ciudad,provincia:prov,rubro:rubDeTexto(v(f,"rubro")),web:v(f,"web")};
-        const wa=v(f,"whatsapp"); if(wa) p.whatsapp=wa; if(dir) p.direccion=dir;
-        const ct=v(f,"contacto"), cg=v(f,"cargo"), notas=[v(f,"notas"),ct||cg?"Contacto: "+[ct,cg?"("+cg+")":""].filter(Boolean).join(" "):""].filter(Boolean).join("\n"); if(notas) p.notas=notas;
-        const emTxt=MAP.email!=null?v(f,"email"):f.join(" ");
-        if(vfyOn()){ const em=window.DPV.extraer(emTxt)[0]; if(em){ const r=window.DPV.verificar(em), fin=r.estado==="corregible"?r.sugerencia:r.normal;
-            if(r.estado==="invalido"||r.estado==="vacio"){ p._emailMalo=em; st.mal++; } else { p.email=fin; p.emailCheck=vfyMarca(r.estado==="corregible"?window.DPV.verificar(fin):r); if(r.estado==="corregible"){ p._emailFix=em+" → "+fin; st.fix++; } } } }
-        else { const m=/[^\s@,;<>()"']+@[^\s@,;<>()"']+\.[a-z]{2,}/i.exec(emTxt); if(m) p.email=m[0].toLowerCase(); }
-        if(p.web.includes("@")) p.web="";
-        const kN=norm(nombre)+"|"+prov, kT=digitos(p.telefono), kE=String(p.email||"").toLowerCase();
-        if(yaN.has(kN)||(kT.length>=8&&yaT.has(kT))||(kE&&yaE.has(kE))){ st.rep++; continue; }
-        yaN.add(kN); if(kT.length>=8) yaT.add(kT); if(kE) yaE.add(kE); nuevas.push(p); }
-      const n=x=>x.toLocaleString("es-AR"), partes=[];
-      if(MAP.nombre==null) partes.push("Elegí qué columna tiene el nombre de la empresa.");
-      else { partes.push(`${n(st.filas)} empresas en el archivo`, `${n(nuevas.length)} nuevas`);
-        if(st.rep) partes.push(`${n(st.rep)} ya estaban (se saltean)`); if(st.sinP) partes.push(`${n(st.sinP)} sin provincia (no se cargan)`);
-        if(st.deduc) partes.push(`${n(st.deduc)} con la provincia deducida de la ciudad`); if(st.porDef) partes.push(`${n(st.porDef)} van a ${provNom(DP)}`);
-        if(st.fix) partes.push(`${n(st.fix)} email${st.fix===1?"":"s"} con tipeo corregido`); if(st.mal) partes.push(`${n(st.mal)} email${st.mal===1?"":"s"} inválido${st.mal===1?"":"s"} (se cargan sin email)`); }
+    /* Una fila del archivo → los datos de una empresa (o null si no trae nada con qué identificarla). */
+    const filaA=(f,st)=>{ const r={contacto:v(f,"contacto"),cargo:v(f,"cargo"),telefono:v(f,"telefono"),whatsapp:v(f,"whatsapp"),ciudad:v(f,"ciudad"),direccion:v(f,"direccion"),web:v(f,"web"),notas:v(f,"notas"),rubro:rubDeTexto(v(f,"rubro"))};
+      const emTxt=MAP.email!=null?v(f,"email"):f.join(" ");
+      if(vfyOn()){ const em=window.DPV.extraer(emTxt)[0]; if(em){ const x=window.DPV.verificar(em), fin=x.estado==="corregible"?x.sugerencia:x.normal;
+          if(x.estado==="invalido"||x.estado==="vacio"){ r._emailMalo=em; st.mal++; } else { r.email=String(fin).toLowerCase(); r.emailCheck=vfyMarca(x.estado==="corregible"?window.DPV.verificar(fin):x); if(x.estado==="corregible"){ r._emailFix=em+" → "+fin; st.fix++; } } } }
+      else { const m=/[^\s@,;<>()"']+@[^\s@,;<>()"']+\.[a-z]{2,}/i.exec(emTxt); if(m) r.email=m[0].toLowerCase(); }
+      if(r.web.includes("@")) r.web="";
+      // el nombre: la empresa; si la fila no la trae, la persona, el email o el teléfono
+      r.nombre=v(f,"nombre")||r.contacto||r.email||r.telefono||r.whatsapp;
+      if(!r.nombre) return null;
+      r.provincia=provDeTexto(v(f,"provincia"));
+      if(!r.provincia){ r.provincia=provDeTexto(r.ciudad)||provDeCiudad(r.ciudad.split(/[,(\/-]/)[0])||provDeTexto(r.direccion); if(r.provincia) st.deduc++; }
+      if(!r.provincia&&DP){ r.provincia=DP; st.porDef++; }
+      if(!r.provincia) st.sinP++;
+      return r; };
+    const calcular=()=>{ NUEVAS=[]; CAMBIOS=new Map(); SIN=[]; const SINI=new Set();
+      const st={filas:0,vacias:0,deduc:0,porDef:0,sinP:0,fix:0,mal:0,juntadas:0};
+      // lo que ya está en el Radar: por email, por nombre y provincia, y por nombre (cuando la fila no trae provincia)
+      const yaE=new Map(), yaNP=new Map(), yaN=new Map(), nuE=new Map(), nuNP=new Map(), nuN=new Map();
+      const indexar=(p,E,NP,N)=>{ const e=String(p.email||"").toLowerCase(), n=norm(p.nombre); if(e) E.set(e,p); if(n){ NP.set(n+"|"+(p.provincia||""),p); N.set(n,(N.get(n)||[]).concat([p])); } };
+      S.P.forEach(p=>indexar(p,yaE,yaNP,yaN));
+      const buscar=(r,E,NP,N)=>{ if(r.email&&E.has(r.email)) return E.get(r.email); const n=norm(r.nombre);
+        if(r.provincia&&NP.has(n+"|"+r.provincia)) return NP.get(n+"|"+r.provincia);
+        if(!r.provincia){ const L=N.get(n)||[]; if(L.length===1) return L[0]; } return null; };
+      if(Object.keys(MAP).length) for(const f of datos()){ const r=filaA(f,st); if(!r){ st.vacias++; continue; } st.filas++;
+        const ya=buscar(r,yaE,yaNP,yaN);
+        if(ya){ const prev=CAMBIOS.get(ya.id)||{}, base=Object.assign({},ya,prev), d=imCompletar(base,r);
+          if(Object.keys(d).length){ CAMBIOS.set(ya.id,Object.assign(prev,d)); if(r._emailFix) prev._fix=(prev._fix||[]).concat([r._emailFix]); }
+          else if(!CAMBIOS.has(ya.id)&&!SINI.has(ya.id)){ SINI.add(ya.id); SIN.push(ya.nombre); } continue; }
+        const nu=buscar(r,nuE,nuNP,nuN);
+        if(nu){ Object.assign(nu,imCompletar(nu,r)); st.juntadas++; indexar(nu,nuE,nuNP,nuN); continue; }
+        const p={nombre:r.nombre,telefono:r.telefono,ciudad:r.ciudad,provincia:r.provincia,rubro:r.rubro,web:r.web};
+        ["whatsapp","direccion","email","emailCheck","_emailFix","_emailMalo"].forEach(k=>{ if(r[k]) p[k]=r[k]; });
+        const notas=[r.contacto||r.cargo?"Contacto: "+[r.contacto,r.cargo?"("+r.cargo+")":""].filter(Boolean).join(" "):"",r.notas].filter(Boolean).join("\n"); if(notas) p.notas=notas;
+        NUEVAS.push(p); indexar(p,nuE,nuNP,nuN); }
+      const partes=[];
+      if(!Object.keys(MAP).length) partes.push("Elegí qué columna tiene cada dato.");
+      else { const pl=(n,a,b)=>nf(n)+" "+(n===1?a:b);
+        partes.push(`${pl(st.filas,"fila","filas")}: ${pl(NUEVAS.length,"empresa nueva","empresas nuevas")}`);
+        if(CAMBIOS.size) partes.push(`${pl(CAMBIOS.size,"ya estaba y se completa","ya estaban y se completan")} con datos nuevos`);
+        if(SIN.length) partes.push(`${pl(SIN.length,"ya estaba","ya estaban")} con los mismos datos`);
+        if(st.juntadas) partes.push(`${pl(st.juntadas,"fila repetida se juntó","filas repetidas se juntaron")} con su empresa`);
+        if(st.sinP) partes.push(`${pl(st.sinP,"sin provincia (se carga igual)","sin provincia (se cargan igual)")}`); if(st.porDef) partes.push(`${nf(st.porDef)} ${st.porDef===1?"va":"van"} a ${provNom(DP)}`);
+        if(st.deduc) partes.push(`${nf(st.deduc)} con la provincia deducida de la ciudad`);
+        if(st.fix) partes.push(`${pl(st.fix,"email con tipeo corregido","emails con tipeo corregido")}`); if(st.mal) partes.push(`${pl(st.mal,"email inválido (se carga sin email)","emails inválidos (se cargan sin email)")}`);
+        if(st.vacias) partes.push(`${pl(st.vacias,"fila vacía","filas vacías")}`); }
       out.textContent=partes.join(" · ");
+      det.innerHTML=SIN.length?`<details class="im-sin"><summary>Ver las ${nf(SIN.length)} que ya estaban en el Radar con los mismos datos</summary><p class="hint">${SIN.slice(0,300).map(esc).join(" · ")}${SIN.length>300?" …":""}</p></details>`:"";
       const pv=root.querySelector("#im-prev");
-      if(pv) pv.innerHTML=nuevas.length?`<span class="hint">Así van a quedar las primeras:</span>`+nuevas.slice(0,4).map(p=>`<div class="r"><b>${esc(p.nombre)}</b><small>${esc([p.ciudad,provNom(p.provincia)].filter(Boolean).join(", "))}${p.telefono?" · "+esc(p.telefono):""}${p.email?" · "+esc(p.email):""} · ${esc((RUB[p.rubro]||{}).n||"Otro rubro")}</small></div>`).join(""):"";
-      go.disabled=!nuevas.length; go.textContent=nuevas.length?`Importar ${n(nuevas.length)} empresa${nuevas.length===1?"":"s"}`:"No hay empresas nuevas para importar"; };
-    const cargar=(filas,origen,det)=>{ DET=det||""; if(filas.length>MAXF+1){ DET=[DET,`se leen las primeras ${MAXF.toLocaleString("es-AR")}: volvé a subirlo para el resto (las repetidas se saltean)`].filter(Boolean).join(" · "); filas=filas.slice(0,MAXF+1); }
+      if(pv) pv.innerHTML=NUEVAS.length?`<span class="hint">Así van a quedar las primeras:</span>`+NUEVAS.slice(0,4).map(p=>`<div class="r"><b>${esc(p.nombre)}</b><small>${esc([p.ciudad,p.provincia?provNom(p.provincia):"sin provincia"].filter(Boolean).join(", "))}${p.telefono?" · "+esc(p.telefono):""}${p.email?" · "+esc(p.email):""} · ${esc((RUB[p.rubro]||{}).n||"Otro rubro")}</small></div>`).join(""):"";
+      const tot=NUEVAS.length+CAMBIOS.size; go.disabled=!tot;
+      go.textContent=!tot?"No hay nada nuevo para cargar":NUEVAS.length&&CAMBIOS.size?`Importar ${nf(NUEVAS.length)} nuevas y completar ${nf(CAMBIOS.size)}`:NUEVAS.length?`Importar ${nf(NUEVAS.length)} empresa${NUEVAS.length===1?"":"s"}`:`Completar ${nf(CAMBIOS.size)} empresa${CAMBIOS.size===1?"":"s"}`; };
+    const cargar=(filas,origen,detalle)=>{ DET=detalle||""; if(filas.length>MAXF+1){ DET=[DET,`se leen las primeras ${nf(MAXF)}: volvé a subirlo para el resto (lo que ya esté no se repite)`].filter(Boolean).join(" · "); filas=filas.slice(0,MAXF+1); }
       FILAS=filas; ORIGEN=origen; const pl=window.DPImport.plan(FILAS); MAP=pl.map; TIT=pl.conTitulos; pintarCfg(); calcular(); };
-    const leerArchivo=async file=>{ out.textContent="Leyendo «"+file.name+"»…"; cfg.innerHTML=""; go.disabled=true;
+    const leerArchivo=async file=>{ out.textContent="Leyendo «"+file.name+"»…"; cfg.innerHTML=""; det.innerHTML=""; go.disabled=true;
       try{ const r=await window.DPImport.leerArchivo(file); if(!r.filas.length){ out.textContent="El archivo está vacío."; return; } cargar(r.filas,file.name,r.detalle); }
       catch(err){ out.textContent=(err&&err.message)||"No se pudo leer el archivo."; } };
     root.querySelector("#im-f").onchange=e=>{ const file=e.target.files&&e.target.files[0]; e.target.value=""; if(file) leerArchivo(file); };
@@ -3886,19 +3961,28 @@ function importar(){
     root.addEventListener("dragleave",e=>{ if(!e.relatedTarget||!root.contains(e.relatedTarget)) drop.classList.remove("on"); });
     root.addEventListener("drop",e=>{ const file=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(!file) return; e.preventDefault(); drop.classList.remove("on"); leerArchivo(file); });
     const ta=root.querySelector("#im-t"); let tPeg=0;
-    ta.addEventListener("input",()=>{ clearTimeout(tPeg); tPeg=setTimeout(()=>{ const t=ta.value.trim(); if(!t){ cfg.innerHTML=""; out.textContent=""; go.disabled=true; go.textContent="Importar"; return; }
+    ta.addEventListener("input",()=>{ clearTimeout(tPeg); tPeg=setTimeout(()=>{ const t=ta.value.trim(); if(!t){ cfg.innerHTML=""; det.innerHTML=""; out.textContent=""; go.disabled=true; go.textContent="Importar"; return; }
       cargar(window.DPImport.csv(t,/\t/.test(t)?"\t":undefined),"Lista pegada",""); },250); });
-    go.onclick=async()=>{ if(!nuevas.length) return; go.disabled=true;
-      const total=nuevas.length, t=Date.now(), por=S.yo||S.cfg.vendedor||"", pegada=ORIGEN==="Lista pegada", base=nuevoId();
-      const docs=nuevas.map(f=>{ const h=[{t,tipo:"alta",texto:pegada?"Importado de una lista":"Importado de «"+ORIGEN+"»",por}];
+    go.onclick=async()=>{ const total=NUEVAS.length+CAMBIOS.size; if(!total) return; go.disabled=true;
+      const t=Date.now(), por=S.yo||S.cfg.vendedor||"", pegada=ORIGEN==="Lista pegada", de=pegada?"una lista pegada":"«"+ORIGEN+"»", base=nuevoId();
+      const docs=NUEVAS.map(f=>{ const h=[{t,tipo:"alta",texto:"Importado de "+de,por}];
         if(f._emailFix) h.push({t,tipo:"dato",texto:"Email corregido: "+f._emailFix,por:"Verificador"}); if(f._emailMalo) h.push({t,tipo:"dato",texto:"Email descartado por inválido: "+f._emailMalo,por:"Verificador"});
         const {_emailFix,_emailMalo,...doc}=f; return Object.assign(doc,{etapa:"nuevo",potencial:"medio",creado:t,fuente:pegada?"Lista pegada":"Archivo «"+ORIGEN+"»",historial:h}); });
-      let hechos=0; const n=x=>x.toLocaleString("es-AR");
+      const NOMB={telefono:"teléfono",whatsapp:"WhatsApp",email:"email",web:"web",direccion:"dirección",ciudad:"ciudad",provincia:"provincia",rubro:"rubro",notas:"contacto o notas"};
+      const upd=[...CAMBIOS.entries()].map(([id,d])=>{ const p=pById(id)||{}, {_fix,...cambio}=d;
+        cambio.historial=(p.historial||[]).concat([{t,tipo:"dato",texto:"Datos completados desde "+de+": "+Object.keys(cambio).filter(k=>k!=="emailCheck").map(k=>NOMB[k]||k).join(", "),por}]); cambio.actualizado=t; return [id,cambio]; });
+      let hechos=0;
+      const avance=(k)=>{ hechos=k; go.textContent=`Cargando ${nf(k)} de ${nf(total)}…`; };
       const ok=await guardar(async()=>{
-        if(S.db.batch){ const b=S.db.batch(); docs.forEach((d,i)=>b.set(S.db.doc("prospectos/"+base+i.toString(36)),d)); await b.commit((k,tot)=>{ hechos=k; go.textContent=`Importando ${n(k)} de ${n(tot)}…`; }); }
-        else for(const [i,d] of docs.entries()){ await S.db.doc("prospectos/"+base+i.toString(36)).set(d); hechos=i+1; if(hechos%20===0) go.textContent=`Importando ${n(hechos)} de ${n(total)}…`; } },`${n(total)} empresa${total===1?"":"s"} importada${total===1?"":"s"} al Radar`);
+        if(S.db.batch){
+          if(docs.length){ const b=S.db.batch(); docs.forEach((d,i)=>b.set(S.db.doc("prospectos/"+base+i.toString(36)),d)); await b.commit(k=>avance(k)); }
+          if(upd.length){ const b=S.db.batch(); upd.forEach(([id,d])=>b.update(S.db.doc("prospectos/"+id),d)); await b.commit(k=>avance(docs.length+k)); }
+        } else {
+          for(const [i,d] of docs.entries()){ await S.db.doc("prospectos/"+base+i.toString(36)).set(d); avance(i+1); }
+          for(const [i,[id,d]] of upd.entries()){ await S.db.doc("prospectos/"+id).update(d); avance(docs.length+i+1); }
+        } },[docs.length?`${nf(docs.length)} empresa${docs.length===1?"":"s"} nueva${docs.length===1?"":"s"}`:"",upd.length?`${nf(upd.length)} completada${upd.length===1?"":"s"}`:""].filter(Boolean).join(" y ")+" en el Radar");
       if(ok){ cerrar(); render(); return; }
-      if(hechos) toast(`Se importaron ${n(hechos)} de ${n(total)}. Tocá «Importar» de nuevo: las que ya están se saltean.`);
+      if(hechos) toast(`Se cargaron ${nf(hechos)} de ${nf(total)}. Tocá el botón de nuevo: lo que ya entró no se repite.`);
       setTimeout(calcular,600); };
   }); }
 function partirZona(deps,n){ if(n<=1||deps.length<=1) return [deps.slice()];

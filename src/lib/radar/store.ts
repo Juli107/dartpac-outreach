@@ -58,6 +58,24 @@ export async function setDoc(col: string, id: string, data: RadarData) {
   return r.v;
 }
 
+/**
+ * Altas en bloque (importar una base): los documentos que todavía no existen entran en una sola consulta; los que ya
+ * existían (raro: otro los creó en el medio) se reemplazan uno por uno. Devuelve la versión de cada uno, en orden.
+ */
+export async function setDocs(col: string, docs: { id: string; data: RadarData }[]) {
+  const existentes = new Set(
+    (await db.radarDoc.findMany({ where: { col, id: { in: docs.map((d) => d.id) } }, select: { id: true } })).map((r) => r.id),
+  );
+  const nuevos = docs.filter((d) => !existentes.has(d.id));
+  const v = new Map<string, number>();
+  if (nuevos.length) {
+    await db.radarDoc.createMany({ data: nuevos.map((d) => ({ col, id: d.id, data: asJson(clean(d.data) as RadarData) })), skipDuplicates: true });
+    for (const d of nuevos) v.set(d.id, 1);
+  }
+  for (const d of docs) if (existentes.has(d.id)) v.set(d.id, await setDoc(col, d.id, d.data));
+  return docs.map((d) => v.get(d.id) ?? 1);
+}
+
 export class VersionConflict extends Error {}
 
 /**
