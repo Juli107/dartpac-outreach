@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { hasSession } from "@/lib/session";
 
 // Rutas públicas: login (también con Google), píxel de apertura, imagen de firma, baja, y los trabajos programados
-// (cron, trabajador y búsqueda semanal del Radar), que se protegen con su propio secreto o el token de GitHub.
+// (cron, trabajador y búsqueda semanal del Radar), que se protegen con su propio secreto o el token de GitHub, y el
+// latido, que no necesita llave porque solo hace lo que ya tocaba.
 const PUBLIC = [
   /^\/login/,
   /^\/api\/t\//,
@@ -10,6 +11,7 @@ const PUBLIC = [
   /^\/api\/google\//,
   /^\/baja\//,
   /^\/api\/cron/,
+  /^\/api\/latido$/,
   /^\/api\/radar\/worker$/,
   /^\/api\/radar\/semanal$/,
   /^\/_next\//,

@@ -50,6 +50,18 @@ export async function programadorSiHaceFalta(now = new Date()) {
 }
 
 /**
+ * El latido: lo llama cron-job.org cada 10 minutos, sin llave. Solo hace lo que falta (la pasada si pasaron 9 minutos
+ * sin ninguna, a cualquier hora: cada secuencia envía solo dentro de su horario y fuera de él se leen las respuestas)
+ * y la búsqueda de los lunes. Llamarlo de más no adelanta nada: como mucho una pasada cada 9 minutos, con turno.
+ */
+export async function latido(now = new Date()) {
+  const { at } = await lastRun();
+  const pasada = !at || now.getTime() - at.getTime() >= CADA_MS;
+  if (pasada) await pasadaProgramador({ bandeja: true, fuente: "latido" });
+  await semanalSiHaceFalta(now);
+}
+
+/**
  * La búsqueda automática de los lunes, si ya es la hora y todavía no corrió hoy. La piden el programador externo
  * (cada 10 minutos) y la app; armarSemanal reserva el día, así que corre una sola vez.
  */

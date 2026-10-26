@@ -6,7 +6,7 @@ export type RunReport = {
   at: string;
   steps: { sent: number; tasks: number; finished: number; errors: number; sequencesOn: number; outsideWindow: number; skipped?: number };
   inbox: { imported: number; bounced?: number; errors?: string[]; disabled?: boolean } | "omitida" | { error: string };
-  source: "cron" | "manual" | "app";
+  source: "cron" | "manual" | "app" | "latido";
 };
 
 export async function recordRun(report: RunReport) {
