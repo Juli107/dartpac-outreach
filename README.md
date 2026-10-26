@@ -46,8 +46,8 @@ curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron
 
 1. Base Postgres (Neon) en `DATABASE_URL` y el resto de las variables en el proyecto de Vercel.
 2. `vercel-build` actualiza las tablas (`prisma db push`) y da de alta los remitentes en cada despliegue. Los cambios de esquema tienen que ser aditivos: las previews usan la misma base.
-3. **Envíos**: `.github/workflows/envios.yml` llama a `/api/cron` cada 10 minutos en horario comercial (y `vercel.json` una vez al día como respaldo).
-4. **Búsqueda de los lunes**: `.github/workflows/radar-semanal.yml`, a las 8:47 de Buenos Aires.
+3. **Envíos**: un programador externo gratuito ([cron-job.org](https://cron-job.org)) llama a `/api/cron?bandeja=1` cada 10 minutos, de lunes a viernes de 8 a 19 (Buenos Aires), con la cabecera `Authorization: Bearer <CRON_SECRET>`. El workflow `.github/workflows/envios.yml` queda de respaldo (GitHub demora o saltea los horarios cada 10 minutos) y `vercel.json` corre una vez al día. Si dos llegan juntos, trabaja uno solo (turno en `config/programador`).
+4. **Búsqueda de los lunes**: `POST /api/radar/semanal` a las 8:47 de Buenos Aires desde cron-job.org (con la misma cabecera) y desde `.github/workflows/radar-semanal.yml`; corre una sola vez por día.
 5. **Base del Radar**: la primera vez que se abre `/radar` con la base vacía, se puede subir el archivo `radar-dartpac.json` exportado del Radar de Claude. Ese archivo tiene datos comerciales: no se sube al repositorio.
 
 El Radar corre como página propia (`public/radar-app/`) dentro de `/radar`, y guarda todo en la tabla `RadarDoc` a través de `/api/radar/*`.

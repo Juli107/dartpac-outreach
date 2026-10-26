@@ -185,20 +185,24 @@ export async function mailboxHealth(now = new Date()) {
   });
 }
 
-/** El workflow de GitHub corre cada 10 min de lunes a viernes, de 11 a 22 h UTC (8–19 h en Argentina). */
+/** El programador corre cada 10 min de lunes a viernes, de 11 a 22 h UTC (8–19 h en Argentina). */
 export function cronShouldRun(now: Date) {
   const d = now.getUTCDay();
   const h = now.getUTCHours();
   return d >= 1 && d <= 5 && h >= 11 && h < 22;
 }
 
-/** El programador (GitHub Actions cada 10 min) y la última lectura de buzones. */
+/** El programador (cron-job.org cada 10 min, con GitHub de respaldo) y la última lectura de buzones. */
 export async function schedulerChecks(now = new Date()): Promise<Check[]> {
   const { at, report } = await lastRun();
   const checks: Check[] = [];
-  if (!at) checks.push({ level: "bad", title: "El programador nunca se ejecutó", detail: "Revisa el workflow de GitHub Actions." });
+  if (!at) checks.push({ level: "bad", title: "El programador nunca se ejecutó", detail: "Revisá la tarea de cron-job.org que llama a /api/cron cada 10 minutos." });
   else if (now.getTime() - at.getTime() > CRON_STALE_MS && cronShouldRun(now)) {
-    checks.push({ level: "bad", title: "El programador está parado", detail: `Última pasada ${at.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}.` });
+    checks.push({
+      level: "bad",
+      title: "El programador está parado",
+      detail: `Última pasada ${at.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}. Revisá la tarea de cron-job.org que llama a /api/cron cada 10 minutos.`,
+    });
   } else {
     checks.push({ level: "ok", title: "Programador funcionando", detail: `Última pasada hace ${Math.max(1, Math.round((now.getTime() - at.getTime()) / 60_000))} min.` });
   }
