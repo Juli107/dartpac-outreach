@@ -8,6 +8,7 @@ import { withSignature, renderSignature, sinFirmaRepetida } from "./signature.ts
 import { imageSize } from "./image-size.ts";
 import { nombreDeCopia } from "./labels.ts";
 import { authUrl, readIdToken, DomainError, GMAIL_SCOPE } from "./google.ts";
+import { atribuir, agrupar, ranking, tiempos, franja, VARIABLES, csvEnvios, type Envio } from "./analisis.ts";
 
 const marta = { email: "marta@logisur.es", firstName: "Marta", company: "Logisur" };
 const madrid = { startHour: 8, endHour: 19, timeZone: "Europe/Madrid" };
@@ -230,4 +231,46 @@ test("nombre libre para la copia de una secuencia", () => {
   assert.equal(nombreDeCopia("Frigoríficos", []), "Frigoríficos (copia)");
   assert.equal(nombreDeCopia("Frigoríficos", ["Frigoríficos (copia)"]), "Frigoríficos (copia 2)");
   assert.equal(nombreDeCopia("Frigoríficos (copia)", ["Frigoríficos (copia)", "Frigoríficos (copia 2)"]), "Frigoríficos (copia 3)");
+});
+
+function envio(i: number, extra: Partial<Envio> = {}): Omit<Envio, "reply"> {
+  return {
+    id: `m${i}`, contactId: `c${i}`, messageId: `<m${i}@x>`, sentAt: new Date("2026-10-26T13:00:00Z"), timeZone: "America/Argentina/Buenos_Aires",
+    step: 2, threaded: true, variant: "A", subjectTpl: "Hola {{nombre}}", bodyTpl: "texto corto", sender: "Luis", sequence: "S", plainText: false,
+    opened: false, province: null, city: null, rubro: null, title: null, ...extra,
+  };
+}
+
+test("atribuir usa In-Reply-To y, si falta, el último email antes de la respuesta", () => {
+  const a = envio(1, { sentAt: new Date("2026-10-20T12:00:00Z") });
+  const b = envio(2, { contactId: "c1", sentAt: new Date("2026-10-22T12:00:00Z") });
+  const r1 = atribuir([a, b], [{ contactId: "c1", inReplyTo: "<m1@x>", receivedAt: new Date("2026-10-23T12:00:00Z"), label: "NEW" }]);
+  assert.ok(r1[0].reply && !r1[1].reply);
+  const r2 = atribuir([a, b], [{ contactId: "c1", inReplyTo: null, receivedAt: new Date("2026-10-23T12:00:00Z"), label: "MEETING" }]);
+  assert.ok(!r2[0].reply && r2[1].reply?.label === "MEETING");
+  // una respuesta anterior a todos los envíos no se le asigna a ninguno
+  const r3 = atribuir([a], [{ contactId: "c1", inReplyTo: null, receivedAt: new Date("2026-10-01T12:00:00Z"), label: "NEW" }]);
+  assert.equal(r3[0].reply, null);
+});
+
+test("agrupar y ranking comparan hilo contra correo nuevo", () => {
+  const resp = { at: new Date("2026-10-26T15:00:00Z"), label: "INTERESTED" };
+  const envios: Envio[] = [
+    ...Array.from({ length: 20 }, (_, i) => ({ ...envio(i), reply: i < 5 ? resp : null })),
+    ...Array.from({ length: 20 }, (_, i) => ({ ...envio(100 + i, { threaded: false }), reply: i < 1 ? resp : null })),
+    { ...envio(999, { step: 1, threaded: false }), reply: null },
+  ];
+  const hilo = agrupar(envios, VARIABLES.find((v) => v.id === "hilo")!);
+  assert.deepEqual(hilo.map((g) => [g.key, g.sent, g.replied, g.positive]), [["En el mismo hilo (Re:)", 20, 5, 5], ["Correo nuevo", 20, 1, 1]]);
+  const top = ranking(envios).find((g) => g.variable.id === "hilo")!;
+  assert.equal(top.mejor.key, "En el mismo hilo (Re:)");
+  assert.equal(top.chico, true);
+  assert.equal(tiempos(envios).mediana, 2);
+  assert.ok(csvEnvios(envios.map((e) => ({ ...e, email: "a@b.com", company: "X, S.A." }))).includes('"X, S.A."'));
+});
+
+test("franja horaria", () => {
+  assert.equal(franja(9), "8 a 10 h");
+  assert.equal(franja(18), "16 a 19 h");
+  assert.equal(franja(20), "Después de las 19 h");
 });

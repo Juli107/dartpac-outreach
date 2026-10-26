@@ -145,6 +145,8 @@ model Message {
   fromEmail    String     @default("")
   /// Variante del paso que se envió (A, B, C…).
   variant      String     @default("A")
+  /// true = salió como respuesta en el mismo hilo (Re:); false = correo nuevo. Vacío en los envíos de antes de guardarlo.
+  threaded     Boolean?
 }
 
 model Task {

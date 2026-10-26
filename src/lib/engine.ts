@@ -132,7 +132,7 @@ export async function runDueSteps(now = new Date()) {
         summary.errors++;
       }
       await db.message.create({
-        data: { id: trackingId, enrollmentId: enr.id, stepId: step.id, messageId, subject, error, fromEmail: box, variant: variant.label },
+        data: { id: trackingId, enrollmentId: enr.id, stepId: step.id, messageId, subject, error, fromEmail: box, variant: variant.label, threaded: !!previous },
       });
       if (error && isHardBounce(error)) {
         // El servidor rechazó la dirección: no se reintenta y el contacto queda como rebotado.

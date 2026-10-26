@@ -1,5 +1,7 @@
 import { db } from "./db";
 import { sentToday, pendingEmails } from "./quota";
+import { stepVariants } from "./variants";
+import { atribuir } from "./analisis";
 
 export function pct(part: number, total: number) {
   return total ? (part / total) * 100 : 0;
@@ -108,4 +110,74 @@ export async function variantStats(sequenceId: string) {
     bump(m.stepId, opened, replied);
   }
   return map;
+}
+
+/**
+ * Todos los emails enviados (desde `since`, si se da) con sus datos para comparar y la respuesta que les tocó.
+ * Ver lib/analisis.ts.
+ */
+export async function cargarEnvios(since?: Date) {
+  const where = { error: null, ...(since ? { sentAt: { gte: since } } : {}) };
+  const [messages, senders] = await Promise.all([
+    db.message.findMany({
+      where,
+      select: {
+        id: true,
+        messageId: true,
+        sentAt: true,
+        openedAt: true,
+        variant: true,
+        threaded: true,
+        subject: true,
+        fromEmail: true,
+        step: { select: { order: true, subject: true, body: true, variants: { select: { label: true, subject: true, body: true } } } },
+        enrollment: {
+          select: {
+            contactId: true,
+            sequence: { select: { name: true, timeZone: true, plainText: true } },
+            contact: { select: { email: true, company: true, title: true, province: true, city: true, tags: true } },
+          },
+        },
+      },
+    }),
+    db.sender.findMany({ select: { email: true, name: true } }),
+  ]);
+  const contactIds = [...new Set(messages.map((m) => m.enrollment.contactId))];
+  const replies = contactIds.length
+    ? await db.reply.findMany({
+        where: { contactId: { in: contactIds }, ...(since ? { receivedAt: { gte: since } } : {}) },
+        select: { contactId: true, inReplyTo: true, receivedAt: true, label: true },
+      })
+    : [];
+  const senderName = new Map(senders.map((s) => [s.email.toLowerCase(), s.name]));
+
+  const envios = messages.map((m) => {
+    const v = stepVariants(m.step).find((x) => x.label === m.variant) ?? stepVariants(m.step)[0];
+    const c = m.enrollment.contact;
+    return {
+      id: m.id,
+      contactId: m.enrollment.contactId,
+      messageId: m.messageId,
+      sentAt: m.sentAt,
+      timeZone: m.enrollment.sequence.timeZone,
+      step: m.step.order,
+      // los envíos de antes de guardar el dato se reconocen por el «Re:» del asunto
+      threaded: m.threaded ?? /^re:/i.test(m.subject),
+      variant: m.variant,
+      subjectTpl: v.subject,
+      bodyTpl: v.body,
+      sender: senderName.get(m.fromEmail.toLowerCase()) ?? (m.fromEmail || "Sin remitente"),
+      sequence: m.enrollment.sequence.name,
+      plainText: m.enrollment.sequence.plainText,
+      opened: !!m.openedAt,
+      province: c.province,
+      city: c.city,
+      // el Radar etiqueta cada contacto con «radar» y su rubro
+      rubro: c.tags.find((t) => t !== "radar") ?? null,
+      title: c.title,
+      email: c.email ?? "",
+      company: c.company ?? "",
+    };
+  });
+  return atribuir(envios, replies);
 }
