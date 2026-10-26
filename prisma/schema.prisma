@@ -202,8 +202,8 @@ model Sender {
   signatureImageType    String?
   signatureImageWidth   Int?
   signatureImageHeight  Int?
-  /// LOGO: imagen pequeña junto a los datos. FULL: la imagen es la firma completa.
-  signatureImageMode    String     @default("LOGO")
+  /// DATOS: imagen pequeña con los datos al lado. IMAGEN (y los viejos LOGO y FULL): solo la imagen, nada escrito al lado.
+  signatureImageMode    String     @default("IMAGEN")
   /// Sube con cada imagen nueva para que los clientes de correo no usen la vieja en caché.
   signatureImageVersion Int        @default(0)
   /// Máximo de emails al día desde este buzón, sumando todas sus secuencias.

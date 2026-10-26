@@ -300,7 +300,7 @@ export async function redactarConIA(input: { tipo: "EMAIL" | "WHATSAPP" | "TASK"
   const prompt = `Sos vendedor B2B en Argentina de ${process.env.COMPANY_NAME ?? "Plupack Embalajes"} (marca DARTPAC), mayorista de film stretch, film PVC, film de polietileno, bolsas, embalaje y descartables con stock permanente y envíos a todo el país.
 Escribí el paso ${input.orden} de ${input.total} de una secuencia de prospección llamada «${input.secuencia}», por ${canal}. ${momento}
 Usá estas variables tal cual, con doble llave, donde correspondan: {{saludo}}, {{empresa}}, {{ciudad}}, {{vendedor}}, {{mi_empresa}}.${propias.length ? ` El equipo también tiene estas (usalas solo si encajan): ${propias.map((p) => `{{${p.clave}}} = «${p.valor.slice(0, 80)}»`).join("; ")}.` : ""} No inventes precios, descuentos ni datos.
-${input.borrador ? `Tomá como base este borrador y mejoralo: ${input.borrador.slice(0, 1500)}` : ""}
+${input.tipo === "EMAIL" ? "Terminá con una despedida corta (por ejemplo «Saludos,») sin firmar: nada de tu nombre, cargo, empresa ni teléfono al final, porque la firma del remitente se agrega sola debajo.\n" : ""}${input.borrador ? `Tomá como base este borrador y mejoralo: ${input.borrador.slice(0, 1500)}` : ""}
 Respondé solo JSON: {"asunto": "...", "texto": "..."}.`;
   try {
     const r = await pedirTexto(prompt, { json: true, rapido: true, maxTokens: 900 });

@@ -13,7 +13,7 @@ const transports = new Map<string, Transport>();
  * Datos de un buzón de envío: el de un comercial o, si la secuencia no tiene, el general del .env.
  * Un comercial conectado con Google lleva refreshToken; si no, su contraseña de aplicación.
  */
-export type Mailbox = { from: string; user: string; pass?: string; refreshToken?: string };
+export type Mailbox = { from: { name: string; address: string }; user: string; pass?: string; refreshToken?: string };
 
 type SenderCredentials = { name: string; email: string; appPassword: string | null; googleRefreshToken?: string | null };
 
@@ -21,11 +21,14 @@ export function senderConnected(sender: { appPassword: string | null; googleRefr
   return !!(sender.googleRefreshToken || sender.appPassword);
 }
 
-/** Buzón de un remitente. No hay buzón general: cada secuencia envía desde el Gmail de un remitente. */
+/**
+ * Buzón de un remitente. No hay buzón general: cada secuencia envía desde el Gmail de un remitente.
+ * El destinatario ve solo el nombre de la persona («Julián Cuello»), sin la empresa: así lo pidió el equipo, y la
+ * empresa ya va en la firma. nodemailer se encarga de las comillas y las tildes del nombre.
+ */
 export function mailboxFor(sender?: SenderCredentials | null): Mailbox {
   if (!sender) throw new Error("La secuencia no tiene remitente: elige quién envía en Ajustes");
-  const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
-  const from = `"${sender.name} | ${company}" <${sender.email}>`;
+  const from = { name: sender.name.trim(), address: sender.email };
   if (sender.googleRefreshToken) return { from, user: sender.email, refreshToken: decryptSecret(sender.googleRefreshToken) };
   if (sender.appPassword) return { from, user: sender.email, pass: decryptSecret(sender.appPassword) };
   throw new Error(`${sender.name} no tiene su Gmail conectado`);

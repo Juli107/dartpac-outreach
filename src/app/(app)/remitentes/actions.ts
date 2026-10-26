@@ -16,7 +16,8 @@ const senderSchema = z.object({
   jobTitle: z.string().trim().max(120).default(""),
   phone: z.string().trim().max(40).default(""),
   website: z.string().trim().max(200).default(""),
-  signatureImageMode: z.enum(["LOGO", "FULL"]).default("LOGO"),
+  // «IMAGEN»: solo la imagen. «DATOS»: la imagen con nombre, cargo y empresa al lado (ver lib/signature).
+  signatureImageMode: z.enum(["IMAGEN", "DATOS"]).catch("IMAGEN"),
   dailyLimit: z.coerce.number().int().min(1).max(500),
   // Las contraseñas de aplicación de Google se muestran con espacios; se guardan sin ellos.
   appPassword: z.string().transform((v) => v.replace(/\s+/g, "")),
@@ -30,7 +31,7 @@ function read(form: FormData) {
     jobTitle: form.get("jobTitle") ?? "",
     phone: form.get("phone") ?? "",
     website: form.get("website") ?? "",
-    signatureImageMode: form.get("signatureImageMode") ?? "LOGO",
+    signatureImageMode: form.get("signatureImageMode") ?? "IMAGEN",
     dailyLimit: form.get("dailyLimit") ?? 50,
     appPassword: form.get("appPassword") ?? "",
   });
