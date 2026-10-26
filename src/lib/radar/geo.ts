@@ -1,4 +1,5 @@
 import GEO from "./geo.json";
+import CENSO from "./censo2022.json";
 
 /**
  * Datos fijos del Radar para el servidor: provincias, rubros, regiones, partidos/departamentos/comunas
@@ -83,8 +84,11 @@ export function depDeP(p: { provincia?: unknown; ciudad?: unknown; direccion?: u
   return d;
 }
 
-/** Habitantes de un partido (suma de sus localidades conocidas). */
-export const habitantes = (i: number) => (locsDe.get(i) ?? []).reduce((s, j) => s + LOCS[j].p, 0);
+/** Habitantes por partido o departamento (por código INDEC), según el Censo 2022. */
+const HAB_DEP = CENSO.d as Record<string, number>;
+
+/** Habitantes de un partido: los del Censo 2022 y, si no está (Islas del Atlántico Sur), la suma de sus localidades. */
+export const habitantes = (i: number) => HAB_DEP[DEPS[i]?.c ?? ""] ?? (locsDe.get(i) ?? []).reduce((s, j) => s + LOCS[j].p, 0);
 
 /** Lo que guarda una búsqueda por cada partido a recorrer (mismo formato que arma el Radar). */
 export function depDoc(i: number) {
