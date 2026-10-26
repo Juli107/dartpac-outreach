@@ -14,6 +14,7 @@ const PUBLIC = [
   /^\/api\/radar\/semanal$/,
   /^\/_next\//,
   /^\/icon/,
+  /^\/apple-icon/,
   /^\/logo/,
   /^\/app-\d+\.png$/,
   /^\/manifest\.webmanifest$/,
