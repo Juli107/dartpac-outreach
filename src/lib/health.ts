@@ -196,7 +196,10 @@ export function cronShouldRun(now: Date) {
   return d >= 1 && d <= 5 && h >= 11 && h < 22;
 }
 
-/** El programador (la app misma mientras alguien la tenga abierta, GitHub y, si está, cron-job.org) y la última lectura de buzones. */
+/** Quién hizo la última pasada, para ver de un vistazo que cron-job.org está llamando. */
+const ORIGEN: Record<string, string> = { latido: "desde cron-job.org", cron: "desde GitHub o Vercel", app: "desde la app abierta", manual: "a mano" };
+
+/** El programador (cron-job.org cada 10 minutos; de respaldo, la app abierta, GitHub y Vercel) y la última lectura de buzones. */
 export async function schedulerChecks(now = new Date()): Promise<Check[]> {
   const { at, report } = await lastRun();
   const checks: Check[] = [];
@@ -205,10 +208,11 @@ export async function schedulerChecks(now = new Date()): Promise<Check[]> {
     checks.push({
       level: "bad",
       title: "El programador está parado",
-      detail: `Última pasada ${at.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}. Con Outreach abierto se pone al día solo: en un minuto se actualiza.`,
+      detail: `Última pasada ${at.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}. Revisá que la tarea de cron-job.org siga activa (llama a /api/latido cada 10 minutos). Con Outreach abierto se pone al día solo en un minuto.`,
     });
   } else {
-    checks.push({ level: "ok", title: "Programador funcionando", detail: `Última pasada hace ${Math.max(1, Math.round((now.getTime() - at.getTime()) / 60_000))} min.` });
+    const por = report?.source ? ORIGEN[report.source] : null;
+    checks.push({ level: "ok", title: "Programador funcionando", detail: `Última pasada hace ${Math.max(1, Math.round((now.getTime() - at.getTime()) / 60_000))} min${por ? `, ${por}` : ""}.` });
   }
   const inbox = report?.inbox;
   if (inbox && typeof inbox === "object") {
