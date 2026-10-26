@@ -4,7 +4,7 @@ import { renderTemplate, unknownVariables } from "./template.ts";
 import { nextSendTime, isInWindow, startOfLocalDay } from "./schedule.ts";
 import { parseContactsCsv } from "./csv.ts";
 import { stripQuoted } from "./strip.ts";
-import { withSignature, renderSignature } from "./signature.ts";
+import { withSignature, renderSignature, sinFirmaRepetida } from "./signature.ts";
 import { imageSize } from "./image-size.ts";
 import { nombreDeCopia } from "./labels.ts";
 import { authUrl, readIdToken, DomainError, GMAIL_SCOPE } from "./google.ts";
@@ -69,15 +69,46 @@ test("renderSignature arma la firma en texto y HTML con la imagen alojada", () =
   const sender = {
     id: "s1", name: "Ailén <Nardone>", email: "ailen@x.com", jobTitle: "Comercial", phone: "+54 9 11 5555-1234",
     website: "plupackembalajes.com", signature: "", signatureImageType: "image/png", signatureImageWidth: 256,
-    signatureImageHeight: 256, signatureImageMode: "LOGO", signatureImageVersion: 3,
+    signatureImageHeight: 256, signatureImageMode: "DATOS", signatureImageVersion: 3,
   };
   const { text, html } = renderSignature(sender, "Plupack Embalajes", "https://app.test");
   assert.equal(text, "Ailén <Nardone>\nComercial · Plupack Embalajes\n+54 9 11 5555-1234 · plupackembalajes.com");
   assert.match(html, /src="https:\/\/app\.test\/api\/firma\/s1\?v=3" width="64" height="64"/);
   assert.match(html, /Ailén &lt;Nardone&gt;/);
   assert.match(html, /href="tel:\+5491155551234"/);
-  const full = renderSignature({ ...sender, signatureImageMode: "FULL", signatureImageWidth: 960, signatureImageHeight: 240 }, "P", "");
+  const full = renderSignature({ ...sender, signatureImageMode: "IMAGEN", signatureImageWidth: 960, signatureImageHeight: 240 }, "P", "");
   assert.match(full.html, /width="480" height="120"/);
+  // solo la imagen (y así quedan las de antes): nada escrito al lado, aunque el texto plano siga llevando los datos
+  for (const mode of ["IMAGEN", "LOGO", "FULL"]) {
+    const sola = renderSignature({ ...sender, signatureImageMode: mode }, "Plupack Embalajes", "");
+    assert.doesNotMatch(sola.html, /<td|font-size|Comercial|tel:/); // (el nombre solo va en el alt de la imagen)
+    assert.match(sola.html, /width="200" height="200"/);
+    assert.match(sola.text, /Comercial · Plupack Embalajes/);
+  }
+  // sin imagen, los datos van en texto
+  assert.match(renderSignature({ ...sender, signatureImageType: null, signatureImageMode: "IMAGEN" }, "P", "").html, /Comercial · P/);
+});
+
+test("sinFirmaRepetida saca del final la firma que ya va abajo", () => {
+  const julian = { name: "Julián Cuello", email: "julian@plupackembalajes.com", jobTitle: "Ventas", phone: "+54 9 11 5555-1234", website: "" };
+  const emp = ["Plupack Embalajes"];
+  const f = (b: string) => sinFirmaRepetida(b, julian, emp);
+  const cuerpo = "Buenos días,\n\nLes escribo por el film stretch.";
+  assert.equal(f(`${cuerpo}\n\nSaludos,\nJulián\nPlupack Embalajes`), `${cuerpo}\n\nSaludos,\nJulián`);
+  assert.equal(f(`${cuerpo}\n\nSaludos,\nJulián Cuello | Plupack Embalajes`), `${cuerpo}\n\nSaludos,\nJulián Cuello`);
+  assert.equal(f(`${cuerpo}\n\nSaludos,\nJulian Cuello\nVentas · Plupack Embalajes (DARTPAC)\nCel: 11 5555-1234 · www.plupackembalajes.com\n`), `${cuerpo}\n\nSaludos,\nJulian Cuello`);
+  assert.equal(f(`${cuerpo}\n\nSaludos cordiales, Julián - Plupack Embalajes`), `${cuerpo}\n\nSaludos cordiales, Julián`);
+  assert.equal(f(`${cuerpo}\n\n--\nJulián Cuello\nPlupack Embalajes`), cuerpo);
+  // lo que no es una firma repetida queda igual
+  for (const b of [
+    `${cuerpo}\n\nSaludos,\nJulián`,
+    `${cuerpo}\n\nSaludos, Julián.`,
+    `${cuerpo}\n\nSaludos,\nPlupack Embalajes`,
+    `${cuerpo}\n\nSaludos,\nJulián\nPlupack Embalajes · Av. Rivadavia 1234`,
+    `${cuerpo}\n\nCualquier duda, escríbanle a Julián.`,
+    `${cuerpo}\n\nSaludos,\nJulián\nCel: 11 4444-0000`,
+    `${cuerpo}\n\nSaludos,\nJuliana\nPlupack Embalajes`,
+  ]) assert.equal(f(b), b);
 });
 
 test("imageSize lee el tamaño de un PNG", () => {

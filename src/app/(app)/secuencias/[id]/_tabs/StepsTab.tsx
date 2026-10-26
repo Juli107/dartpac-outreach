@@ -198,6 +198,7 @@ export async function StepsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
                 <div>
                   <label htmlFor={bId} className="label">{isEmail ? "Mensaje" : isWa ? "Mensaje de WhatsApp" : "Notas"}</label>
                   <textarea id={bId} name="body" rows={isEmail ? 8 : isWa ? 5 : 3} defaultValue={selected.body} key={`b-${selected.label}`} className="input leading-relaxed" />
+                  {isEmail && <p className="mt-1 text-xs text-muted">No hace falta firmar: la firma {seq.sender ? `de ${seq.sender.name}` : "del remitente"} va sola al final.</p>}
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <VarChips campos={[sId, bId]} lista={chips} />

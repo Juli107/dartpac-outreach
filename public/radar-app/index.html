@@ -3679,7 +3679,7 @@ function htmlMail(txt){ const parts=esc(txt).split(/\n{2,}/).map(b=>`<p style="m
 async function enviarGmail(p,su,tx,adj){ if(vfyOn()){ const vq=window.DPV.puedeEnviar(p); if(vq.nivel==="bloquear") throw {code:"vfy_bloqueado",message:vq.motivo}; }
   const mc=await mcpGmail(); if(!mc) throw {code:"capability_disabled"};
   tx=conTarj(tx,adj); const input={to:[String(p.email).trim()],subject:su,body:tx,htmlBody:htmlMail(tx)};
-  if(adj){ const b=(await tarjetaBlobMail()).b; if(b){ input.attachments=[{content:await b64(b),filename:TARJ_FN,mimeType:"image/jpeg",inline:true}]; input.htmlBody=input.htmlBody.replace(/<\/div>$/,`<p style="margin:18px 0 0"><img src="cid:${TARJ_FN}" alt="Tarjeta de Luis Mendieta · Plupack Embalajes" width="420" style="display:block;width:420px;max-width:100%;height:auto;border:0"></p></div>`); } }
+  if(adj){ const b=(await tarjetaBlobMail()).b; if(b){ input.attachments=[{content:await b64(b),filename:TARJ_FN,mimeType:"image/jpeg",inline:true}]; input.htmlBody=input.htmlBody.replace(/<\/div>$/,`<p style="margin:18px 0 0"><img src="cid:${TARJ_FN}" alt="Tarjeta de ${esc(S.cfg.firmaNombre||S.cfg.vendedor||"")} · ${esc(S.cfg.empresa||"DARTPAC")}" width="420" style="display:block;width:420px;max-width:100%;height:auto;border:0"></p></div>`); } }
   return await mc.callTool(GM,"send_message",input,{cache:false}); }
 const dudoso=e=>["server_unavailable","upstream_error","cancelled"].includes(e&&e.code);
 function errMail(e){ const c=e&&e.code;

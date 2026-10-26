@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { renderSignature } from "@/lib/signature";
+import { renderSignature, sinFirmaRepetida } from "@/lib/signature";
 import { renderTemplate } from "@/lib/template";
 import { cargarVariables } from "@/lib/variables";
 import { stepDays, stepVariants } from "@/lib/variants";
@@ -81,7 +81,12 @@ export async function PreviewTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
                 <div className="text-[13px] text-[#5b6b82]">De: {from}</div>
                 <div className="text-[13px] text-[#5b6b82]">Para: {contact.email ?? "(sin email: este paso se saltea y sigue el próximo)"}</div>
                 <div className="mb-3 mt-2 text-[17px] font-semibold">{subject || "(sin asunto)"}</div>
-                <div className="whitespace-pre-wrap">{renderTemplate(v.body, contact, ctx)}</div>
+                {/* igual que el motor: sin la firma repetida al final del texto */}
+                <div className="whitespace-pre-wrap">
+                  {seq.sender
+                    ? sinFirmaRepetida(renderTemplate(v.body, contact, ctx), seq.sender, [company, renderTemplate("{{mi_empresa}}", contact, ctx)])
+                    : renderTemplate(v.body, contact, ctx)}
+                </div>
                 {signature && (seq.plainText ? (
                   <pre className="mt-4 whitespace-pre-wrap font-sans text-[#5b6b82]">--{"\n"}{signature.text}</pre>
                 ) : (

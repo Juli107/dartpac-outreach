@@ -201,6 +201,7 @@ export function StepComposer({ action, orden, total, secuencia, vars, abierto = 
           <div className="sm:col-span-3">
             <label htmlFor="new-body" className="label">{tipo === "EMAIL" ? "Mensaje" : tipo === "WHATSAPP" ? "Mensaje de WhatsApp" : "Notas para quien la hace"}</label>
             <textarea id="new-body" name="body" rows={tipo === "TASK" ? 3 : 7} required={tipo !== "TASK"} className="input leading-relaxed" placeholder={tipo === "WHATSAPP" ? "{{saludo}}, ¿cómo va? Soy {{vendedor}} de {{mi_empresa}}…" : "{{saludo}},\n\n"} />
+            {tipo === "EMAIL" && <p className="mt-1 text-xs text-muted">No hace falta firmar: la firma del remitente va sola al final.</p>}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-3">
             <VarChips campos={["new-subject", "new-body"]} lista={vars} />

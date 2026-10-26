@@ -1,9 +1,10 @@
 import { db } from "@/lib/db";
 import { sentToday } from "@/lib/quota";
-import { renderSignature, type SignatureSender } from "@/lib/signature";
+import { renderSignature, soloImagen, type SignatureSender } from "@/lib/signature";
 import { PageHeader, Pill, Avatar, Flash, ProgressBar, Dot } from "@/components/ui";
 import { relativeTime } from "@/lib/labels";
 import { googleConfigured } from "@/lib/google";
+import { BotonGuardar } from "@/components/BotonGuardar";
 import { createSender, updateSender, disconnectSender, disconnectGoogle, deleteSender, testSender, removeSignatureImage } from "./actions";
 
 export const metadata = { title: "Remitentes" };
@@ -29,6 +30,22 @@ function GoogleButton({ senderId, children }: { senderId?: string; children: Rea
       <GoogleIcon />
       {children}
     </a>
+  );
+}
+
+/** Una de las dos formas de usar la imagen en la firma, con un dibujito de cómo queda. */
+function ModoFirma({ prefix, value, checked, titulo, detalle, children }: { prefix: string; value: string; checked: boolean; titulo: string; detalle: string; children: React.ReactNode }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-white/[.04] p-3 ring-1 ring-white/[.08] transition hover:bg-white/[.07] has-[:checked]:bg-brand/[.14] has-[:checked]:ring-brand/40">
+      <input type="radio" name="signatureImageMode" value={value} defaultChecked={checked} id={`${prefix}-modo-${value}`} className="mt-1 h-4 w-4 shrink-0 accent-[#4DA3FF]" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-white">{titulo}</span>
+        <span className="mt-0.5 block text-xs leading-snug text-muted">{detalle}</span>
+      </span>
+      <svg viewBox="0 0 40 28" width="40" height="28" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="mt-0.5 shrink-0 text-brand-2" aria-hidden>
+        {children}
+      </svg>
+    </label>
   );
 }
 
@@ -77,21 +94,28 @@ function Fields({ s, prefix }: { s: SenderFields; prefix: string }) {
         <label htmlFor={`${prefix}-web`} className="label">Web</label>
         <input id={`${prefix}-web`} name="website" defaultValue={s.website} placeholder="plupackembalajes.com" className="input" />
       </div>
-      <div>
+      <div className="sm:col-span-2">
         <label htmlFor={`${prefix}-img`} className="label">Imagen {s.hasImage ? "(guardada · sube otra para cambiarla)" : "(opcional)"}</label>
         <input id={`${prefix}-img`} name="signatureImage" type="file" accept="image/png,image/jpeg,image/gif" className="input py-1.5" />
-        <p className="mt-1 text-xs text-muted">PNG o JPG, máx. 300 KB. Logo o foto cuadrada (128×128 px) o una firma diseñada de hasta 960 px de ancho.</p>
+        <p className="mt-1 text-xs text-muted">PNG o JPG, máx. 300 KB. Una firma diseñada (con tu nombre y tus datos) de hasta 960 px de ancho, o un logo o una foto.</p>
       </div>
-      <div>
-        <label htmlFor={`${prefix}-mode`} className="label">Cómo usar la imagen</label>
-        <select id={`${prefix}-mode`} name="signatureImageMode" defaultValue={s.signatureImageMode ?? "LOGO"} className="input">
-          <option value="LOGO">Logo o foto junto a los datos</option>
-          <option value="FULL">La imagen es la firma completa</option>
-        </select>
-      </div>
+      <fieldset className="sm:col-span-2">
+        <legend className="label">Con imagen, la firma lleva</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <ModoFirma prefix={prefix} value="IMAGEN" checked={soloImagen(s.signatureImageMode ?? "IMAGEN")} titulo="Solo la imagen" detalle="No se escribe nada al lado: ni nombre, ni cargo, ni empresa. Para una firma diseñada que ya los trae.">
+            <rect x="3" y="7" width="34" height="14" rx="2.5" />
+          </ModoFirma>
+          <ModoFirma prefix={prefix} value="DATOS" checked={!soloImagen(s.signatureImageMode ?? "IMAGEN")} titulo="La imagen y mis datos al lado" detalle="Para un logo o una foto: al lado van nombre, cargo, empresa, teléfono y web.">
+            <rect x="3" y="7" width="12" height="12" rx="2.5" />
+            <path d="M20 9h16M20 14h12M20 19h9" />
+          </ModoFirma>
+        </div>
+        <p className="mt-1.5 text-xs text-muted">Sin imagen, la firma lleva tus datos escritos.</p>
+      </fieldset>
       <div className="sm:col-span-2">
         <label htmlFor={`${prefix}-sig`} className="label">Texto extra (opcional)</label>
         <textarea id={`${prefix}-sig`} name="signature" rows={2} defaultValue={s.signature} placeholder="Dirección, horario o una línea legal" className="input font-mono text-[13px]" />
+        <p className="mt-1 text-xs text-muted">Va debajo de tus datos. Con «Solo la imagen» no se agrega.</p>
       </div>
     </div>
   );
@@ -136,12 +160,8 @@ export default async function Senders({
             <section key={s.id} className={`card appear group flex min-w-0 flex-col transition duration-200 hover:shadow-lift ${open ? "md:col-span-2 xl:col-span-3" : ""}`} style={{ animationDelay: `${i * 50}ms` }}>
               <div className="flex flex-col items-center gap-3 px-5 pb-4 pt-6 text-center">
                 <div className="relative">
-                  {s.signatureImageType && s.signatureImageMode === "LOGO" ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={`/api/firma/${s.id}?v=${s.signatureImageVersion}`} alt="" width={72} height={72} className="h-[72px] w-[72px] rounded-full object-cover shadow-sm ring-1 ring-white/10" />
-                  ) : (
-                    <Avatar name={s.name} size={72} />
-                  )}
+                  {/* la foto redonda son siempre las iniciales: la imagen de la firma va solo en la firma */}
+                  <Avatar name={s.name} size={72} />
                   <span className="absolute bottom-0.5 right-0.5 rounded-full bg-[#0e2547] p-[3px]"><Dot level={level} /></span>
                 </div>
                 <div className="min-w-0">
@@ -181,12 +201,14 @@ export default async function Senders({
                 <div id={`r-${s.id}`} className="appear grid scroll-mt-6 gap-6 border-t border-line/60 p-5 lg:grid-cols-[1fr_380px]">
                   <form action={updateSender.bind(null, s.id)}>
                     <Fields s={{ ...s, hasPassword: !!s.appPassword, hasImage: !!s.signatureImageType, viaGoogle: !!s.googleRefreshToken }} prefix={s.id} />
-                    <div className="mt-4"><button className="btn">Guardar cambios</button></div>
+                    <div className="mt-4 flex flex-wrap items-center gap-3"><BotonGuardar>Guardar cambios</BotonGuardar></div>
                   </form>
                   <div className="flex flex-col gap-4">
                     <div className="well p-4">
-                      <p className="mb-2 text-xs font-medium text-muted">Así se ve la firma</p>
+                      <p className="mb-2 text-xs font-medium text-muted">Así llega</p>
                       <div className="paper p-4">
+                        <div className="text-[13px] text-[#5b6b82]">De: <b className="font-semibold text-[#1D1D1F]">{s.name}</b> &lt;{s.email}&gt;</div>
+                        <div className="mt-2 text-[13px] text-[#5b6b82]">Saludos,</div>
                         {/* HTML generado por renderSignature con todos los campos escapados. */}
                         <div dangerouslySetInnerHTML={{ __html: renderSignature(s, company, "").html }} />
                       </div>

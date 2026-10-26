@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { sendEmail, newMessageId, mailboxFor } from "./mailer";
 import { renderTemplate } from "./template";
-import { renderSignature } from "./signature";
+import { renderSignature, sinFirmaRepetida } from "./signature";
 import { nextSendTime, isInWindow, windowFor } from "./schedule";
 import { pickVariant, stepVariants } from "./variants";
 import { randomUUID } from "node:crypto";
@@ -110,7 +110,10 @@ export async function runDueSteps(now = new Date()) {
           mailbox,
           to: contact.email!,
           subject,
-          body: renderTemplate(variant.body, contact, ctx),
+          // si el texto termina con la firma (nombre, empresa, teléfono…), no se repite: la firma del remitente va abajo
+          body: sequence.sender
+            ? sinFirmaRepetida(renderTemplate(variant.body, contact, ctx), sequence.sender, [company, renderTemplate("{{mi_empresa}}", contact, ctx)])
+            : renderTemplate(variant.body, contact, ctx),
           plainText: sequence.plainText,
           signature: sequence.sender
             ? renderSignature(sequence.sender, company, baseUrl, renderTemplate(sequence.sender.signature, contact, ctx))
