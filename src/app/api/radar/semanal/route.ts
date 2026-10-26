@@ -18,6 +18,12 @@ export async function POST(req: Request) {
   const forzar = new URL(req.url).searchParams.has("forzar");
   const marca = await getDoc("config", "semanal");
   if (!forzar && marca?.data.ultima === hoyAR()) return NextResponse.json({ ok: true, omitida: "ya corrió hoy" });
+  // Se reserva el día antes de armar nada: si el programador externo y GitHub llegan juntos, gana uno solo.
+  try {
+    await updateDoc("config", "semanal", { ultima: hoyAR(), reservada: Date.now() }, { create: true, ifVersion: marca?.v ?? 0 });
+  } catch {
+    return NextResponse.json({ ok: true, omitida: "otra llamada ya la está armando" });
+  }
 
   const cuantos = Math.max(1, Math.min(30, Number(process.env.RADAR_SEMANAL_DEPS ?? 12)));
   const [prospectos, busquedas] = await Promise.all([listCol("prospectos"), listCol("busquedas")]);
