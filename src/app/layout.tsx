@@ -6,7 +6,8 @@ export const metadata: Metadata = {
   description: "Secuencias de email, contactos y respuestas para el equipo comercial de Dartpac.",
   applicationName: "Dartpac Outreach",
   appleWebApp: { capable: true, title: "Outreach", statusBarStyle: "black-translucent" },
-  icons: { apple: "/app-192.png" },
+  // Los íconos salen de los archivos de app/: favicon.ico e icon.png (la «D» de Dartpac, para la pestaña) y apple-icon.png.
+  // No declarar `icons` acá: si se declara, Next deja de agregar el ícono de la pestaña.
 };
 
 export const viewport: Viewport = { themeColor: "#0B2545" };
