@@ -48,6 +48,9 @@ body{background:var(--dp-n0);color:var(--dp-fg);font:15px/1.45 var(--dp-body);le
 /* el Radar ocupa toda la ventana (la plataforma lo muestra al lado de su menú) */
 html,body{height:100%;margin:0;overflow:hidden}
 #rdr{position:fixed;inset:0;overflow:hidden;transform:translateZ(0);container:rdr / size;z-index:1}
+/* lo que scrollea es .rdr-scroll (en la app de escritorio lo trae outreach.css, que acá se corta antes) */
+#rdr>.rdr-scroll{position:absolute;inset:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+#rdr.en-mapa>.rdr-scroll{pointer-events:none}
 
 /* volver a Outreach: la flecha aparece cuando la plataforma esconde su menú (celular) */
 #rdr .brand-back{-webkit-appearance:none;appearance:none;background:none;border:0;padding:0;margin:0;text-align:left;border-radius:14px;-webkit-tap-highlight-color:transparent}
