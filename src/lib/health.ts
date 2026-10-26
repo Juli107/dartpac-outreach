@@ -192,16 +192,16 @@ export function cronShouldRun(now: Date) {
   return d >= 1 && d <= 5 && h >= 11 && h < 22;
 }
 
-/** El programador (cron-job.org cada 10 min, con GitHub de respaldo) y la última lectura de buzones. */
+/** El programador (la app misma mientras alguien la tenga abierta, GitHub y, si está, cron-job.org) y la última lectura de buzones. */
 export async function schedulerChecks(now = new Date()): Promise<Check[]> {
   const { at, report } = await lastRun();
   const checks: Check[] = [];
-  if (!at) checks.push({ level: "bad", title: "El programador nunca se ejecutó", detail: "Revisá la tarea de cron-job.org que llama a /api/cron cada 10 minutos." });
+  if (!at) checks.push({ level: "bad", title: "El programador nunca se ejecutó", detail: "Arranca solo apenas alguien abre Outreach en horario de envíos (lunes a viernes, de 8 a 19)." });
   else if (now.getTime() - at.getTime() > CRON_STALE_MS && cronShouldRun(now)) {
     checks.push({
       level: "bad",
       title: "El programador está parado",
-      detail: `Última pasada ${at.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}. Revisá la tarea de cron-job.org que llama a /api/cron cada 10 minutos.`,
+      detail: `Última pasada ${at.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}. Con Outreach abierto se pone al día solo: en un minuto se actualiza.`,
     });
   } else {
     checks.push({ level: "ok", title: "Programador funcionando", detail: `Última pasada hace ${Math.max(1, Math.round((now.getTime() - at.getTime()) / 60_000))} min.` });

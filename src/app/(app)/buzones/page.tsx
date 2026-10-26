@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { domainChecks, mailboxHealth, schedulerChecks, worst, type Check, type Level } from "@/lib/health";
+import { cronShouldRun, domainChecks, mailboxHealth, schedulerChecks, worst, type Check, type Level } from "@/lib/health";
+import { RefrescarEn } from "@/components/RefrescarEn";
 import { formatPct, pct } from "@/lib/stats";
 import { PageHeader, Dot, Avatar, ProgressBar, Pill, Empty, CheckList } from "@/components/ui";
 import { checkConnections } from "../actions";
@@ -69,11 +70,14 @@ export default async function Mailboxes() {
       : { level: "ok", title: "Toda la base está verificada" },
     ...(vfyN("riesgoso") ? [{ level: "info" as Level, title: `${vfyN("riesgoso")} riesgosos`, detail: "Casillas de proveedores viejos o terminaciones raras: se mandan, pero pueden rebotar." }] : []),
   ];
+  // Con el programador atrasado, la campanita ya disparó la pasada de respaldo: se vuelve a pedir la página para mostrarla.
+  const ponerseAlDia = cronShouldRun(new Date()) && scheduler.some((c) => c.level === "bad");
   const general = worst([...dns, ...scheduler, ...entrega, ...boxes.flatMap((b) => b.checks)].filter((c) => c.level !== "info"));
   const [genTxt, genRing] = NIVEL[general];
 
   return (
     <>
+      {ponerseAlDia && <RefrescarEn ms={65_000} />}
       <PageHeader title="Buzones" sub="Salida y entrada de cada cuenta de Gmail, y la salud del correo para llegar a la bandeja principal.">
         <form action={checkConnections}><button className="btn-ghost" title="No envía nada">Comprobar conexiones</button></form>
         <Link href="/remitentes" className="btn">Gestionar remitentes</Link>
