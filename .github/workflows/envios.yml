@@ -5,7 +5,9 @@ name: Envíos programados
 # Cada pasada también lee los buzones (?bandeja=1) y queda registrada en el Panel ("Programador").
 on:
   schedule:
-    - cron: "*/10 11-21 * * 1-5"
+    # Minutos impares: GitHub demora o saltea los horarios en punto (:00, :10…), que son los más cargados.
+    # Es el respaldo: el programador principal es cron-job.org, y la app hace una pasada sola si nadie pasó en 9 minutos.
+    - cron: "3,13,23,33,43,53 11-21 * * 1-5"
   workflow_dispatch:
 
 permissions:
