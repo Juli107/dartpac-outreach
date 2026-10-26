@@ -1,5 +1,7 @@
-import { weeklySeries, sequenceStats, formatPct, overallStats, pct } from "@/lib/stats";
-import { PageHeader, Kpi } from "@/components/ui";
+import { weeklySeries, sequenceStats, formatPct, overallStats, pct, cargarEnvios } from "@/lib/stats";
+import { PageHeader, Kpi, Segmented } from "@/components/ui";
+import { PERIODOS, periodo, desdePeriodo } from "@/lib/periodo";
+import { Ranking, HiloONuevo, Tiempos, Variables } from "./Analisis";
 
 export const metadata = { title: "Analíticas" };
 
@@ -9,11 +11,13 @@ function niceMax(v: number) {
   return Math.ceil(v / mag) * mag;
 }
 
-export default async function Analytics() {
-  const [series, sequences, stats] = await Promise.all([
+export default async function Analytics({ searchParams }: { searchParams: Promise<{ p?: string }> }) {
+  const per = periodo((await searchParams).p);
+  const [series, sequences, stats, envios] = await Promise.all([
     weeklySeries(8),
     sequenceStats(),
     overallStats(new Date(Date.now() - 56 * 86400_000)),
+    cargarEnvios(desdePeriodo(per.key)),
   ]);
   const max = niceMax(Math.max(...series.map((s) => s.sent), 1));
   const W = 640, H = 220, L = 40, B = 26, T = 12;
@@ -77,6 +81,27 @@ export default async function Analytics() {
           </table>
         </div>
       </section>
+
+      <header className="appear mt-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="font-display text-xl font-semibold text-white">Qué consigue más respuestas</h2>
+          <p className="mt-0.5 text-[14px] text-muted">Tasa de respuesta por cada variable: cuántos de los emails enviados recibieron respuesta.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented label="Período" active={per.key} items={PERIODOS.map((x) => ({ key: x.key, href: `/analiticas?p=${x.key}`, label: x.label }))} />
+          <a href={`/api/analiticas?p=${per.key}`} className="btn-ghost text-[13px]" download>
+            Descargar datos (Excel/CSV)
+          </a>
+        </div>
+      </header>
+      <Ranking envios={envios} />
+      {envios.length > 0 && (
+        <>
+          <HiloONuevo envios={envios} />
+          <Tiempos envios={envios} />
+          <Variables envios={envios} />
+        </>
+      )}
     </>
   );
 }
