@@ -2878,20 +2878,23 @@ function llegOrigen(prov){ const sel=[`.m3-lbl[data-prov="${prov}"]`,`path.prov[
   const RR=RROOT.getBoundingClientRect();
   for(const q of sel){ const e=document.querySelector(q); if(!e) continue; const r=e.getBoundingClientRect(); if(r.width&&r.bottom>RR.top&&r.top<RR.bottom&&r.right>RR.left&&r.left<RR.right) return {x:r.left-RR.left+r.width/2,y:r.top-RR.top+r.height/2}; }
   return {x:RR.width/2,y:RR.height*.55}; }
-async function llegCorre(){ if(LLEG.corre) return; LLEG.corre=true;
-  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
-  while(LLEG.cola.length){ const p=Object.assign({},LLEG.cola.shift()); p._n=true; p._esp=!reduce; LLEG.L.unshift(p); if(LLEG.L.length>60) LLEG.L.length=60;
-    if(LLEG.min){ LLEG.min=false; }
-    const panel=llegPanel(); if(reduce||document.hidden||!radarVisible()){ p._esp=false; llegPanel(); await new Promise(r=>setTimeout(r,250)); continue; }
-    const slot=panel.querySelector(".lg-slot"); const d0=slot.getBoundingClientRect(), RR0=RROOT.getBoundingClientRect(), d={left:d0.left-RR0.left,top:d0.top-RR0.top,width:d0.width,height:d0.height}, o=llegOrigen(p.provincia);
-    const onda=document.createElement("span"); onda.className="lg-onda"; onda.style.left=o.x+"px"; onda.style.top=o.y+"px"; RROOT.appendChild(onda); setTimeout(()=>onda.remove(),950);
-    const v=document.createElement("div"); v.className="lg-vuela"; v.innerHTML=lgHtml(p); RROOT.appendChild(v);
-    const tx=d.left+d.width/2-27, ty=d.top+d.height/2-27, sx=o.x-27, sy=o.y-27, mx=(sx+tx)/2+(tx>sx?-1:1)*60, my=Math.min(sy,ty)-120;
-    const kf=[]; for(let i=0;i<=24;i++){ const t=i/24, a=(1-t)*(1-t), b=2*(1-t)*t, c=t*t, x=a*sx+b*mx+c*tx, y=a*sy+b*my+c*ty, s=t<.18?.3+t/.18*.9:1.2-(t-.18)/.82*.5; kf.push({transform:`translate(${x}px,${y}px) scale(${s.toFixed(3)}) rotate(${(Math.sin(t*Math.PI)*-12).toFixed(1)}deg)`,opacity:t<.06?t/.06:1}); }
-    await new Promise(res=>{ const an=v.animate(kf,{duration:1500,easing:"cubic-bezier(.45,.05,.35,1)",fill:"forwards"}); an.onfinish=res; an.oncancel=res; setTimeout(res,1800); });
-    v.remove(); p._esp=false; const s2=document.querySelector("#lleg .lg-slot"); if(s2){ s2.classList.remove("esp"); s2.animate([{transform:"scale(1.35)"},{transform:"scale(1)"}],{duration:300,easing:"ease-out"}); }
-    await new Promise(r=>setTimeout(r,350)); }
-  LLEG.corre=false; }
+/* Las empresas que llegan entran todas juntas a la lista, al instante. Las de arriba (hasta 3) vuelan desde su provincia,
+   en paralelo y en menos de un segundo, sin hacer esperar a las demás. */
+function llegCorre(){ if(!LLEG.cola.length) return;
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches, lote=LLEG.cola.splice(0).map(p=>Object.assign({},p,{_n:true}));
+  const vuelan=reduce||document.hidden||!radarVisible()?0:Math.min(3,lote.length);
+  lote.forEach((p,i)=>{ p._esp=i>=lote.length-vuelan; });
+  LLEG.L=[...lote.slice().reverse(),...LLEG.L].slice(0,60); LLEG.min=false;
+  const panel=llegPanel(); if(!panel||!vuelan) return;
+  const RR0=RROOT.getBoundingClientRect();
+  [...panel.querySelectorAll(".lg-slot")].slice(0,vuelan).forEach((slot,i)=>{ const p=LLEG.L[i], d0=slot.getBoundingClientRect(), o=llegOrigen(p.provincia),
+      tx=d0.left-RR0.left+d0.width/2-27, ty=d0.top-RR0.top+d0.height/2-27, sx=o.x-27, sy=o.y-27, mx=(sx+tx)/2+(tx>sx?-1:1)*50, my=Math.min(sy,ty)-90;
+    const fin=v=>{ if(v&&v.isConnected) v.remove(); if(!p._esp) return; p._esp=false; const s2=[...document.querySelectorAll("#lleg .lleg-r")].find(b=>b.dataset.id===p.id); const sl=s2&&s2.querySelector(".lg-slot");
+      if(sl){ sl.classList.remove("esp"); sl.animate([{transform:"scale(1.3)"},{transform:"scale(1)"}],{duration:240,easing:"ease-out"}); } };
+    setTimeout(()=>{ const onda=document.createElement("span"); onda.className="lg-onda"; onda.style.left=o.x+"px"; onda.style.top=o.y+"px"; RROOT.appendChild(onda); setTimeout(()=>onda.remove(),950);
+      const v=document.createElement("div"); v.className="lg-vuela"; v.innerHTML=lgHtml(p); RROOT.appendChild(v);
+      const kf=[]; for(let k=0;k<=16;k++){ const t=k/16, a=(1-t)*(1-t), b=2*(1-t)*t, c=t*t, s=t<.2?.4+t/.2*.7:1.1-(t-.2)/.8*.4; kf.push({transform:`translate(${a*sx+b*mx+c*tx}px,${a*sy+b*my+c*ty}px) scale(${s.toFixed(3)})`,opacity:t<.08?t/.08:1}); }
+      const an=v.animate(kf,{duration:650,easing:"cubic-bezier(.4,.1,.3,1)",fill:"forwards"}); an.onfinish=()=>fin(v); an.oncancel=()=>fin(v); setTimeout(()=>fin(v),900); },i*90); }); }
 async function iniciar(){
   let db=null; try{ db=window.claude&&window.claude.use?await window.claude.use("db"):null; }catch(e){}
   if(!db){ S.sinDb=true; S.listo=true; render(); return; }
