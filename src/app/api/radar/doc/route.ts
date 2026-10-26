@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { deleteDoc, NotFound, setDoc, updateDoc, validPath, VersionConflict } from "@/lib/radar/store";
+import { deleteDoc, NotFound, setDoc, setDocs, updateDoc, validPath, VersionConflict } from "@/lib/radar/store";
 
 export const dynamic = "force-dynamic";
+// completar muchas empresas de una base son cambios uno por uno: con 100 por pedido alcanza y sobra
+export const maxDuration = 60;
 
 const Op = z.object({
   op: z.enum(["set", "update", "delete"]),
@@ -11,7 +13,8 @@ const Op = z.object({
   d: z.record(z.unknown()).optional(),
   v: z.number().int().positive().optional(),
 });
-const Body = z.union([Op, z.object({ ops: z.array(Op).min(1).max(100) })]);
+// hasta 500 por pedido: importar una base manda las altas de a 500 (entran en una sola consulta)
+const Body = z.union([Op, z.object({ ops: z.array(Op).min(1).max(500) })]);
 
 /** Escrituras del Radar: set (reemplaza), update (mezcla campos) y delete. Acepta una o varias. */
 export async function POST(req: Request) {
@@ -19,6 +22,12 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: "invalid_argument" }, { status: 400 });
   const ops = "ops" in parsed.data ? parsed.data.ops : [parsed.data];
   const out: { id: string; v?: number }[] = [];
+  for (const o of ops) if (!validPath(o.c, o.id)) return NextResponse.json({ error: "invalid_argument", detail: `${o.c}/${o.id}` }, { status: 400 });
+  // Altas en bloque de una misma colección (importar una base): todas juntas en vez de una consulta por documento.
+  if (ops.length > 1 && ops.every((o) => o.op === "set" && o.c === ops[0].c)) {
+    const vs = await setDocs(ops[0].c, ops.map((o) => ({ id: o.id, data: o.d ?? {} })));
+    return NextResponse.json({ ok: true, docs: ops.map((o, i) => ({ id: o.id, v: vs[i] })), now: Date.now() });
+  }
   for (const o of ops) {
     if (!validPath(o.c, o.id)) return NextResponse.json({ error: "invalid_argument", detail: `${o.c}/${o.id}` }, { status: 400 });
     try {
