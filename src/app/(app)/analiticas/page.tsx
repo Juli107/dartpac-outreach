@@ -44,7 +44,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
             {ticks.map((t) => (
               <g key={t}>
                 <line x1={L} x2={W - 10} y1={y(t)} y2={y(t)} stroke="rgba(160,195,255,.14)" />
-                <text x={L - 6} y={y(t) + 3} textAnchor="end" className="fill-muted font-mono text-[10px]">{t}</text>
+                <text x={L - 6} y={y(t) + 6} textAnchor="end" className="fill-muted font-mono text-[22px] sm:text-[10px]">{t}</text>
               </g>
             ))}
             {series.map((s, i) => {
@@ -55,7 +55,11 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
                     <title>{`${s.sent} enviados, ${s.replies} respuestas`}</title>
                   </rect>
                   <rect x={x + bw * 0.15} y={y(s.replies)} width={bw * 0.3} height={y(0) - y(s.replies)} rx={2} fill="#3DDC97" />
-                  <text x={x + bw * 0.3} y={H - 8} textAnchor="middle" className="fill-muted font-mono text-[10px]">
+                  {/* en el celular el gráfico se achica: fecha corta y letra más grande para que se lea */}
+                  <text x={x + bw * 0.3} y={H - 4} textAnchor="middle" className="fill-muted font-mono text-[19px] sm:hidden">
+                    {s.week.toLocaleDateString("es-ES", { day: "numeric", month: "numeric" })}
+                  </text>
+                  <text x={x + bw * 0.3} y={H - 8} textAnchor="middle" className="hidden fill-muted font-mono text-[10px] sm:inline">
                     {s.week.toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                   </text>
                 </g>
@@ -75,7 +79,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
             <thead><tr><th>Secuencia</th><th>Contactos</th><th>Enviados</th><th>Apertura</th><th>Respuesta</th></tr></thead>
             <tbody>
               {sequences.map((s) => (
-                <tr key={s.id}><td className="font-medium text-white">{s.name}</td><td>{s._count.enrollments}</td><td>{s.sent}</td><td>{formatPct(s.openRate)}</td><td>{formatPct(s.replyRate)}</td></tr>
+                <tr key={s.id}><td className="min-w-[180px] !whitespace-normal font-medium text-white">{s.name}</td><td>{s._count.enrollments}</td><td>{s.sent}</td><td>{formatPct(s.openRate)}</td><td>{formatPct(s.replyRate)}</td></tr>
               ))}
             </tbody>
           </table>
