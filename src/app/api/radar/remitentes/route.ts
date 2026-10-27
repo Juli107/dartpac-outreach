@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const [senders, yo] = await Promise.all([db.sender.findMany({ orderBy: { name: "asc" } }), quienSoy()]);
   return NextResponse.json({
-    remitentes: senders.map((s) => ({ id: s.id, nombre: s.name, email: s.email, conectado: senderConnected(s) })),
+    remitentes: senders.map((s) => ({ id: s.id, nombre: s.name, email: s.email, whatsapp: s.whatsapp, conectado: senderConnected(s) })),
     yo: yo ? { senderId: yo.senderId ?? "", name: yo.name.split(/\s+/)[0], email: yo.email } : null,
   });
 }

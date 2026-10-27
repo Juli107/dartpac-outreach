@@ -888,6 +888,21 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
 #rdr .tb-leg i.tb-m{background:var(--sea)}
 #rdr .tb-leg i.tb-r{background:var(--accent)}
 #rdr .ax-tw{overflow-x:auto;margin:0 -4px}
+#rdr .ax-list.zr-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+#rdr .zr-card{text-align:left;cursor:pointer;font:inherit;color:inherit}
+#rdr .zr-card[aria-pressed=true]{outline:2px solid var(--accent);outline-offset:-2px}
+#rdr .zr-n{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted);margin-top:6px}
+#rdr .zr-n b{color:var(--fg)}
+#rdr .zp>summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;cursor:pointer;list-style:none}
+#rdr .zp>summary::-webkit-details-marker{display:none}
+#rdr .zp>summary::before{content:"›";display:inline-block;transition:transform .2s;color:var(--muted)}
+#rdr .zp[open]>summary::before{transform:rotate(90deg)}
+#rdr .zp[open]>summary{margin-bottom:10px}
+#rdr .zq{font-size:13px;color:var(--muted)}
+#rdr .ax-tbl td.zl,#rdr .ax-tbl th.zl,#rdr .ax-tbl td.zq,#rdr .ax-tbl th.zq{text-align:left}
+#rdr .zu{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+#rdr .zu li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:13.5px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+#rdr .rem-h{margin-top:6px}
 #rdr .ax-tbl{width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px}
 #rdr .ax-tbl th,#rdr .ax-tbl td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
 #rdr .ax-tbl thead th{font-size:11.5px;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.06em}
@@ -2904,6 +2919,7 @@ async function iniciar(){
   if(!db){ S.sinDb=true; S.listo=true; render(); return; }
   S.db=db;
   try{ const u=await window.claude.use("user"); if(u&&u.me){ const m=await u.me(); S.yo=(m&&m.name)||""; } }catch(e){}
+  try{ const eq=window.__dpEquipo?await window.__dpEquipo():null; S.eq=(eq&&eq.remitentes)||[]; }catch(e){ S.eq=[]; }
   db.collection("prospectos").onSnapshot(s=>{S.P=s.docs.map(d=>Object.assign({id:d.id},d.data()));S.listo=true;render();try{llegNuevos(S.P);}catch(e){}},e=>{S.listo=true;render();toast("No se pudieron leer los prospectos");});
   db.collection("busquedas").onSnapshot(s=>{ const prev=new Map(S.B.map(b=>[b.id,b.estado])); S.B=s.docs.map(d=>Object.assign({id:d.id},d.data())).sort((a,b)=>(b.t||0)-(a.t||0)); cerrarVencidas(); pintarDot(); notifPublicar();
     S.B.forEach(b=>{ if(prev.get(b.id)&&prev.get(b.id)!=="hecha"&&b.estado==="hecha"){ const G=grupoDe(b); if(G.every(x=>x.estado==="hecha"||x.estado==="error")) avisar("✓ "+(G.length===1&&b.resultado?b.resultado:G.reduce((s,x)=>s+(+x.encontrados||0),0)+" empresas nuevas en "+provNom(b.provincia)),{ic:"📡",tono:"ok",d:"Búsqueda terminada. Ya están en el mapa y en «Hoy».",ir:{prov:b.provincia}}); } });
@@ -3031,6 +3047,8 @@ function zonaCard(pv){ const z=S.zona; if(!z||!ADM.D[z.d]||ADM.D[z.d].prov!==pv)
   const det=[L.length?`<b class="num">${L.length}</b> prospecto${L.length===1?"":"s"} en ${pv==="caba"?"la comuna":"el "+DEP_TS1(pv)}`:`Todavía no hay prospectos en ${pv==="caba"?"esta comuna":"este "+DEP_TS1(pv)}`];
   if(!esLoc&&locs.length) det.push(`${locs.length===1?"Localidad":"Localidades"}: ${esc(locs.slice(0,4).map(x=>x.n).join(", "))}${locs.length>4?"…":""}`);
   if(!esLoc&&ADM.D[z.d].b) det.push("Barrios: "+esc(ADM.D[z.d].b.join(", ")));
+  { const g={}; L.filter(p=>!esLoc||norm(p.ciudad)===norm(l.n)).forEach(p=>{ const vis=new Set(); (p.historial||[]).forEach(h=>{ if(!["envio","mail","contacto"].includes(h.tipo)) return; const r=remDeH(h), n=r?nom1(r.nombre):h.por; if(!n||/^(claude|outreach)$/i.test(n)||vis.has(n)) return; vis.add(n); g[n]=(g[n]||0)+1; }); });
+    const q=Object.entries(g).sort((a,b)=>b[1]-a[1]); if(q.length) det.push("Contactaron acá: "+q.map(([n,c])=>esc(n)+" ("+c+")").join(", ")); }
   if(esLoc){ const x=[]; if(hab) x.push("Unos "+fmtHab(hab)+" habitantes (aprox.)"); if(habDep(z.d)) x.push(esc(depNom(z.d,true))+": "+fmtHab(habDep(z.d))+" habitantes (Censo 2022)"); det.unshift(...x); }
   else if(hab) det.unshift(fmtHab(hab)+" habitantes (Censo 2022)");
   return `<div class="zona-card" role="region" aria-label="${esc(tit)}"><div class="zc-h"><div style="flex:1;min-width:0"><p class="eyebrow">${esc(sub)}</p><h3>${esc(tit)}</h3></div><button class="icon-btn sm ghost" data-act="zonaCerrar" aria-label="Quitar la zona elegida">${IC.x}</button></div>
@@ -3355,11 +3373,33 @@ Respondé solo con JSON: {"descripcion":"...","oportunidad":"..."}`,{modelTier:"
     fin(d,o); const upd={descripcion:d,actualizado:Date.now()}; if(o) upd.porque=o;
     if(S.db){ try{ await S.db.doc("prospectos/"+id).update(upd); }catch(e){} }
   }catch(e){ fin(""); } finally{ delete DESC_PEND[id]; } }
-async function setEtapa(id,et,nota,quieto){ const p=pById(id); if(!p) return; const h=[...(p.historial||[]),{t:Date.now(),tipo:"etapa",texto:nota||`Pasó a ${ETN[et]}`,por:S.yo||S.cfg.vendedor||""}];
+async function setEtapa(id,et,nota,quieto){ const p=pById(id); if(!p) return; const h=[...(p.historial||[]),{t:Date.now(),tipo:"etapa",texto:nota||`Pasó a ${ETN[et]}`,...porH()}];
   const upd={etapa:et,historial:h,actualizado:Date.now()}; if(p.seq&&!p.seq.fin&&!["nuevo","contactado"].includes(et)) upd.seq=Object.assign({},p.seq,{fin:et}); if(et==="cliente"&&!p.clienteEl) upd.clienteEl=Date.now(); if(et==="cliente"||et==="descartado") upd.proximo=""; if(et==="respondio"&&!p.proximo) upd.proximo=addDays(hoy(),1); if(et==="cotizado") upd.proximo=addDays(hoy(),3);
   if(await guardar(()=>S.db.doc("prospectos/"+id).update(upd),et==="cliente"?"🎉 ¡Nuevo cliente!":ETN[et])) { Object.assign(p,upd); if(et==="cliente"&&!(p.alta&&p.alta.estado==="hecha")){ setTimeout(()=>altaSheet(id),quieto?900:150); return true; } if(!quieto&&!$("#sheet").hidden) ver(id); return true; } }
 function firmaTxt(){ const c=S.cfg; if(c.firmaOn===false) return ""; const L=[[c.firmaNombre||c.vendedor||"",c.empresa].filter(Boolean).join(" · ")];
   if(c.firmaTel) L.push(c.firmaTel); return "\n\n"+L.join("\n"); }
+/* ---------- remitentes: quién escribe por WhatsApp ---------- */
+const nom1=s=>String(s||"").trim().split(/\s+/)[0]||"";
+const remPorId=id=>(S.eq||[]).find(r=>r.id===id)||null;
+const remYo=()=>remPorId(((window.__dpYo&&window.__dpYo())||{}).senderId);
+/* a qué remitente corresponde una línea del historial (por id o, en las viejas, por el nombre) */
+function remDeH(h){ if(!h) return null; if(h.porId){ const r=remPorId(h.porId); if(r) return r; } const n=norm(h.por); if(!n) return null;
+  return (S.eq||[]).find(r=>norm(r.nombre)===n||norm(nom1(r.nombre))===n||norm(r.email)===n)||null; }
+/* quién firma una línea nueva del historial */
+const porH=r=>{ r=r||remYo(); return r?{por:nom1(r.nombre),porId:r.id}:{por:S.yo||S.cfg.vendedor||""}; };
+/* arma el mensaje como si lo escribiera ese remitente: su nombre, su mail y su WhatsApp en la firma */
+function conRem(r,fn){ if(!r) return fn(); const c=S.cfg, prev={vendedor:c.vendedor,firmaNombre:c.firmaNombre,firmaTel:c.firmaTel,firmaEmail:c.firmaEmail};
+  c.vendedor=nom1(r.nombre); c.firmaNombre=r.nombre; c.firmaEmail=r.email; if(r.whatsapp) c.firmaTel=r.whatsapp;
+  try{ return fn(); } finally{ Object.assign(c,prev); } }
+const remElegido=()=>remPorId(LS.get("remWa",""))||remYo()||null;
+/* fila «Escribe»: un botón por remitente, con su WhatsApp */
+function remChips(){ const E=S.eq||[]; if(!E.length) return ""; const r0=remElegido();
+  return `<div class="fld"><span>Escribe</span><div class="seg chips" role="group" aria-label="Quién escribe">${E.map(r=>`<button class="chip" data-rem="${esc(r.id)}" aria-pressed="${!!r0&&r0.id===r.id}">${esc(nom1(r.nombre))}</button>`).join("")}</div><p class="hint rem-h" id="rem-h"></p></div>`; }
+function remHint(root,r){ const h=root.querySelector("#rem-h"); if(!h) return;
+  h.innerHTML=!r?"Elegí quién escribe: queda anotado en el registro de zonas."
+    :r.whatsapp?`Desde el WhatsApp de ${esc(nom1(r.nombre))}: <b class="num">${esc(r.whatsapp)}</b>. Se abre el WhatsApp de este equipo: fijate que sea el suyo.`
+    :`${esc(nom1(r.nombre))} todavía no cargó su WhatsApp. <button class="rd-lnk" data-act="irOut" data-href="/remitentes">Cargarlo en Remitentes</button>`; }
+function remBind(root,cb){ root.querySelectorAll("[data-rem]").forEach(b=>b.addEventListener("click",()=>{ LS.set("remWa",b.dataset.rem); root.querySelectorAll("[data-rem]").forEach(x=>x.setAttribute("aria-pressed",x===b)); const r=remElegido(); remHint(root,r); cb&&cb(r); })); remHint(root,remElegido()); }
 function tarjetaHTML(){ const c=S.cfg, nom=c.firmaNombre||c.vendedor||"Tu nombre";
   return `<div class="bcard" role="img" aria-label="Tarjeta de presentación de ${esc(nom)}"><div class="bc-top"><span class="bc-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5" opacity=".35"/><circle cx="12" cy="12" r="4.5" opacity=".7"/><path d="M12 12l6.5-6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></span><span class="bc-co">${esc(c.empresa||"DARTPAC")}</span></div>
    <div class="bc-name"><b>${esc(nom)}</b><span>${esc(c.firmaCargo||"Ventas")}</span></div>
@@ -3697,7 +3737,7 @@ function cuerpoMail(p,tipo){ const c=S.cfg, R=RUB[p.rubro]||RUB.otro, yo=c.firma
   const pide=elegir(p,"mpide",[`Me gustaría poder presentarle nuestra propuesta a la persona responsable de compras. ¿Podrían indicarme con quién puedo comunicarme, o reenviarle este correo?`,`Para avanzar, me gustaría ponerme en contacto con quien esté a cargo de las compras de ${nom||"la empresa"}. ¿Me podrían indicar su nombre y la mejor forma de contactarlo?`]);
   return `${saludo}\n\n${intro}${vi}\n\n${quees}\n\n${pide}\n\n${cierre}`+pieBaja(); }
 async function registrarMail(p,tipo,asunto){ if(mailHoyA(p)) return;
-  const h=[...(p.historial||[]),{t:Date.now(),tipo:"mail",texto:"Mail enviado ("+(({primer:"primer contacto",seguimiento:"seguimiento",catalogo:"catálogo",cotizacion:"seguimiento de cotización",oferta:"oferta"})[tipo]||tipo)+"): "+asunto,por:S.yo||S.cfg.vendedor||""}];
+  const h=[...(p.historial||[]),{t:Date.now(),tipo:"mail",texto:"Mail enviado ("+(({primer:"primer contacto",seguimiento:"seguimiento",catalogo:"catálogo",cotizacion:"seguimiento de cotización",oferta:"oferta"})[tipo]||tipo)+"): "+asunto,...porH()}];
   const upd={historial:h,actualizado:Date.now(),proximo:addDays(hoy(),+S.cfg.seguir||4),reenvioMail:null}; p.reenvioMail=null; if((p.etapa||"nuevo")==="nuevo") upd.etapa="contactado";
   p.historial=h; if(upd.etapa) p.etapa=upd.etapa; p.proximo=upd.proximo; try{ await S.db.doc("prospectos/"+p.id).update(upd); }catch(x){} await seqTrasEnvio(p,"mail"); }
 const MODOS_MAIL=[["app","App de mail"],["gmail","Gmail"],["outlook","Outlook"]];
@@ -3808,15 +3848,15 @@ let SAMPLE; async function ia(){ if(SAMPLE===undefined){ try{ SAMPLE=window.clau
 function mensaje(id){ const p=pById(id); if(!p) return; const et=p.etapa||"nuevo";
   const tipo0=et==="nuevo"?"primer":et==="cotizado"?"cotizacion":"seguimiento"; const wa=waNum(p.whatsapp||p.telefono);
   abrir("Mensaje para "+p.nombre,`<div class="seg chips" role="group" aria-label="Tipo de mensaje">${[["primer","Primer contacto"],["seguimiento","Seguimiento"],["catalogo","Enviar catálogo"],["cotizacion","Después de cotizar"]].map(([k,t])=>`<button class="chip" data-tipo="${k}" aria-pressed="${k===tipo0}">${t}</button>`).join("")}</div>
-   <label class="fld"><span>Mensaje (lo podés editar)</span><textarea id="m-txt" rows="9"></textarea></label>
+   ${remChips()}<label class="fld"><span>Mensaje (lo podés editar)</span><textarea id="m-txt" rows="9"></textarea></label>
    <div class="ai-box"><div class="row" style="align-items:center;justify-content:space-between"><b style="font-size:14px">Personalizar con IA</b><button class="btn sm" id="m-ia">${IC.ai}Reescribir</button></div><span class="hint" id="m-ia-h">Adapta el mensaje al rubro y a la empresa, sin inventar precios ni plazos.</span></div>
    <label class="adj"><input type="checkbox" id="m-adj" ${LS.get("adjTarjeta",true)?"checked":""}><span class="adj-img" id="m-adj-img" aria-hidden="true"></span><span><b>Adjuntar mi tarjeta</b><small id="m-adj-h">${tactil()?"Se abre el menú de compartir con la imagen y el mensaje: elegí WhatsApp y el contacto.":"Se copia la imagen: en WhatsApp pegala con Ctrl+V antes de enviar."}</small></span></label>
    ${wa?`<div class="wa-lim" id="m-lim" aria-live="polite"></div><a class="btn wa block" id="m-wa" href="#" target="_blank" rel="noopener">${IC.wa}<span id="m-wa-t">Abrir WhatsApp</span></a><p class="hint">Número: <span class="copyable">+${wa}</span></p>${tactil()?"":`<div class="wa-modo"><span class="hint">Abrir con</span><div class="seg" role="group" aria-label="Abrir WhatsApp con"><button class="chip" data-wam="app" aria-pressed="${waModo()==="app"}">App de WhatsApp</button><button class="chip" data-wam="web" aria-pressed="${waModo()==="web"}">WhatsApp Web</button></div></div>`}`:`<p class="hint">No tiene WhatsApp cargado. Copiá el mensaje para mandarlo por mail o redes.</p>`}
    <div class="row"><button class="btn" id="m-copy">${IC.copy}Copiar</button><button class="btn primary" id="m-ok">Lo mandé</button></div>`,root=>{
-    const ta=root.querySelector("#m-txt"); let tipo=tipo0;
+    const ta=root.querySelector("#m-txt"); let tipo=tipo0, rem=remElegido();
     const link=()=>{ const a=root.querySelector("#m-wa"); if(a) a.href=waLink(wa,ta.value); };
-    const poner=()=>{ ta.value=plantilla(p,tipo); link(); };
-    poner(); ta.addEventListener("input",link);
+    const poner=()=>{ ta.value=conRem(rem,()=>plantilla(p,tipo)); link(); };
+    poner(); ta.addEventListener("input",link); remBind(root,r=>{ rem=r; poner(); });
     root.querySelectorAll("[data-wam]").forEach(b=>b.addEventListener("click",()=>{ try{ localStorage.setItem("waModo",b.dataset.wam); }catch(e){} root.querySelectorAll("[data-wam]").forEach(x=>x.setAttribute("aria-pressed",x===b)); link(); }));
     const adj=root.querySelector("#m-adj"), aw=root.querySelector("#m-wa"), awt=root.querySelector("#m-wa-t"); let blob=null;
     const pint=()=>{ LS.set("adjTarjeta",adj.checked); if(awt) awt.textContent=adj.checked?(tactil()?"Enviar con tarjeta":"Abrir WhatsApp con tarjeta"):"Abrir WhatsApp"; };
@@ -3839,7 +3879,7 @@ function mensaje(id){ const p=pById(id); if(!p) return; const et=p.etapa||"nuevo
       const ig=root.querySelector("#m-igual"); if(ig) ig.onclick=()=>{ igual=true; pintLim(); };
       clearTimeout(tic); if(e.espera>0&&document.body.contains(lim)) tic=setTimeout(pintLim,1000); };
     pintLim();
-    const registrar=async()=>{ if(registrado) return; registrado=true; const h=[...(p.historial||[]),{t:Date.now(),tipo:"envio",texto:"WhatsApp abierto: "+({primer:"primer contacto",seguimiento:"seguimiento",catalogo:"catálogo",cotizacion:"seguimiento de cotización"})[tipo],por:S.yo||S.cfg.vendedor||""}];
+    const registrar=async()=>{ if(registrado) return; registrado=true; const h=[...(p.historial||[]),{t:Date.now(),tipo:"envio",texto:"WhatsApp abierto: "+({primer:"primer contacto",seguimiento:"seguimiento",catalogo:"catálogo",cotizacion:"seguimiento de cotización"})[tipo],canal:"wa",...porH(rem)}];
       const upd={historial:h,actualizado:Date.now(),proximo:addDays(hoy(),+S.cfg.seguir||4)}; if((p.etapa||"nuevo")==="nuevo") upd.etapa="contactado";
       p.historial=h; if(upd.etapa) p.etapa=upd.etapa; try{ await S.db.doc("prospectos/"+id).update(upd); }catch(x){} await seqTrasEnvio(p,"wa"); pintarContadorWA(); pintLim(); };
     if(aw) aw.addEventListener("click",e=>{ const st=estado(); if(st.tope||st.espera>0){ e.preventDefault(); e.stopImmediatePropagation(); toast(st.tope?"Llegaste al límite de mensajes de hoy":"Esperá "+st.espera+" segundos antes del próximo"); return; } registrar(); });
@@ -3852,17 +3892,17 @@ function mensaje(id){ const p=pById(id); if(!p) return; const et=p.etapa||"nuevo
       b.disabled=true; h.textContent="Escribiendo…"; const R=RUB[p.rubro]||RUB.otro, c=S.cfg;
       const prompt=`Escribí un mensaje de WhatsApp en español rioplatense, como lo escribiría una persona real desde su celular: cálido, simple y directo, de 40 a 75 palabras, en 2 párrafos cortos. Nada de lenguaje de folleto ni frases de venta exageradas, sin listas, sin asteriscos ni markdown, como mucho un emoji. Tratá a la empresa de "ustedes".
 Tipo de mensaje: ${({primer:"primer contacto en frío",seguimiento:"seguimiento de un contacto que no respondió",catalogo:"envío del catálogo",cotizacion:"seguimiento después de mandar una cotización"})[tipo]}.
-Quién escribe: ${c.vendedor||"Luis"}, de ${c.empresa||"DARTPAC"}. ${c.diferenciales||""} Marcas: ${c.marcas||""}.
+Quién escribe: ${(rem?nom1(rem.nombre):c.vendedor)||"Luis"}, de ${c.empresa||"DARTPAC"}. ${c.diferenciales||""} Marcas: ${c.marcas||""}.
 Destinatario: ${p.nombre}, ${R.n} en ${[p.ciudad,provNom(p.provincia)].filter(Boolean).join(", ")}. ${p.porque?"Contexto: "+p.porque:""}
 Contexto del rubro (no lo copies textual, usalo solo para entender qué necesitan): ${R.h}${p.canal?" Los encontré en "+({tiktok:"TikTok",facebook:"Facebook",instagram:"Instagram"}[p.canal]||p.canal)+": podés mencionarlo.":""}
 Productos a mencionar: ${(p.productos&&p.productos.length?p.productos:R.p).join(", ")}.
 ${c.catalogo?"Incluí al final el link del catálogo: "+c.catalogo:""}
 No incluyas firma, saludo final con tu nombre ni datos de contacto: la firma se agrega sola.
 Reglas: no inventes precios, descuentos, plazos de entrega ni datos de la empresa destinataria. ${tipo==="primer"?"Terminá pidiendo amablemente el contacto (nombre y WhatsApp o teléfono) de la persona que se encarga de las compras. No ofrezcas pasar precios, lista de precios ni presupuesto en este primer mensaje.":"Terminá con una pregunta simple y fácil de responder."} No preguntes volúmenes ni datos internos en el primer mensaje. Devolvé solo el texto del mensaje.`;
-      try{ const r=await sm(prompt,{onText:({text})=>{ta.value=text;link();}}); ta.value=(r&&r.text||ta.value).trim()+firmaTxt(); link(); h.textContent="Listo. Revisalo antes de mandarlo."; }
+      try{ const r=await sm(prompt,{onText:({text})=>{ta.value=text;link();}}); ta.value=(r&&r.text||ta.value).trim()+conRem(rem,firmaTxt); link(); h.textContent="Listo. Revisalo antes de mandarlo."; }
       catch(x){ h.textContent=x&&x.code==="not_granted"?"No diste permiso para usar la IA en esta app.":x&&x.code==="rate_limited"?"La IA está ocupada. Probá en un minuto.":"No se pudo escribir con IA. Usá el mensaje base."; }
       b.disabled=false; };
-    root.querySelector("#m-ok").onclick=async()=>{ if(registrado){ toast("Anotado. Te lo recuerdo el "+fFecha(addDays(hoy(),+S.cfg.seguir||4))); cerrar(); return; } const h=[...(p.historial||[]),{t:Date.now(),tipo:"envio",texto:"Mensaje enviado: "+({primer:"primer contacto",seguimiento:"seguimiento",catalogo:"catálogo",cotizacion:"seguimiento de cotización"})[tipo],por:S.yo||S.cfg.vendedor||""}];
+    root.querySelector("#m-ok").onclick=async()=>{ if(registrado){ toast("Anotado. Te lo recuerdo el "+fFecha(addDays(hoy(),+S.cfg.seguir||4))); cerrar(); return; } const h=[...(p.historial||[]),{t:Date.now(),tipo:"envio",texto:"Mensaje enviado: "+({primer:"primer contacto",seguimiento:"seguimiento",catalogo:"catálogo",cotizacion:"seguimiento de cotización"})[tipo],...porH(rem)}];
       const upd={historial:h,actualizado:Date.now(),proximo:addDays(hoy(),+S.cfg.seguir||4)}; if((p.etapa||"nuevo")==="nuevo") upd.etapa="contactado";
       if(await guardar(()=>S.db.doc("prospectos/"+id).update(upd),"Anotado. Te lo recuerdo el "+fFecha(upd.proximo))) cerrar(); };
   }); }
@@ -3873,7 +3913,7 @@ function contacto(id){ const p=pById(id); if(!p) return;
    <label class="fld"><span>Volver a contactar</span><input id="c-fecha" type="date" value="${addDays(hoy(),+S.cfg.seguir||4)}"></label>
    <button class="btn primary block" id="c-ok">Guardar</button>`,root=>{
     root.querySelector("#c-ok").onclick=async()=>{ const et=root.querySelector("#c-res").value, nota=root.querySelector("#c-nota").value.trim(), f=root.querySelector("#c-fecha").value;
-      const h=[...(p.historial||[]),{t:Date.now(),tipo:"contacto",texto:(ETN[et]||et)+(nota?": "+nota:""),por:S.yo||S.cfg.vendedor||""}];
+      const h=[...(p.historial||[]),{t:Date.now(),tipo:"contacto",texto:(ETN[et]||et)+(nota?": "+nota:""),...porH()}];
       const upd={etapa:et,historial:h,actualizado:Date.now(),proximo:["cliente","descartado"].includes(et)?"":f}; if(nota) upd.notas=[p.notas,nota].filter(Boolean).join("\n");
       if(await guardar(()=>S.db.doc("prospectos/"+id).update(upd),"Contacto guardado")) cerrar(); }; }); }
 function form(p,pre){ const e=!!p; p=p||Object.assign({rubro:"otro",potencial:"medio"},pre||{});
@@ -4314,7 +4354,7 @@ async function unirDup(ids){ const G=ids.map(pById).filter(Boolean); if(G.length
   ["telefono","whatsapp","email","web","direccion","ciudad","descripcion","porque","cuit","competidor","asignado"].forEach(k=>{ if(!base[k]){ const x=resto.find(r=>r[k]); if(x) upd[k]=x[k]; } });
   const notas=[base.notas,...resto.map(r=>r.notas)].filter(Boolean); if(notas.length>1) upd.notas=[...new Set(notas)].join("\n");
   const orden=ETAPAS.map(e=>e[0]); const mejor=G.map(x=>x.etapa||"nuevo").filter(e=>orden.includes(e)).sort((a,b)=>orden.indexOf(b)-orden.indexOf(a))[0]; if(mejor&&mejor!==(base.etapa||"nuevo")) upd.etapa=mejor;
-  upd.historial=[...G.flatMap(x=>x.historial||[])].sort((a,b)=>(a.t||0)-(b.t||0)); upd.historial.push({t:Date.now(),tipo:"dato",texto:"Unido con "+resto.map(r=>r.nombre).join(", ")+" (estaba repetido)",por:quien()});
+  upd.historial=[...G.flatMap(x=>x.historial||[])].sort((a,b)=>(a.t||0)-(b.t||0)); upd.historial.push({t:Date.now(),tipo:"dato",texto:"Unido con "+resto.map(r=>r.nombre).join(", ")+" (estaba repetido)",...porH()});
   if(await guardar(async()=>{ await S.db.doc("prospectos/"+base.id).update(upd); for(const r of resto) await S.db.doc("prospectos/"+r.id).delete(); },"Unidos en una sola ficha")) render(); }
 
 /* ---------- secuencias: las arma el equipo (no hay pasos de fábrica) ---------- */
@@ -4335,7 +4375,7 @@ function seqPaso(p){ if(!seqActiva(p)) return null; const plan=seqPlan(p), i=p.s
   const fecha=addDays(p.seq.inicio||hoy(),+st.d||0);
   return {i,total:plan.length,st,c,fecha,vence:fecha<=hoy(),pausa:!!p.seq.pausa}; }
 const seqHoy=()=>activos().filter(p=>{ const s=seqPaso(p); return s&&s.vence&&!s.pausa&&s.c; });
-async function seqTareaOk(id){ const p=pById(id), s=seqPaso(p); if(!p||!s) return; const h=[...(p.historial||[]),{t:Date.now(),tipo:"dato",texto:"Paso de la secuencia hecho: "+String(s.st.texto||pasoNombre(s.st)).replace(/\s+/g," ").slice(0,140),por:quien()}];
+async function seqTareaOk(id){ const p=pById(id), s=seqPaso(p); if(!p||!s) return; const h=[...(p.historial||[]),{t:Date.now(),tipo:"dato",texto:"Paso de la secuencia hecho: "+String(s.st.texto||pasoNombre(s.st)).replace(/\s+/g," ").slice(0,140),...porH()}];
   try{ await S.db.doc("prospectos/"+p.id).update({historial:h,actualizado:Date.now()}); p.historial=h; }catch(e){} await seqTrasEnvio(p,"tarea"); toast("Listo: pasó al próximo paso"); render(); }
 async function seqSet(id,cambio,msg){ const p=pById(id); if(!p||!p.seq) return; const seq=Object.assign({},p.seq,cambio); const upd={seq,actualizado:Date.now()}; if(cambio.fin) upd.proximo=p.etapa==="cliente"?"":(p.proximo||"");
   if(await guardar(()=>S.db.doc("prospectos/"+id).update(upd),msg||"")){ p.seq=seq; render(); } }
@@ -4366,7 +4406,7 @@ async function personalizarIA(p,tx,canal){ const sm=await ia(); if(!sm) return t
 
 /* ---------- pedidos al asistente (alta en Gestión, completar datos, oportunidades) ---------- */
 async function pedirAuto(tipo,ids,extra){ if(!S.db){ toast("No hay conexión con la base. Recargá la página."); return false; }
-  const id="a"+Date.now().toString(36)+Math.random().toString(36).slice(2,5); const d=Object.assign({tipo,ids:ids||[],estado:"pendiente",t:Date.now(),por:quien()},extra||{});
+  const id="a"+Date.now().toString(36)+Math.random().toString(36).slice(2,5); const d=Object.assign({tipo,ids:ids||[],estado:"pendiente",t:Date.now(),...porH()},extra||{});
   if(!await guardar(()=>S.db.doc("pedidos/"+id).set(d),"")) return false;
   const tarea=S.cfg.tareaAuto||"web"; let ok=false, msg="";
   if(tarea){ let mcp=null; try{ mcp=window.claude&&window.claude.use?await window.claude.use("mcp"):null; }catch(e){}
@@ -4452,7 +4492,7 @@ function altaSheet(id){ const p=pById(id); if(!p) return;
       if(!await guardar(()=>S.db.doc("prospectos/"+id).update(upd),"")) return; Object.assign(p,upd); cerrar(); if(g) await pedirAuto("alta",[id]); else toast("Guardado"); render(); }; }); }
 
 /* ---------- vista Automatización ---------- */
-const AX_TABS=[["seq","Secuencias"],["resp","Respuestas"],["alertas","Alertas"],["limpieza","Limpieza"],["equipo","Equipo"],["seguro","Envíos seguros"]];
+const AX_TABS=[["seq","Secuencias"],["resp","Respuestas"],["alertas","Alertas"],["limpieza","Limpieza"],["equipo","Equipo"],["zonas","Zonas por remitente"],["seguro","Envíos seguros"]];
 function alertasCalc(){ const A=activos().filter(vivoP), d=n=>Date.now()-n*864e5, L=[];
   const resp=A.filter(p=>p.etapa==="respondio"&&ultimoC(p)<d(2)&&(!p.proximo||p.proximo<=hoy())); if(resp.length) L.push({k:"resp",ic:"💬",t:`${resp.length} te respondieron y esperan tu respuesta`,d:"Respondieron hace más de 2 días y no hay un mensaje tuyo después.",ids:resp.map(p=>p.id),cls:"hot"});
   const cot=A.filter(p=>p.etapa==="cotizado"&&ultimoC(p)<d(7)); if(cot.length) L.push({k:"cot",ic:"🧾",t:`${cot.length} cotizados sin cerrar hace más de una semana`,d:"Un llamado ahora suele destrabar la compra.",ids:cot.map(p=>p.id)});
@@ -4465,7 +4505,7 @@ function vAuto(){ const sub=S.ax||"seq", hoyS=seqHoy(), act=S.P.filter(seqActiva
   const head=cabecera("Piloto automático","Automatización comercial","Secuencias que avanzan solas, respuestas leídas por Claude, alertas de oportunidad y una base limpia.");
   const kp=`<div class="stat-grid four ax-kpis">${k("Pasos para hoy",hoyS.length,`${act.length} en secuencia`,"seq",hoyS.length?"hot":"")}${k("Respuestas",(S.resp||[]).filter(x=>!x.hecho).length||"—","de tu Gmail","resp")}${k("Alertas",AL.filter(a=>a.estado==="nueva").length+calc.length,"oportunidades","alertas")}${k("Para limpiar",dup.length+probs.length,`${dup.length} repetidas · ${probs.length} con datos dudosos`,"limpieza")}</div>`;
   const tabs=`<div class="seg ax-tabs" role="tablist">${AX_TABS.map(([t,n])=>`<button role="tab" data-act="axTab" data-t="${t}" aria-selected="${t===sub}">${n}</button>`).join("")}</div>`;
-  const cuerpo={seq:axSeq,resp:axResp,alertas:axAlertas,limpieza:axLimpieza,equipo:axEquipo,seguro:axSeguro}[sub]||axSeq;
+  const cuerpo={seq:axSeq,resp:axResp,alertas:axAlertas,limpieza:axLimpieza,equipo:axEquipo,zonas:axZonas,seguro:axSeguro}[sub]||axSeq;
   return `<section class="view">${head}${kp}${tabs}${cuerpo()}</section>`; }
 /* ---------- secuencias de Outreach (web): el Radar suma empresas; los pasos los corre la plataforma ---------- */
 const WEBSEQ={lista:null,t:0,p:null};
@@ -4531,6 +4571,40 @@ function axEquipo(){ const V=S.cfg.vendedores||[], sinA=activos().filter(p=>vivo
    <p class="hint">Asigná provincias a cada vendedor. Los prospectos nuevos se reparten solos por zona y cada uno ve los suyos con el filtro «Mis prospectos» en Lista.</p>
    ${V.length?`<div class="ax-list">${V.map((v,i)=>{ const L=cuenta(v.n); return `<div class="ax-card"><div class="ax-top"><b>${esc(v.n)}</b><span class="num muted">${L.length} prospectos · ${L.filter(yaContactado).length} contactados · ${L.filter(p=>p.etapa==="cliente").length} clientes</span></div><p class="ax-txt">${(v.provs||[]).length?esc(v.provs.map(provNom).join(", ")):"<span class=muted>Sin provincias asignadas</span>"}</p><div class="row"><button class="btn sm" data-act="vendEditar" data-i="${i}">Editar zonas</button><button class="btn sm ghost" data-act="vendBorrar" data-i="${i}">Quitar</button></div></div>`; }).join("")}</div>`:`<div class="empty"><b>Todavía no cargaste vendedores</b><span class="hint">Agregá a cada vendedor con sus provincias para repartir los prospectos.</span></div>`}
    ${V.length?`<div class="callout"><div><b>${sinA.length} prospectos sin vendedor</b><span>Se asignan según la provincia de cada uno.</span></div><button class="btn primary" data-act="vendAsignar" ${sinA.length?"":"disabled"}>Repartir por zona</button></div>`:""}</div>`; }
+/* ---------- registro: qué remitente contactó o localizó empresas en cada provincia, municipio y localidad ---------- */
+const Z_ACC={enc:"Localizó",wa:"WhatsApp",mail:"Mail",cont:"Contacto"};
+function registroZonas(desde){ const out=[];
+  S.P.forEach(p=>{ (p.historial||[]).forEach(h=>{ if(!h||!(h.t>=desde)) return;
+    const acc=h.tipo==="alta"?"enc":h.tipo==="mail"?"mail":h.tipo==="envio"?(h.canal==="wa"||/whatsapp/i.test(h.texto||"")?"wa":"cont"):h.tipo==="contacto"?"cont":"";
+    if(!acc) return; const r=remDeH(h); if(!r&&(!h.por||/^(claude|outreach)$/i.test(h.por))) return;
+    const d=depDeP(p);
+    out.push({t:h.t,acc,rk:r?r.id:"n:"+norm(h.por),rn:r?r.nombre:h.por,p,prov:p.provincia||"",dep:d>=0?depNom(d,true):"",loc:String(p.ciudad||"").trim()}); }); });
+  return out.sort((a,b)=>b.t-a.t); }
+function axZonas(){ const per=S.zPer==null?30:S.zPer, desde=per?Date.now()-per*864e5:0, T=registroZonas(desde), E=S.eq||[];
+  const fR=S.zRem||"", L=fR?T.filter(x=>x.rk===fR):T;
+  const uniq=(A,f)=>new Set(A.map(f).filter(Boolean)).size, esC=x=>x.acc!=="enc";
+  const rems=[...E.map(r=>({k:r.id,n:r.nombre,wa:r.whatsapp})),...[...new Map(T.filter(x=>x.rk.startsWith("n:")).map(x=>[x.rk,{k:x.rk,n:x.rn,wa:""}])).values()]];
+  const card=r=>{ const A=T.filter(x=>x.rk===r.k), C=A.filter(esC);
+    return `<button class="ax-card zr-card" data-act="zRem" data-k="${esc(r.k)}" aria-pressed="${fR===r.k}"><div class="ax-top"><b>${esc(r.n)}</b><span class="muted num">${r.wa?esc(r.wa):"sin WhatsApp"}</span></div>
+     <div class="zr-n"><span><b class="num">${uniq(C,x=>x.p.id)}</b> contactadas</span><span><b class="num">${uniq(A.filter(x=>x.acc==="enc"),x=>x.p.id)}</b> localizadas</span><span><b class="num">${uniq(A,x=>x.prov)}</b> provincias</span><span><b class="num">${uniq(A,x=>x.dep&&x.prov+"|"+x.dep)}</b> municipios</span></div></button>`; };
+  const quien=A=>{ const g={}; A.forEach(x=>{ (g[x.rn]=g[x.rn]||new Set()).add(x.p.id); }); Object.keys(g).forEach(k=>g[k]=g[k].size); return Object.entries(g).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${esc(nom1(n))} <b class="num">${c}</b>`).join(" · "); };
+  const provs={}; L.forEach(x=>{ (provs[x.prov]=provs[x.prov]||[]).push(x); });
+  const bloque=([pv,A])=>{ const g={}; A.forEach(x=>{ const k=x.dep+"|"+x.loc; (g[k]=g[k]||[]).push(x); }); const C=A.filter(esC);
+    const filas=Object.entries(g).sort((a,b)=>b[1].filter(esC).length-a[1].filter(esC).length||b[1].length-a[1].length).map(([k,B])=>{ const [dep,loc]=k.split("|"); return `<tr><th scope="row">${esc(dep||"—")}</th><td class="zl">${esc(loc||"—")}</td><td class="num">${uniq(B.filter(esC),x=>x.p.id)||"—"}</td><td class="num">${uniq(B.filter(x=>x.acc==="enc"),x=>x.p.id)||"—"}</td><td class="zq">${quien(B.filter(esC))||"—"}</td></tr>`; }).join("");
+    return `<details class="panel zp"><summary><b>${esc(provNom(pv))}</b><span class="hint"><b class="num">${uniq(C,x=>x.p.id)}</b> contactadas · <b class="num">${uniq(A.filter(x=>x.acc==="enc"),x=>x.p.id)}</b> localizadas</span><span class="zq">${quien(C)}</span></summary>
+     <div class="ax-tw"><table class="ax-tbl"><thead><tr><th>${pv==="bsas"?"Partido":pv==="caba"?"Comuna":"Municipio / depto."}</th><th class="zl">Localidad</th><th>Contactadas</th><th>Localizadas</th><th class="zq">Quién contactó</th></tr></thead><tbody>${filas}</tbody></table></div></details>`; };
+  const ult=L.filter(esC).slice(0,25).map(x=>`<li><span class="num muted">${esc(fCorta(x.t))}</span><b>${esc(nom1(x.rn))}</b><span class="chip">${Z_ACC[x.acc]}</span><button class="rd-lnk" data-act="ver" data-id="${esc(x.p.id)}">${esc(x.p.nombre||"Sin nombre")}</button><span class="muted">${esc([x.loc,x.dep&&x.dep!==x.loc?x.dep:"",provNom(x.prov)].filter(Boolean).join(", "))}</span></li>`).join("");
+  return `<div class="panel stack"><div class="sec-h" style="margin:0"><h2>Zonas por remitente</h2><button class="btn sm" data-act="zCsv" ${L.length?"":"disabled"}>${IC.dl}Descargar registro</button></div>
+    <p class="hint">Quién escribió (WhatsApp, mail o llamada) y quién encontró empresas en cada provincia, municipio y localidad. Se anota solo al tocar «Abrir WhatsApp», «Lo mandé», enviar un mail o registrar un contacto.</p>
+    <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><div class="seg">${[[7,"7 días"],[30,"30 días"],[90,"90 días"],[0,"Todo"]].map(([v,t])=>`<button data-act="zPer" data-v="${v}" aria-selected="${per===v}">${t}</button>`).join("")}</div>${fR?`<button class="btn sm ghost" data-act="zRem" data-k="">Ver todos</button>`:""}</div>
+    ${rems.length?`<div class="ax-list zr-list">${rems.map(card).join("")}</div>`:`<p class="hint">Todavía no hay remitentes cargados.</p>`}</div>
+   ${Object.keys(provs).length?Object.entries(provs).sort((a,b)=>b[1].filter(esC).length-a[1].filter(esC).length||b[1].length-a[1].length).map(bloque).join("")
+     :`<div class="empty"><b>Sin movimientos en este período</b><span class="hint">Cuando alguien le escriba a una empresa desde el Radar, aparece acá con su provincia, municipio y localidad.</span></div>`}
+   ${ult?`<div class="panel"><div class="sec-h" style="margin:0 0 10px"><h2>Últimos contactos</h2></div><ul class="zu">${ult}</ul></div>`:""}`; }
+function zonasCsv(){ const per=S.zPer==null?30:S.zPer, T=registroZonas(per?Date.now()-per*864e5:0).filter(x=>!S.zRem||x.rk===S.zRem);
+  const q=v=>{ v=String(v??""); return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  const filas=[["Fecha","Remitente","Acción","Empresa","Localidad","Municipio / partido","Provincia"],...T.map(x=>[new Date(x.t).toLocaleString("es-AR"),x.rn,Z_ACC[x.acc],x.p.nombre,x.loc,x.dep,provNom(x.prov)])];
+  bajarDirecto(new Blob(["\ufeff"+filas.map(f=>f.map(q).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"}),"registro-zonas-"+hoy()+".csv"); }
 function axSeguro(){ const c=S.cfg, n=mailsHoy(), sem=Math.max(1,Math.ceil((Date.now()-(+c.mailInicio||Date.now()))/(7*864e5))), rec=[20,35,50,80][Math.min(3,sem-1)], nc=S.P.filter(p=>p.noContactar);
   const chk=(k,t,d)=>`<label class="ax-chk"><input type="checkbox" data-chk="${k}" ${(c.checks||{})[k]?"checked":""}><span><b>${t}</b><small>${d}</small></span></label>`;
   return `<div class="stat-grid four"><div class="stat"><span>Mails hoy</span><b class="num">${n}/${topeMail()}</b><small>límite diario</small></div><div class="stat"><span>WhatsApp hoy</span><b class="num">${contactosHoy()}/${topeWA()}</b><small>límite diario</small></div><div class="stat"><span>Recomendado esta semana</span><b class="num">${rec}</b><small>mails por día</small></div><div class="stat"><span>No contactar</span><b class="num">${nc.length}</b><small>pidieron la baja</small></div></div>
@@ -4603,16 +4677,16 @@ function fichaAuto(p){ const {n,partes}=puntaje(p), [t,c]=temp(n), s=seqPaso(p),
 
 /* ---------- hojas de la secuencia ---------- */
 function seqWaSheet(id){ const p=pById(id), s=seqPaso(p); if(!p||!s) return; const wa=waNum(p.whatsapp||p.telefono); if(!wa){ toast("No tiene WhatsApp cargado"); return; }
-  abrir("WhatsApp · paso "+(s.i+1)+" de "+s.total,`<p class="hint">${esc(p.nombre)} · ${esc(pasoNombre(s.st))}</p><label class="fld"><span>Mensaje (lo podés editar)</span><textarea id="sw-t" rows="7">${esc(pasoWa(p,s.st))}</textarea></label>
+  abrir("WhatsApp · paso "+(s.i+1)+" de "+s.total,`<p class="hint">${esc(p.nombre)} · ${esc(pasoNombre(s.st))}</p>${remChips()}<label class="fld"><span>Mensaje (lo podés editar)</span><textarea id="sw-t" rows="7">${esc(conRem(remElegido(),()=>pasoWa(p,s.st)))}</textarea></label>
    <button class="btn sm" id="sw-ia">${IC.ai}Personalizar con IA</button><div class="wa-lim" id="sw-lim"></div><a class="btn wa block" id="sw-go" href="#" target="_blank" rel="noopener">${IC.wa}Abrir WhatsApp</a>`,root=>{
     const ta=root.querySelector("#sw-t"), go=root.querySelector("#sw-go"), lim=root.querySelector("#sw-lim"); let hecho=false, tic=null;
-    const link=()=>{ go.href=waLink(wa,ta.value); }; link(); ta.oninput=link;
+    const link=()=>{ go.href=waLink(wa,ta.value); }; link(); ta.oninput=link; let rem=remElegido(); remBind(root,r=>{ rem=r; ta.value=conRem(r,()=>pasoWa(p,s.st)); link(); });
     const pint=()=>{ const n=contactosHoy(), t=topeWA(), f=Math.ceil(ESPERA_WA-(Date.now()-ultimoEnvioHoy())/1000), esp=f>0&&ultimoEnvioHoy()&&!enviadoHoyA(p)?f:0, tope=n>=t&&!enviadoHoyA(p);
       lim.innerHTML=`<div class="wa-lim-r"><span>WhatsApp hoy</span><b class="num">${n} de ${t}</b></div><div class="wa-bar"><i style="width:${Math.min(100,n/t*100).toFixed(1)}%"></i></div><p class="hint">${tope?"Llegaste al límite de hoy: seguí mañana.":esp?`Esperá <b class="num">${esp} s</b> antes del próximo.`:"Listo para mandar."}</p>`; go.setAttribute("aria-disabled",tope||esp?"true":"false"); clearTimeout(tic); if(esp&&document.body.contains(lim)) tic=setTimeout(pint,1000); return {tope,esp}; };
     pint();
     root.querySelector("#sw-ia").onclick=async e=>{ e.currentTarget.disabled=true; ta.value=await personalizarIA(p,ta.value,"wa"); link(); e.currentTarget.disabled=false; };
     go.addEventListener("click",async e=>{ const x=pint(); if(x.tope||x.esp){ e.preventDefault(); toast(x.tope?"Llegaste al límite de hoy":"Esperá "+x.esp+" s"); return; } if(hecho) return; hecho=true;
-      const h=[...(p.historial||[]),{t:Date.now(),tipo:"envio",texto:"WhatsApp de la secuencia: "+pasoNombre(s.st),por:quien()}], upd={historial:h,actualizado:Date.now()}; if((p.etapa||"nuevo")==="nuevo") upd.etapa="contactado";
+      const h=[...(p.historial||[]),{t:Date.now(),tipo:"envio",texto:"WhatsApp de la secuencia: "+pasoNombre(s.st),canal:"wa",...porH(rem)}], upd={historial:h,actualizado:Date.now()}; if((p.etapa||"nuevo")==="nuevo") upd.etapa="contactado";
       p.historial=h; if(upd.etapa) p.etapa=upd.etapa; try{ await S.db.doc("prospectos/"+p.id).update(upd); }catch(x){} await seqTrasEnvio(p,"wa"); pintarContadorWA(); setTimeout(()=>{ if(document.body.contains(go)){ cerrar(); render(); } },900); }); }); }
 function seqMailSheet(id){ const p=pById(id), s=seqPaso(p); if(!p||!s) return; const t="paso "+(s.i+1)+" de la secuencia";
   abrir("Mail · paso "+(s.i+1)+" de "+s.total,`<div class="ml-card"><div class="ml-r"><span>Para</span><b>${esc(p.email)}</b></div><label class="fld"><span>Asunto</span><input id="sm-su" value="${esc(pasoAsunto(p,s.st))}"></label><label class="fld"><span>Mensaje</span><textarea id="sm-tx" rows="11">${esc(pasoCuerpo(p,s.st))}</textarea></label></div>
@@ -4664,14 +4738,14 @@ async function vendAsignar(){ const V=S.cfg.vendedores||[], L=activos().filter(p
 async function alAgregar(a){ const d=a.datos||{}; if(!d.nombre) return; const prov=PROV[d.provincia]?d.provincia:provDeTexto(d.provincia||d.ciudad||"");
   if(S.P.some(x=>nomNorm(x.nombre)===nomNorm(d.nombre))){ toast("Ya está en tu base"); return; }
   const id="p-"+nomNorm(d.nombre).replace(/[^a-z0-9]+/g,"-").slice(0,58), t=Date.now();
-  const doc={nombre:d.nombre,rubro:RUB[d.rubro]?d.rubro:rubDeTexto(d.rubro||""),provincia:prov||"bsas",ciudad:d.ciudad||"",direccion:d.direccion||"",telefono:d.telefono||"",whatsapp:d.whatsapp||"",email:d.email||"",web:d.web||a.url||"",porque:a.detalle||"",potencial:d.potencial||"medio",productos:d.productos&&Array.isArray(d.productos)?d.productos:[],etapa:"nuevo",creado:t,fuente:a.url||"Alerta de oportunidad",origen:"alerta",historial:[{t,tipo:"alta",texto:"Agregado desde una alerta: "+(a.titulo||""),por:quien()}]};
+  const doc={nombre:d.nombre,rubro:RUB[d.rubro]?d.rubro:rubDeTexto(d.rubro||""),provincia:prov||"bsas",ciudad:d.ciudad||"",direccion:d.direccion||"",telefono:d.telefono||"",whatsapp:d.whatsapp||"",email:d.email||"",web:d.web||a.url||"",porque:a.detalle||"",potencial:d.potencial||"medio",productos:d.productos&&Array.isArray(d.productos)?d.productos:[],etapa:"nuevo",creado:t,fuente:a.url||"Alerta de oportunidad",origen:"alerta",historial:[{t,tipo:"alta",texto:"Agregado desde una alerta: "+(a.titulo||""),...porH()}]};
   if(d.competidor) doc.competidor=d.competidor;
   if(await guardar(async()=>{ await S.db.doc("prospectos/"+id).set(doc); await S.db.doc("alertas/"+a.id).update({estado:"vista",prospectoId:id}); },"Agregado a tu base")) render(); }
 
 /* ---------- eventos nuevos ---------- */
 Object.assign(ACT,{
   axTab:d=>{ S.ax=d.t; LS.set("ax",d.t); if(S.tab!=="auto"){ S.tab="auto"; LS.set("tab","auto"); } cerrar(); render(); },
-  mas:()=>mas(), irOut:d=>{ cerrar(); if(window.__dpIr) window.__dpIr(d.href||"/"); }, verBusq:()=>busquedas(), verAjustes:()=>ajustes(), redSel:d=>{ S.red=d.red; LS.set("red",d.red); render(); }, tbP:d=>{ S.tbP=+d.v; render(); },
+  mas:()=>mas(), irOut:d=>{ cerrar(); if(window.__dpIr) window.__dpIr(d.href||"/"); }, verBusq:()=>busquedas(), verAjustes:()=>ajustes(), redSel:d=>{ S.red=d.red; LS.set("red",d.red); render(); }, tbP:d=>{ S.tbP=+d.v; render(); }, zPer:d=>{ S.zPer=+d.v; render(); }, zRem:d=>{ S.zRem=S.zRem===d.k?"":d.k; render(); }, zCsv:()=>zonasCsv(),
   seqWa:d=>seqWaSheet(d.id), seqMail1:d=>seqMailSheet(d.id), seqMails:()=>seqMailsTanda(), seqEditar:d=>seqEditar(d&&d.id?d.id:null),
   seqSumarTop:d=>{ const L=activos().filter(p=>vivoP(p)&&!seqActiva(p)&&!enOutreach(p)&&!yaContactado(p)&&(esMail(p.email)||waNum(p.whatsapp||p.telefono))&&!esCliente(p)).sort(ordenPt).slice(0,+d.n||25); seqIniciar(L.map(p=>p.id)); },
   seqSumar1:async d=>{ if(await seqIniciar([d.id])) ver(d.id); }, seqSumarLista:()=>{ const L=(S.listaVis||[]).filter(p=>vivoP(p)&&!seqActiva(p)&&!enOutreach(p)); if(!L.length) return toast("No hay empresas para sumar en esta lista"); seqIniciar(L.map(p=>p.id)); },

@@ -9,7 +9,7 @@ import { createSender, updateSender, disconnectSender, disconnectGoogle, deleteS
 
 export const metadata = { title: "Remitentes" };
 
-type SenderFields = Partial<SignatureSender> & { dailyLimit?: number; hasPassword?: boolean; hasImage?: boolean; viaGoogle?: boolean };
+type SenderFields = Partial<SignatureSender> & { whatsapp?: string; waPhoneNumberId?: string; waDailyLimit?: number; dailyLimit?: number; hasPassword?: boolean; hasImage?: boolean; viaGoogle?: boolean };
 
 function GoogleIcon() {
   return (
@@ -65,6 +65,19 @@ function Fields({ s, prefix }: { s: SenderFields; prefix: string }) {
         <input id={`${prefix}-limit`} name="dailyLimit" type="number" min={1} max={500} required defaultValue={s.dailyLimit ?? 50} className="input" />
       </div>
       <p className="self-end pb-2 text-xs text-muted">Suma de todas sus secuencias. Buzón nuevo: 20–30 la primera semana y sube poco a poco; no pases de 100 en frío.</p>
+      <div>
+        <label htmlFor={`${prefix}-wa`} className="label">WhatsApp</label>
+        <input id={`${prefix}-wa`} name="whatsapp" type="tel" defaultValue={s.whatsapp} placeholder="+54 9 11 0000-0000" className="input" />
+      </div>
+      <p className="self-end pb-2 text-xs text-muted">El número desde el que escribe por WhatsApp. En el Radar aparece al escribirle a cada contacto y va al pie del mensaje.</p>
+      <div>
+        <label htmlFor={`${prefix}-waid`} className="label">ID del número en Meta (para el envío automático)</label>
+        <input id={`${prefix}-waid`} name="waPhoneNumberId" inputMode="numeric" defaultValue={s.waPhoneNumberId} placeholder="Phone number ID · solo dígitos" className="input" />
+      </div>
+      <div>
+        <label htmlFor={`${prefix}-walim`} className="label">Máximo de WhatsApp automáticos al día</label>
+        <input id={`${prefix}-walim`} name="waDailyLimit" type="number" min={1} max={1000} defaultValue={s.waDailyLimit ?? 20} className="input" />
+      </div>
       {s.viaGoogle ? (
         <p className="text-sm text-muted sm:col-span-2">Envía con la conexión de Google: no necesita contraseña de aplicación.</p>
       ) : (

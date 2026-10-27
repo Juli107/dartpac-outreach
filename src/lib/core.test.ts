@@ -8,6 +8,7 @@ import { withSignature, renderSignature, sinFirmaRepetida } from "./signature.ts
 import { imageSize } from "./image-size.ts";
 import { nombreDeCopia } from "./labels.ts";
 import { authUrl, readIdToken, DomainError, GMAIL_SCOPE } from "./google.ts";
+import { sendWaTemplate, waApiReady, waParamList } from "./whatsapp-api.ts";
 import { atribuir, agrupar, ranking, tiempos, franja, VARIABLES, csvEnvios, type Envio } from "./analisis.ts";
 
 const marta = { email: "marta@logisur.es", firstName: "Marta", company: "Logisur" };
@@ -273,4 +274,37 @@ test("franja horaria", () => {
   assert.equal(franja(9), "8 a 10 h");
   assert.equal(franja(18), "16 a 19 h");
   assert.equal(franja(20), "Después de las 19 h");
+});
+
+test("WhatsApp automático: doble llave y plantilla con sus variables", async () => {
+  const env = { ...process.env };
+  try {
+    delete process.env.WHATSAPP_ENVIO;
+    process.env.WHATSAPP_TOKEN = "t";
+    assert.equal(waApiReady({ waPhoneNumberId: "123" }), false, "sin WHATSAPP_ENVIO no sale nada");
+    process.env.WHATSAPP_ENVIO = "encendido";
+    assert.equal(waApiReady({ waPhoneNumberId: "" }), false, "sin número conectado tampoco");
+    assert.equal(waApiReady({ waPhoneNumberId: "123" }), true);
+    assert.deepEqual(waParamList(" {{nombre}} , {{mi_nombre}},"), ["{{nombre}}", "{{mi_nombre}}"]);
+
+    const real = globalThis.fetch;
+    let pedido: { url: string; body: any } | null = null;
+    globalThis.fetch = (async (url: string, init: { body: string }) => {
+      pedido = { url, body: JSON.parse(init.body) };
+      return new Response(JSON.stringify({ messages: [{ id: "wamid.1" }] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const id = await sendWaTemplate({ phoneNumberId: "123", to: "5491170396659", template: "primer_contacto", lang: "es_AR", params: ["Marta", ""] });
+      assert.equal(id, "wamid.1");
+      assert.match(pedido!.url, /\/123\/messages$/);
+      assert.equal(pedido!.body.template.name, "primer_contacto");
+      assert.deepEqual(pedido!.body.template.components[0].parameters.map((x: { text: string }) => x.text), ["Marta", "-"]);
+      globalThis.fetch = (async () => new Response(JSON.stringify({ error: { message: "Template name does not exist", code: 132001 } }), { status: 404 })) as unknown as typeof fetch;
+      await assert.rejects(sendWaTemplate({ phoneNumberId: "123", to: "549", template: "x", lang: "es_AR", params: [] }), /Template name does not exist \(código 132001\)/);
+    } finally {
+      globalThis.fetch = real;
+    }
+  } finally {
+    process.env = env;
+  }
 });
