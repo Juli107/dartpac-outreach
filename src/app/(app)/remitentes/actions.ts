@@ -16,6 +16,8 @@ const senderSchema = z.object({
   jobTitle: z.string().trim().max(120).default(""),
   phone: z.string().trim().max(40).default(""),
   whatsapp: z.string().trim().max(40).default(""),
+  waPhoneNumberId: z.string().trim().max(40).regex(/^\d*$/, "El ID del número son solo dígitos").default(""),
+  waDailyLimit: z.coerce.number().int().min(1).max(1000).default(20),
   website: z.string().trim().max(200).default(""),
   // «IMAGEN»: solo la imagen. «DATOS»: la imagen con nombre, cargo y empresa al lado (ver lib/signature).
   signatureImageMode: z.enum(["IMAGEN", "DATOS"]).catch("IMAGEN"),
@@ -32,6 +34,8 @@ function read(form: FormData) {
     jobTitle: form.get("jobTitle") ?? "",
     phone: form.get("phone") ?? "",
     whatsapp: form.get("whatsapp") ?? "",
+    waPhoneNumberId: form.get("waPhoneNumberId") ?? "",
+    waDailyLimit: form.get("waDailyLimit") ?? 20,
     website: form.get("website") ?? "",
     signatureImageMode: form.get("signatureImageMode") ?? "IMAGEN",
     dailyLimit: form.get("dailyLimit") ?? 50,

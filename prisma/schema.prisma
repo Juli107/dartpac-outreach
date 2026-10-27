@@ -84,6 +84,12 @@ model Step {
   subject    String        @default("")
   body       String        @default("")
   sameThread Boolean       @default(true)
+  /// WhatsApp automático: nombre de la plantilla aprobada por Meta. Vacío = queda como tarea con el mensaje listo.
+  waTemplate String        @default("")
+  /// Idioma de la plantilla tal como figura en Meta (es_AR, es…).
+  waLang     String        @default("es_AR")
+  /// Qué va en cada {{1}}, {{2}}… de la plantilla, separado por comas: variables de la app como {{nombre}} o {{mi_nombre}}.
+  waParams   String        @default("")
   messages   Message[]
   /// Variantes B, C… del email (la A es el asunto y el cuerpo del propio paso).
   variants   StepVariant[]
@@ -124,6 +130,7 @@ model Enrollment {
   createdAt  DateTime         @default(now())
   messages   Message[]
   tasks      Task[]
+  waMessages WaMessage[]
 
   @@unique([sequenceId, contactId])
   @@index([status, nextRunAt])
@@ -147,6 +154,23 @@ model Message {
   variant      String     @default("A")
   /// true = salió como respuesta en el mismo hilo (Re:); false = correo nuevo. Vacío en los envíos de antes de guardarlo.
   threaded     Boolean?
+}
+
+/// WhatsApp enviado solo por la API oficial (Meta): uno por paso y contacto.
+model WaMessage {
+  id           String     @id @default(cuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  stepId       String
+  senderId     String?
+  to           String
+  template     String
+  /// Id que devuelve Meta (wamid…); vacío si falló.
+  wamid        String?
+  error        String?
+  sentAt       DateTime   @default(now())
+
+  @@index([senderId, sentAt])
 }
 
 model Task {
@@ -201,6 +225,10 @@ model Sender {
   website               String     @default("")
   /// WhatsApp del remitente: el Radar lo muestra al escribirle a un contacto y lo pone en la firma del mensaje.
   whatsapp              String     @default("")
+  /// ID del número en la API oficial de WhatsApp (Meta, «Phone number ID»). Vacío = sin envío automático.
+  waPhoneNumberId       String     @default("")
+  /// Máximo de WhatsApp automáticos al día desde este número.
+  waDailyLimit          Int        @default(20)
   /// Logo, foto o firma diseñada. Se aloja en /api/firma/:id, nunca se adjunta.
   signatureImage        Bytes?
   signatureImageType    String?

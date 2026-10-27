@@ -200,6 +200,24 @@ export async function StepsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
                   <textarea id={bId} name="body" rows={isEmail ? 8 : isWa ? 5 : 3} defaultValue={selected.body} key={`b-${selected.label}`} className="input leading-relaxed" />
                   {isEmail && <p className="mt-1 text-xs text-muted">No hace falta firmar: la firma {seq.sender ? `de ${seq.sender.name}` : "del remitente"} va sola al final.</p>}
                 </div>
+                {isWa && (
+                  <fieldset className="grid gap-3 rounded-2xl bg-white/[.03] p-3 ring-1 ring-white/[.08] sm:grid-cols-[1fr_120px]">
+                    <legend className="px-1 text-[13px] font-semibold text-white">Envío automático (API oficial de WhatsApp)</legend>
+                    <div>
+                      <label htmlFor={`wt-${step.id}`} className="label">Plantilla aprobada en Meta</label>
+                      <input id={`wt-${step.id}`} name="waTemplate" defaultValue={step.waTemplate} placeholder="primer_contacto" className="input" />
+                    </div>
+                    <div>
+                      <label htmlFor={`wl-${step.id}`} className="label">Idioma</label>
+                      <input id={`wl-${step.id}`} name="waLang" defaultValue={step.waLang} placeholder="es_AR" className="input" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label htmlFor={`wp-${step.id}`} className="label">Qué va en {"{{1}}, {{2}}…"} de la plantilla</label>
+                      <input id={`wp-${step.id}`} name="waParams" defaultValue={step.waParams} placeholder="{{nombre}}, {{mi_nombre}}" className="input" />
+                      <p className="mt-1 text-xs text-muted">Separado por comas, en el mismo orden que en Meta. Sin plantilla, o si el número del remitente no está conectado a la API, el paso queda en Tareas con el mensaje listo como hasta ahora.</p>
+                    </div>
+                  </fieldset>
+                )}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <VarChips campos={[sId, bId]} lista={chips} />
                   <div className="flex flex-wrap items-center gap-2">

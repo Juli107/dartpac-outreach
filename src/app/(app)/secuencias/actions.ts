@@ -192,10 +192,19 @@ export async function updateStepSettings(stepId: string, form: FormData) {
 
 const contentSchema = z.object({ subject: z.string().default(""), body: z.string().default("") });
 
+// Solo los pasos de WhatsApp mandan estos campos: si no vienen, no se tocan.
+const waSchema = z.object({
+  waTemplate: z.string().trim().max(512).optional(),
+  waLang: z.string().trim().max(15).optional(),
+  waParams: z.string().trim().max(1000).optional(),
+});
+
 /** Texto de la variante A (el propio paso). */
 export async function updateStepContent(stepId: string, form: FormData) {
   const data = contentSchema.parse({ subject: form.get("subject") ?? "", body: form.get("body") ?? "" });
-  const step = await db.step.update({ where: { id: stepId }, data });
+  const wa = waSchema.parse({ waTemplate: form.get("waTemplate") ?? undefined, waLang: form.get("waLang") ?? undefined, waParams: form.get("waParams") ?? undefined });
+  if (wa.waLang === "") wa.waLang = "es_AR";
+  const step = await db.step.update({ where: { id: stepId }, data: { ...data, ...wa } });
   refresh(step.sequenceId);
 }
 

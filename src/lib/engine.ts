@@ -6,11 +6,12 @@ import { nextSendTime, isInWindow, windowFor } from "./schedule";
 import { pickVariant, stepVariants } from "./variants";
 import { randomUUID } from "node:crypto";
 import { isHardBounce } from "./bounce";
-import { sentToday as countSentToday, minGapMinutes } from "./quota";
+import { sentToday as countSentToday, minGapMinutes, todayStart } from "./quota";
 import { sePuedeEnviar } from "./verifier";
 import { contactWa } from "./whatsapp";
 import { eventoRadar } from "./radar/outreach";
 import { cargarVariables } from "./variables";
+import { sendWaTemplate, waApiReady, waParamList } from "./whatsapp-api";
 
 const BATCH = 50;
 
@@ -23,7 +24,7 @@ const BATCH = 50;
 export async function runDueSteps(now = new Date()) {
   const company = process.env.COMPANY_NAME ?? "Plupack Embalajes";
   const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const summary = { sent: 0, tasks: 0, finished: 0, errors: 0, sequencesOn: 0, outsideWindow: 0, skipped: 0 };
+  const summary = { sent: 0, wa: 0, tasks: 0, finished: 0, errors: 0, sequencesOn: 0, outsideWindow: 0, skipped: 0 };
   // Variables del equipo ({{catalogo}}, «si falta», saludo): se leen una vez por pasada.
   const vars = await cargarVariables();
   const on = await db.sequence.findMany({
@@ -55,6 +56,12 @@ export async function runDueSteps(now = new Date()) {
       return (bySequence.get(sq.id) ?? 0) < sq.dailyLimit && (byMailbox.get(box) ?? 0) < limit && paced(box, limit, sq);
     })
     .map((sq) => sq.id);
+
+  // WhatsApp automáticos de hoy, por remitente (cada número tiene su propio tope).
+  const waBySender = new Map<string, number>();
+  for (const r of await db.waMessage.groupBy({ by: ["senderId"], where: { sentAt: { gte: todayStart(now) }, error: null }, _count: true })) {
+    if (r.senderId) waBySender.set(r.senderId, r._count);
+  }
 
   const due = await db.enrollment.findMany({
     where: { status: "ACTIVE", nextRunAt: { lte: now }, sequenceId: { in: ready } },
@@ -147,8 +154,42 @@ export async function runDueSteps(now = new Date()) {
         await db.enrollment.update({ where: { id: enr.id }, data: { nextRunAt: new Date(now.getTime() + 3600_000) } });
         continue;
       }
+    } else if (step.type === "WHATSAPP" && step.waTemplate && waApiReady(sequence.sender)) {
+      // WhatsApp automático: plantilla aprobada por Meta desde el número del remitente.
+      const sender = sequence.sender!;
+      if ((waBySender.get(sender.id) ?? 0) >= sender.waDailyLimit) continue;
+      const to = contactWa(contact);
+      let wamid: string | null = null;
+      let error: string | null = null;
+      try {
+        wamid = await sendWaTemplate({
+          phoneNumberId: sender.waPhoneNumberId,
+          to,
+          template: step.waTemplate,
+          lang: step.waLang,
+          params: waParamList(step.waParams).map((p) => renderTemplate(p, contact, ctx)),
+        });
+        summary.wa++;
+        waBySender.set(sender.id, (waBySender.get(sender.id) ?? 0) + 1);
+      } catch (e) {
+        error = e instanceof Error ? e.message : String(e);
+        summary.errors++;
+      }
+      await db.waMessage.create({ data: { enrollmentId: enr.id, stepId: step.id, senderId: sender.id, to, template: step.waTemplate, wamid, error } });
+      if (error) {
+        // Reintenta en una hora; al tercer fallo queda como tarea para mandarlo a mano y sigue la secuencia.
+        const fallos = await db.waMessage.count({ where: { enrollmentId: enr.id, stepId: step.id, error: { not: null } } });
+        if (fallos < 3) {
+          await db.enrollment.update({ where: { id: enr.id }, data: { nextRunAt: new Date(now.getTime() + 3600_000) } });
+          continue;
+        }
+        await db.task.create({
+          data: { enrollmentId: enr.id, kind: "WHATSAPP", title: `WhatsApp que no salió solo: ${contact.company || contact.firstName || to}`, notes: `${renderTemplate(step.body, contact, ctx)}\n\n(${error})` },
+        });
+        summary.tasks++;
+      } else await eventoRadar(contact, { k: "wa", secuencia: sequence.name, por: sender.name.split(/\s+/)[0] });
     } else if (step.type === "WHATSAPP") {
-      // WhatsApp: no hay forma segura de mandarlo solo; queda como tarea con el mensaje listo para abrir.
+      // Sin plantilla aprobada o sin número conectado a la API: queda como tarea con el mensaje listo para abrir.
       const who = contact.company || [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.phone || "contacto";
       await db.task.create({
         data: { enrollmentId: enr.id, kind: "WHATSAPP", title: renderTemplate(step.subject || `WhatsApp a ${who}`, contact, ctx), notes: renderTemplate(step.body, contact, ctx) },
