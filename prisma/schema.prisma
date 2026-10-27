@@ -199,6 +199,8 @@ model Sender {
   jobTitle              String     @default("")
   phone                 String     @default("")
   website               String     @default("")
+  /// WhatsApp del remitente: el Radar lo muestra al escribirle a un contacto y lo pone en la firma del mensaje.
+  whatsapp              String     @default("")
   /// Logo, foto o firma diseñada. Se aloja en /api/firma/:id, nunca se adjunta.
   signatureImage        Bytes?
   signatureImageType    String?

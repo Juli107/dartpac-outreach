@@ -15,6 +15,7 @@ const senderSchema = z.object({
   signature: z.string().max(3000).default(""),
   jobTitle: z.string().trim().max(120).default(""),
   phone: z.string().trim().max(40).default(""),
+  whatsapp: z.string().trim().max(40).default(""),
   website: z.string().trim().max(200).default(""),
   // «IMAGEN»: solo la imagen. «DATOS»: la imagen con nombre, cargo y empresa al lado (ver lib/signature).
   signatureImageMode: z.enum(["IMAGEN", "DATOS"]).catch("IMAGEN"),
@@ -30,6 +31,7 @@ function read(form: FormData) {
     signature: form.get("signature") ?? "",
     jobTitle: form.get("jobTitle") ?? "",
     phone: form.get("phone") ?? "",
+    whatsapp: form.get("whatsapp") ?? "",
     website: form.get("website") ?? "",
     signatureImageMode: form.get("signatureImageMode") ?? "IMAGEN",
     dailyLimit: form.get("dailyLimit") ?? 50,
