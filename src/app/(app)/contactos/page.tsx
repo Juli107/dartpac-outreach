@@ -80,8 +80,8 @@ export default async function Contacts({
 
       <form className="card appear flex flex-wrap gap-2 p-3">
         {filter[0] !== "todos" && <input type="hidden" name="f" value={filter[0]} />}
-        <input name="q" defaultValue={q} placeholder="Buscar por nombre, empresa, email, ciudad o teléfono" className="input max-w-sm" aria-label="Buscar" />
-        <select name="tag" defaultValue={sp.tag ?? ""} className="input max-w-[200px]" aria-label="Etiqueta">
+        <input name="q" defaultValue={q} placeholder="Buscar por nombre, empresa, email, ciudad o teléfono" className="input sm:max-w-sm" aria-label="Buscar" />
+        <select name="tag" defaultValue={sp.tag ?? ""} className="input min-w-0 flex-1 sm:max-w-[200px] sm:flex-none" aria-label="Etiqueta">
           <option value="">Todas las etiquetas</option>
           {tags.map((t) => <option key={t}>{t}</option>)}
         </select>
@@ -94,23 +94,25 @@ export default async function Contacts({
         ) : (
           <div className="overflow-x-auto">
             <table className="table">
-              <thead><tr><th>Contacto</th><th>Email</th><th>Teléfono</th><th>Etiquetas</th><th>Última secuencia</th><th></th></tr></thead>
+              <thead><tr><th>Contacto</th><th className="hidden sm:table-cell">Email</th><th>Teléfono</th><th>Etiquetas</th><th>Última secuencia</th><th></th></tr></thead>
               <tbody>
                 {contacts.map((c) => {
                   const last = c.enrollments[0];
                   const v = c.emailStatus ? VFY[c.emailStatus] : null;
                   return (
                     <tr key={c.id}>
-                      <td className="max-w-[260px]">
+                      <td className="min-w-[220px] max-w-[240px] sm:min-w-0 sm:max-w-[260px]">
                         <span className="flex items-center gap-2.5">
                           <Avatar name={fullName(c)} size={30} />
                           <span className="min-w-0">
                             <span className="block truncate font-medium text-white">{fullName(c)}</span>
                             <span className="block truncate text-xs text-faint">{[c.company && c.company !== fullName(c) ? c.company : "", c.title, c.city].filter(Boolean).join(" · ")}</span>
+                            {/* en el celular el email va debajo del nombre, sin tener que deslizar la tabla */}
+                            {c.email && <span className="block truncate text-xs text-ink/80 sm:hidden">{c.email}</span>}
                           </span>
                         </span>
                       </td>
-                      <td>
+                      <td className="hidden sm:table-cell">
                         {c.email ? (
                           <div className="flex flex-col items-start gap-1">
                             <span className="block max-w-[240px] truncate text-ink/90" title={c.email}>{c.email}</span>

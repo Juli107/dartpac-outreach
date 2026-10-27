@@ -68,9 +68,9 @@ export default async function Sequences({ searchParams }: { searchParams: Promis
                       <td>
                         <Switch on={s.sendingOn} action={toggleSequence.bind(null, s.id, !s.sendingOn)} label={`${s.sendingOn ? "Apagar" : "Encender"} ${s.name}`} confirmOn={CONFIRM_ON} disabled={s._count.steps === 0} size="sm" />
                       </td>
-                      <td className="max-w-[360px]">
+                      <td className="min-w-[200px] max-w-[240px] !whitespace-normal sm:max-w-[360px] sm:!whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <Link href={`/secuencias/${s.id}`} className="truncate font-semibold text-white hover:text-brand-2">{s.name}</Link>
+                          <Link href={`/secuencias/${s.id}`} className="line-clamp-2 font-semibold text-white hover:text-brand-2 sm:truncate">{s.name}</Link>
                           {s.unread > 0 && (
                             <Link href={`/secuencias/${s.id}?tab=bandeja`} className="rounded-full bg-brand px-1.5 text-[11px] font-semibold text-white" title="Respuestas sin leer">{s.unread}</Link>
                           )}

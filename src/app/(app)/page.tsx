@@ -73,20 +73,20 @@ export default async function Dashboard() {
 
       <section id="estado" className="card appear relative scroll-mt-6 overflow-hidden">
         <span aria-hidden className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-brand/20 blur-3xl" />
-        <div className="relative flex flex-wrap items-center gap-5 px-6 py-6">
-          <span className={`grid h-16 w-16 shrink-0 place-items-center rounded-full bg-gradient-to-b text-white shadow-lift ${verdict.ring}`}>
-            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{verdict.icon}</svg>
+        <div className="relative flex flex-wrap items-center gap-4 px-5 py-5 sm:gap-5 sm:px-6 sm:py-6">
+          <span className={`grid h-12 w-12 shrink-0 sm:h-16 sm:w-16 place-items-center rounded-full bg-gradient-to-b text-white shadow-lift ${verdict.ring}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 sm:h-[30px] sm:w-[30px]" aria-hidden>{verdict.icon}</svg>
           </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-[22px]">{verdict.title}</h2>
+          <div className="min-w-[13rem] flex-1">
+            <h2 className="text-[19px] sm:text-[22px]">{verdict.title}</h2>
             <p className="mt-0.5 max-w-2xl text-muted">{verdict.text(health.on.length)}</p>
           </div>
-          <Link href="/buzones#salud" className="btn-ghost">
+          <Link href="/buzones#salud" className="btn-ghost w-full sm:w-auto">
             <Dot level={boxesLevel} /> Salud del correo
           </Link>
         </div>
         <details className="group relative border-t border-line/60" open={health.level === "bad" || health.level === "warn"}>
-          <summary className="flex cursor-pointer items-center justify-between gap-3 px-6 py-3 text-[13px] font-medium text-muted hover:text-white">
+          <summary className="flex cursor-pointer items-center justify-between gap-3 px-5 py-3 sm:px-6 text-[13px] font-medium text-muted hover:text-white">
             <span>Detalle: programador, buzones y dominio</span>
             <span className="transition group-open:rotate-180" aria-hidden>⌄</span>
           </summary>
@@ -174,7 +174,7 @@ export default async function Dashboard() {
                   <ul className="grid gap-1.5">
                     {radar.porProvincia.slice(0, 5).map((p) => (
                       <li key={p.n} className="flex items-center gap-3 text-[13px]">
-                        <span className="w-36 shrink-0 truncate text-ink/90">{p.n}</span>
+                        <span className="w-28 shrink-0 truncate text-ink/90 sm:w-36" title={p.n}>{p.n}</span>
                         <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[.06]"><span className="block h-full rounded-full bg-gradient-to-r from-brand-deep to-brand-2" style={{ width: `${(p.c / radar.porProvincia[0].c) * 100}%` }} /></span>
                         <span className="w-10 text-right tabular-nums text-muted">{p.c}</span>
                       </li>
