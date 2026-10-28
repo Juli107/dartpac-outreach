@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { REPLY_LABEL, fullName, relativeTime } from "@/lib/labels";
 import Link from "next/link";
+import { contactWa } from "@/lib/whatsapp";
 import { PageHeader, StatusPill, Empty, Segmented, Avatar, Flash } from "@/components/ui";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { labelReply, markRead, checkInbox, autoCheckInbox } from "./actions";
@@ -49,7 +50,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
                     <b>{fullName(r.contact)}</b>
-                    <span className="text-muted"> · {r.contact.company ?? r.contact.email}</span>
+                    <span className="text-muted"> · {r.contact.company ?? r.contact.email ?? r.contact.whatsapp}</span>
                   </div>
                   <span className="text-xs text-muted">{relativeTime(r.receivedAt)}</span>
                 </div>
@@ -64,7 +65,11 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
                     <button className="btn-ghost">Clasificar</button>
                   </form>
                   {!r.read && <form action={markRead.bind(null, r.id)}><button className="btn-ghost">Marcar como leída</button></form>}
-                  <span className="select-all text-xs text-muted">{r.contact.email}{r.mailbox ? ` → ${r.mailbox}` : ""}</span>
+                  {r.mailbox === "whatsapp" ? (
+                    <Link href={`/whatsapp?c=${contactWa(r.contact)}`} className="btn-ghost">Ver chat de WhatsApp</Link>
+                  ) : (
+                    <span className="select-all text-xs text-muted">{r.contact.email}{r.mailbox ? ` → ${r.mailbox}` : ""}</span>
+                  )}
                 </div>
                 </div>
               </li>

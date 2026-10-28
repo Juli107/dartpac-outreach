@@ -20,6 +20,7 @@ const ICONS: Record<string, React.ReactNode> = {
   "/secuencias": <path d="M20.5 3.5L10.2 13.8M20.5 3.5l-6.4 17-3.9-6.7-6.7-3.9z" />,
   "/contactos": <path d="M9 11.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM3.5 19.5c.8-3.3 3-5.2 5.5-5.2s4.7 1.9 5.5 5.2M17.2 11.5a2.5 2.5 0 1 0 0-5M16.4 14.3c2.2.3 3.7 1.9 4.2 4.4" />,
   "/bandeja": <path d="M3.5 13.5l2.6-7.7A1.8 1.8 0 0 1 7.8 4.5h8.4a1.8 1.8 0 0 1 1.7 1.3l2.6 7.7M3.5 13.5V18a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-4.5h-5.2l-1.4 2.4h-3.8l-1.4-2.4z" />,
+  "/whatsapp": <path d="M4.3 19.7l1.1-3.9A8.2 8.2 0 1 1 8.6 19zM9 8.6c.2 2.9 3.4 6.1 6.4 6.4l1.1-1.4-2-1-.9.8c-1-.4-2.1-1.5-2.5-2.5l.8-.9-1-2z" />,
   "/tareas": <path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2" />,
   "/analiticas": <path d="M5 20v-7M10 20V5M15 20v-9M20 20V8" />,
   "/radar": (
@@ -43,6 +44,7 @@ const GROUPS: { label: string; items: { href: string; label: string }[] }[] = [
       { href: "/secuencias", label: "Secuencias" },
       { href: "/contactos", label: "Contactos" },
       { href: "/bandeja", label: "Bandeja" },
+      { href: "/whatsapp", label: "WhatsApp" },
       { href: "/tareas", label: "Tareas" },
       { href: "/analiticas", label: "Analíticas" },
     ],

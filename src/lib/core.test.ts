@@ -308,3 +308,61 @@ test("WhatsApp automático: doble llave y plantilla con sus variables", async ()
     process.env = env;
   }
 });
+
+test("bot de WhatsApp: aviso de Meta, firma, pausa y conversación", async () => {
+  const { leerAviso, firmaValida, botEnPausa, ventanaAbierta, conversacionBot, botEncendido } = await import("./whatsapp-bot.ts");
+  const { createHmac } = await import("node:crypto");
+  const aviso = {
+    entry: [{ changes: [{ value: {
+      metadata: { phone_number_id: "123" },
+      contacts: [{ wa_id: "5491133894270", profile: { name: "Ana Pérez" } }],
+      messages: [
+        { from: "5491133894270", id: "wamid.1", timestamp: "1761670000", type: "text", text: { body: " Hola, precio de cajas? " } },
+        { from: "5491133894270", id: "wamid.2", timestamp: "1761670001", type: "audio", audio: { id: "x" } },
+      ],
+      statuses: [{ id: "wamid.0", status: "read" }],
+    } }] }],
+  };
+  const ms = leerAviso(aviso);
+  assert.equal(ms.length, 2);
+  assert.deepEqual([ms[0].phoneNumberId, ms[0].from, ms[0].name, ms[0].text], ["123", "5491133894270", "Ana Pérez", "Hola, precio de cajas?"]);
+  assert.equal(ms[1].text, "");
+  assert.equal(ms[1].type, "audio");
+  assert.deepEqual(leerAviso({ entry: [{ changes: [{ value: { statuses: [{}] } }] }] }), []);
+  assert.deepEqual(leerAviso("basura"), []);
+
+  const raw = JSON.stringify(aviso);
+  const sig = "sha256=" + createHmac("sha256", "secreto").update(raw).digest("hex");
+  assert.ok(firmaValida(raw, sig, "secreto"));
+  assert.ok(!firmaValida(raw, sig, "otro"));
+  assert.ok(!firmaValida(raw + " ", sig, "secreto"));
+  assert.ok(!firmaValida(raw, null, "secreto"));
+  assert.ok(!firmaValida(raw, sig, ""));
+
+  const ahora = new Date("2026-10-28T15:00:00Z");
+  const h = (horas: number) => new Date(ahora.getTime() - horas * 3600_000);
+  const hist = [
+    { direction: "in", by: "cliente", body: "Hola", at: h(3) },
+    { direction: "out", by: "bot", body: "¡Hola! ¿Qué necesitás?", at: h(2.9) },
+    { direction: "in", by: "cliente", body: "Cajas", at: h(1) },
+    { direction: "in", by: "cliente", body: "500 unidades", at: h(0.9) },
+  ];
+  assert.ok(!botEnPausa(hist, ahora));
+  assert.ok(botEnPausa([...hist, { direction: "out", by: "persona", body: "Te llamo", at: h(11) }], ahora));
+  assert.ok(!botEnPausa([...hist, { direction: "out", by: "persona", body: "Te llamo", at: h(13) }], ahora));
+  assert.ok(ventanaAbierta(hist, ahora));
+  assert.ok(!ventanaAbierta([{ direction: "in", by: "cliente", body: "x", at: h(25) }], ahora));
+  assert.deepEqual(conversacionBot([{ direction: "out", by: "bot", body: "previo", at: h(5) }, ...hist]), [
+    { role: "user", content: "Hola" },
+    { role: "assistant", content: "¡Hola! ¿Qué necesitás?" },
+    { role: "user", content: "Cajas\n500 unidades" },
+  ]);
+
+  const antes = { ...process.env };
+  process.env.WHATSAPP_TOKEN = "t";
+  delete process.env.WHATSAPP_BOT;
+  assert.ok(!botEncendido());
+  process.env.WHATSAPP_BOT = "encendido";
+  assert.ok(botEncendido());
+  process.env = antes;
+});
