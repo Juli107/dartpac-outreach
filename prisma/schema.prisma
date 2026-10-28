@@ -173,6 +173,29 @@ model WaMessage {
   @@index([senderId, sentAt])
 }
 
+/// Conversación por WhatsApp en el número de la API: lo que escribe el cliente, lo que contesta el bot y lo que contesta una persona desde Dartpac.
+model WaChat {
+  id            String   @id @default(cuid())
+  /// Número del cliente (como lo manda Meta: 549…).
+  waId          String
+  /// Número de la empresa que recibió o mandó el mensaje (ID de Meta).
+  phoneNumberId String
+  /// Nombre que el cliente tiene en su WhatsApp.
+  name          String   @default("")
+  /// in = escribió el cliente; out = salió de la empresa.
+  direction     String
+  /// cliente, bot o persona.
+  by            String
+  body          String
+  /// Id de Meta (wamid…): evita guardar dos veces el mismo mensaje si Meta lo reenvía.
+  wamid         String?  @unique
+  contactId     String?
+  error         String?
+  at            DateTime @default(now())
+
+  @@index([waId, at])
+}
+
 model Task {
   id           String     @id @default(cuid())
   enrollmentId String
@@ -278,4 +301,7 @@ model Setting {
   generalCheckError String?
   /// Variables del equipo para los mensajes: las propias ({{catalogo}}…), qué escribir si falta un dato y el saludo.
   variables         Json?
+  /// Bot de WhatsApp: lo que sabe del negocio y el mensaje que manda cuando no puede responder solo.
+  botInfo           String    @default("")
+  botSaludo         String    @default("")
 }

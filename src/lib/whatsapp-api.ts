@@ -36,3 +36,15 @@ export async function sendWaTemplate(o: { phoneNumberId: string; to: string; tem
   if (!res.ok || !j.messages?.[0]?.id) throw new Error(`WhatsApp: ${j.error?.message ?? `error ${res.status}`}${j.error?.code ? ` (código ${j.error.code})` : ""}`);
   return j.messages[0].id;
 }
+
+/** Manda un texto libre. Meta solo lo acepta dentro de las 24 h desde el último mensaje del cliente. */
+export async function sendWaText(o: { phoneNumberId: string; to: string; text: string }) {
+  const res = await fetch(`${GRAPH}/${encodeURIComponent(o.phoneNumberId)}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to: o.to, type: "text", text: { body: o.text.slice(0, 4096) } }),
+  });
+  const j = (await res.json().catch(() => ({}))) as { messages?: { id: string }[]; error?: { message?: string; code?: number } };
+  if (!res.ok || !j.messages?.[0]?.id) throw new Error(`WhatsApp: ${j.error?.message ?? `error ${res.status}`}${j.error?.code ? ` (código ${j.error.code})` : ""}`);
+  return j.messages[0].id;
+}
