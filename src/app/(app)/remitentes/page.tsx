@@ -69,7 +69,7 @@ function Fields({ s, prefix }: { s: SenderFields; prefix: string }) {
         <label htmlFor={`${prefix}-wa`} className="label">WhatsApp</label>
         <input id={`${prefix}-wa`} name="whatsapp" type="tel" defaultValue={s.whatsapp} placeholder="+54 9 11 0000-0000" className="input" />
       </div>
-      <p className="self-end pb-2 text-xs text-muted">El número desde el que escribe por WhatsApp. En el Radar aparece al escribirle a cada contacto y va al pie del mensaje.</p>
+      <p className="self-end pb-2 text-xs text-muted">El número desde el que escribe por WhatsApp. Con él, en Contactos y en el Radar le escribe a cada cliente con un clic: se abre su WhatsApp con el mensaje listo.</p>
       <div>
         <label htmlFor={`${prefix}-waid`} className="label">ID del número en Meta (para el envío automático)</label>
         <input id={`${prefix}-waid`} name="waPhoneNumberId" inputMode="numeric" defaultValue={s.waPhoneNumberId} placeholder="Phone number ID · solo dígitos" className="input" />
