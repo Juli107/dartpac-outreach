@@ -1436,8 +1436,9 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
   var equipo = null;
   var equipoP = api("/remitentes").then(function (j) {
     equipo = j;
-    var y = yo();
-    if (!y.senderId && j.yo) { try { localStorage.setItem(YO_KEY, JSON.stringify(j.yo)); } catch (e) {} }
+    // quien entró con su cuenta de Google es siempre él mismo; con la contraseña común (administrador) se elige en Ajustes
+    if (j.yo) { try { localStorage.setItem(YO_KEY, JSON.stringify(j.yo)); } catch (e) {} }
+    window.__dpAdmin = !j.yo || !!j.yo.admin;
     return j;
   }).catch(function () { equipo = { remitentes: [] }; return equipo; });
   window.__dpEquipo = function () { return equipoP; };
@@ -2933,7 +2934,7 @@ async function iniciar(){
   db.doc("config/empresa").onSnapshot(s=>{S.cfg=Object.assign({},CFG0,s.exists?s.data():{},yoCfg());pintarSub();},()=>{});
 }
 async function guardar(fn,ok){ if(!S.db){toast("No hay conexión con la base. Revisá tu internet y recargá la página.");return false;}
-  try{ await fn(); if(ok) toast(ok); return true; }catch(e){ toast(e&&e.code==="invalid_argument"?"Tu acceso es solo para ver: no se pueden guardar cambios.":"No se pudo guardar. Probá de nuevo."); return false; } }
+  try{ await fn(); if(ok) toast(ok); return true; }catch(e){ if(e&&e.code==="de_otro"){ toast(e.message); return false; } toast(e&&e.code==="invalid_argument"?"Tu acceso es solo para ver: no se pueden guardar cambios.":"No se pudo guardar. Probá de nuevo."); return false; } }
 const nuevoId=()=>"p"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 function pintarSub(){ const c=S.cfg; $("#sub").textContent=`${c.empresa||"DARTPAC"} · clientes en todo el país`; }
 document.addEventListener("click",e=>{ if(e.target.closest&&e.target.closest("#wa-cnt")){ const b=document.querySelector('.nav [data-tab="hoy"]'); if(b) b.click(); } });
@@ -3391,6 +3392,10 @@ const porH=r=>{ r=r||remYo(); return r?{por:nom1(r.nombre),porId:r.id}:{por:S.yo
 const duenoP=p=>p&&(p.asignado||((p.historial||[]).filter(h=>["envio","mail","contacto"].includes(h.tipo)&&h.por&&h.por!=="Outreach"&&h.por!=="Automática").map(h=>h.por).pop()))||"";
 const yoNom=()=>{ const r=remYo(); return r?r.nombre:(S.yo||S.cfg.vendedor||""); };
 const deOtro=p=>{ const d=duenoP(p), y=yoNom(); return d&&y&&norm(nom1(d))!==norm(nom1(y))?nom1(d):""; };
+/* un vendedor no le escribe a un cliente de otro (el administrador sí, con el aviso) */
+const esAdm=()=>window.__dpAdmin!==false;
+const bloqDueno=p=>{ const d=deOtro(p); if(!d||esAdm()) return false;
+  abrir("No le podés escribir",`<div class="fx-warn"><b>Este cliente lo contactó ${esc(d)}.</b> ${esc(p.nombre||"Esta empresa")} es cliente de ${esc(d)}: así no le llegan mensajes de dos personas. Si hace falta, pedile a ${esc(d)} o al administrador que te lo pase.</div><div class="row"><button class="btn primary" data-act="cerrar">Entendido</button></div>`); return true; };
 const avisoDueno=p=>{ const d=deOtro(p); return d?`<div class="fx-warn"><b>Ya lo está trabajando ${esc(d)}.</b> Hablalo con ${esc(d)} antes de escribirle, así no le llegan mensajes de dos personas.</div>`:""; };
 /* arma el mensaje como si lo escribiera ese remitente: su nombre, su mail y su WhatsApp en la firma */
 function conRem(r,fn){ if(!r) return fn(); const c=S.cfg, prev={vendedor:c.vendedor,firmaNombre:c.firmaNombre,firmaTel:c.firmaTel,firmaEmail:c.firmaEmail};
@@ -3779,7 +3784,7 @@ function montarAdj(root,id,gm){ const cb=root.querySelector("#"+id), h=root.quer
   cb.addEventListener("change",()=>LS.set("adjTarjetaMail",cb.checked)); txt();
   tarjetaBlobMail().then(t=>{ const im=root.querySelector("#"+id+"-img"); if(im&&t.url) im.style.backgroundImage=`url(${t.url})`; });
   return {on:()=>cb.checked, txt}; }
-function mailSheet(id){ const p=pById(id); if(!p) return; if(!esMail(p.email)){ toast("Esta empresa no tiene un email válido"); return; }
+function mailSheet(id){ const p=pById(id); if(!p) return; if(bloqDueno(p)) return; if(!esMail(p.email)){ toast("Esta empresa no tiene un email válido"); return; }
   const vq=vfyOn()?window.DPV.puedeEnviar(p):null; if(vq&&vq.nivel==="bloquear"){ toast(vq.motivo+" Revisalo en la ficha o en el Verificador."); return; }
   const et=p.etapa||"nuevo"; let tipo=et==="nuevo"?"primer":et==="cotizado"?"cotizacion":"seguimiento";
   abrir("Mail para "+p.nombre,`${avisoDueno(p)}<div class="seg chips" role="group" aria-label="Tipo de mail">${[["primer","Primer contacto"],["seguimiento","Seguimiento"],["catalogo","Enviar catálogo"],["cotizacion","Después de cotizar"]].map(([k,t])=>`<button class="chip" data-mt="${k}" aria-pressed="${k===tipo}">${t}</button>`).join("")}</div>
@@ -3850,7 +3855,7 @@ function tandaMail(){ let L=candMail(), i=0, hechos=0, salt=0, auto=false, gm=fa
     pinta(); }); }
 
 let SAMPLE; async function ia(){ if(SAMPLE===undefined){ try{ SAMPLE=window.claude&&window.claude.use?await window.claude.use("sample"):null; }catch(e){ SAMPLE=null; } } return SAMPLE; }
-function mensaje(id){ const p=pById(id); if(!p) return; const et=p.etapa||"nuevo";
+function mensaje(id){ const p=pById(id); if(!p) return; if(bloqDueno(p)) return; const et=p.etapa||"nuevo";
   const tipo0=et==="nuevo"?"primer":et==="cotizado"?"cotizacion":"seguimiento"; const wa=waNum(p.whatsapp||p.telefono);
   abrir("Mensaje para "+p.nombre,`${avisoDueno(p)}<div class="seg chips" role="group" aria-label="Tipo de mensaje">${[["primer","Primer contacto"],["seguimiento","Seguimiento"],["catalogo","Enviar catálogo"],["cotizacion","Después de cotizar"]].map(([k,t])=>`<button class="chip" data-tipo="${k}" aria-pressed="${k===tipo0}">${t}</button>`).join("")}</div>
    ${remChips()}<label class="fld"><span>Mensaje (lo podés editar)</span><textarea id="m-txt" rows="9"></textarea></label>

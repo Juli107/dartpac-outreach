@@ -3,7 +3,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { mailboxFor, newMessageId, sendRawEmail, senderConnected } from "@/lib/mailer";
 import { camposContacto, verificar } from "@/lib/verifier";
-import { quienSoy } from "@/lib/yo";
+import { usuarioActual } from "@/lib/usuario";
+import { registrar } from "@/lib/actividad";
 import { signId } from "@/lib/tokens";
 import { fullName } from "@/lib/labels";
 import { datosContacto } from "@/lib/radar/outreach";
@@ -43,7 +44,9 @@ async function enviar(input: Record<string, unknown>, desde: string | null) {
   const vfy = await verificar(to);
   if (vfy.estado === "invalido" || vfy.estado === "corregible") return err("vfy_bloqueado", vfy.estado === "corregible" ? `¿Quisiste decir ${vfy.sugerencia}?` : `${vfy.motivos[0]?.t ?? "Email inválido"}.`, 422);
 
-  const senderId = desde || (await quienSoy())?.senderId;
+  const u = await usuarioActual();
+  // cada vendedor manda desde su propio buzón; el administrador puede elegir cualquiera
+  const senderId = u.admin ? desde || u.senderId : u.senderId;
   if (!senderId) return err("server_not_connected", "Elegí desde qué buzón mandás en Ajustes del Radar.", 409);
   const sender = await db.sender.findUnique({ where: { id: senderId } });
   if (!sender || !senderConnected(sender)) return err("server_not_connected", "Ese buzón no está conectado: conectalo con Google en Remitentes.", 409);
@@ -53,6 +56,12 @@ async function enviar(input: Record<string, unknown>, desde: string | null) {
   let contact = await db.contact.findUnique({ where: { email: to } });
   if (!contact && p) contact = await db.contact.findFirst({ where: { radarId: p.id } });
   const vfyData = { email: to, ...camposContacto(vfy) };
+  if (!u.admin && contact?.ownerId && contact.ownerId !== senderId) {
+    const dueno = await db.sender.findUnique({ where: { id: contact.ownerId }, select: { name: true } });
+    const msg = `${contact.company ?? to} ya lo contactó ${dueno?.name ?? "otro vendedor"}: es su cliente, no le podés escribir.`;
+    await registrar(u, "bloqueo", msg, { contactId: contact.id });
+    return err("de_otro", msg, 409);
+  }
   if (contact) {
     if (contact.unsubscribed) return err("vfy_bloqueado", "Esa persona pidió no recibir más correos.", 422);
     contact = await db.contact.update({ where: { id: contact.id }, data: { ...(contact.email ? {} : vfyData), ...(p && !contact.radarId ? { radarId: p.id } : {}) } });
@@ -84,6 +93,8 @@ async function enviar(input: Record<string, unknown>, desde: string | null) {
     if (/invalid_grant|auth|credentials|Username and Password/i.test(m)) return err("needs_reauth", m, 409);
     return err("upstream_error", m, 502);
   }
+  if (!contact.ownerId) await db.contact.update({ where: { id: contact.id }, data: { ownerId: sender.id, ownerAt: new Date() } });
+  await registrar(u.senderId ? u : { name: sender.name, senderId: sender.id }, "mensaje", `Mail a ${contact.company ?? to}: ${subject}`, { contactId: contact.id, ref: `gmail:${messageId}` });
   return NextResponse.json({ payload: { id: messageId, from: sender.email } });
 }
 

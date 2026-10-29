@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { senderConnected } from "@/lib/mailer";
 import { quienSoy } from "@/lib/yo";
+import { esAdminEmail } from "@/lib/usuario";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,6 @@ export async function GET() {
   const [senders, yo] = await Promise.all([db.sender.findMany({ orderBy: { name: "asc" } }), quienSoy()]);
   return NextResponse.json({
     remitentes: senders.map((s) => ({ id: s.id, nombre: s.name, email: s.email, whatsapp: s.whatsapp, conectado: senderConnected(s) })),
-    yo: yo ? { senderId: yo.senderId ?? "", name: yo.name.split(/\s+/)[0], email: yo.email } : null,
+    yo: yo ? { senderId: yo.senderId ?? "", name: yo.name.split(/\s+/)[0], email: yo.email, admin: esAdminEmail(yo.email) } : null,
   });
 }

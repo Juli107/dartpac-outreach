@@ -35,7 +35,7 @@ export function MarcarContacto({ id, nombre }: { id: string; nombre: string }) {
  * que se ven). Va de a tandas para no pasarse del tiempo de cada pedido. Sumar no envía nada: los mensajes salen
  * cuando la secuencia está encendida.
  */
-export function SumarASecuencia({ secuencias, busqueda, total }: { secuencias: { id: string; name: string; on: boolean; pasos: number }[]; busqueda: BusquedaContactos; total: number }) {
+export function SumarASecuencia({ secuencias, busqueda, total, admin = false }: { secuencias: { id: string; name: string; on: boolean; pasos: number }[]; busqueda: BusquedaContactos; total: number; admin?: boolean }) {
   const router = useRouter();
   const [sid, setSid] = useState(secuencias[0]?.id ?? "");
   const [sel, setSel] = useState(0);
@@ -73,7 +73,7 @@ export function SumarASecuencia({ secuencias, busqueda, total }: { secuencias: {
     if (tot.sinCanal) partes.push(`${fmt(tot.sinCanal)} sin email válido ni WhatsApp`);
     if (tot.bajas) partes.push(`${fmt(tot.bajas)} con baja, rebote o «no contactar»`);
     const otros = Object.entries(deOtro);
-    if (otros.length) partes.push(`${otros.map(([n, v]) => `${fmt(v)} ya ${v === 1 ? "lo" : "los"} está trabajando ${n}`).join(", ")} (no se sumaron para no escribirles dos veces)`);
+    if (otros.length) partes.push(`${otros.map(([n, v]) => `${fmt(v)} no ${v === 1 ? "se sumó" : "se sumaron"}: ya ${v === 1 ? "lo" : "los"} contactó ${n}`).join(", ")} (son sus clientes)`);
     if (tot.corregidos) partes.push(`${fmt(tot.corregidos)} ${tot.corregidos === 1 ? "email corregido" : "emails corregidos"}`);
     setRes(error ? { error: `${error} Alcanzó a sumar: ${partes.join(" · ")}. Volvé a tocar el botón para seguir con los que faltan.` } : { ok: partes.join(" · ") + "." });
     document.querySelectorAll<HTMLInputElement>('input[name="sel-contacto"]').forEach((el) => (el.checked = false));
@@ -108,10 +108,12 @@ export function SumarASecuencia({ secuencias, busqueda, total }: { secuencias: {
           {avance ? `Sumando… ${fmt(avance.hechas)} de ${fmt(avance.total)}` : `Sumar los ${fmt(total)} de esta lista`}
         </button>
       </div>
-      <label className="flex items-center gap-2 text-xs text-muted">
-        <input type="checkbox" className="h-4 w-4 accent-[#3E7BFA]" checked={igual} onChange={(e) => setIgual(e.target.checked)} disabled={!!avance} />
-        Sumar también los que ya trabaja otro vendedor (por defecto se dejan afuera para no escribirles dos veces)
-      </label>
+      {admin && (
+        <label className="flex items-center gap-2 text-xs text-muted">
+          <input type="checkbox" className="h-4 w-4 accent-[#3E7BFA]" checked={igual} onChange={(e) => setIgual(e.target.checked)} disabled={!!avance} />
+          Sumar también los que ya trabaja otro vendedor (por defecto se dejan afuera para no escribirles dos veces; solo el administrador puede)
+        </label>
+      )}
       {avance && (
         <div className="h-1.5 overflow-hidden rounded-full bg-white/[.08]" role="progressbar" aria-valuemin={0} aria-valuemax={avance.total} aria-valuenow={avance.hechas}>
           <div className="h-full rounded-full bg-brand-2 transition-all" style={{ width: `${(avance.hechas / avance.total) * 100}%` }} />
