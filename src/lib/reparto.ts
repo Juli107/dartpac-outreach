@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { sePuedeEnviar } from "./verifier";
-import { contactWa } from "./whatsapp";
+import { contactWaCelular } from "./whatsapp";
 import { registrar } from "./actividad";
 import { todayStart } from "./quota";
 import { NO_CONTACTAR } from "./radar/espejo";
@@ -10,7 +10,7 @@ import { primerNombre } from "./usuario";
 /**
  * Reparto diario: cada día hábil desde las 8 de la mañana (hora de Buenos Aires), cada remitente que participa recibe
  * sus contactos nuevos al azar (100 por defecto) y entran a sus dos secuencias: la de mails (los que tienen email
- * válido) y la de WhatsApp (los que tienen número). Cada contacto queda como cliente de ese remitente.
+ * válido) y la de WhatsApp (los que tienen celular o WhatsApp cargado; a un fijo no). Cada contacto queda como cliente de ese remitente.
  *
  * Quién entra al reparto:
  * - los libres (sin vendedor) o del propio remitente que nunca estuvieron en una secuencia;
@@ -195,7 +195,7 @@ async function cargar(s: SenderMin & { seqMailId: string; seqWaId: string }, ids
   if (!ids.length) return { mails: 0, wa: 0 };
   const contactos = await db.contact.findMany({ where: { id: { in: ids } } });
   const porMail = contactos.filter((c) => sePuedeEnviar(c)).map((c) => c.id);
-  const porWa = contactos.filter((c) => !!contactWa(c)).map((c) => c.id);
+  const porWa = contactos.filter((c) => !!contactWaCelular(c)).map((c) => c.id);
   const [m, w] = await db.$transaction([
     db.enrollment.createMany({ data: porMail.map((contactId) => ({ sequenceId: s.seqMailId, contactId })), skipDuplicates: true }),
     db.enrollment.createMany({ data: porWa.map((contactId) => ({ sequenceId: s.seqWaId, contactId })), skipDuplicates: true }),

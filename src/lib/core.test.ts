@@ -200,6 +200,17 @@ test("waNum arma el número internacional de WhatsApp", async () => {
   assert.equal(waNum("123"), "");
 });
 
+test("esCelular: solo cuenta lo que se nota que es celular; un fijo no carga WhatsApp", async () => {
+  const { esCelular, contactWaCelular } = await import("./whatsapp.ts");
+  assert.equal(esCelular("011 15-4444-5555"), true);
+  assert.equal(esCelular("+54 9 11 4444-5555"), true);
+  assert.equal(esCelular("(0351) 15 555-1234"), true);
+  assert.equal(esCelular("0261 4234567"), false);
+  assert.equal(esCelular("+54 351 422-1234"), false);
+  assert.equal(contactWaCelular({ phone: "0261 4234567" }), "");
+  assert.equal(contactWaCelular({ phone: "0261 4234567", whatsapp: "+54 9 261 555-1234" }), "5492615551234");
+});
+
 test("verificador: tipeos, inválidos y riesgosos (sin red)", async () => {
   const { verificarLocal, sePuedeEnviar } = await import("./verifier/index.ts");
   assert.equal(verificarLocal("ventas@gmial.com").estado, "corregible");

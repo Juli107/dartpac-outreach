@@ -2416,6 +2416,14 @@ function waNum(tel){let d=digits(tel);if(!d)return "";if(d.startsWith("00"))d=d.
   // quitar el 15 después del código de área (2 a 4 dígitos)
   if(d.length===12){for(const L of [2,3,4]){if(d.substr(L,2)==="15"){d=d.slice(0,L)+d.slice(L+2);break;}}}
   return d.length===10?"549"+d:(d.length>=8?"54"+d:"");}
+/* ¿Es celular? Solo cuando se nota: +54 9…, o el 15 después del código de área. Un fijo no tiene WhatsApp: se ofrece llamar. */
+function esCel(tel){ let d=digits(tel); if(!d) return false; if(d.startsWith("00")) d=d.slice(2); if(d.startsWith("54")) d=d.slice(2);
+  if(d.startsWith("9")&&d.length===11) return true; if(d.startsWith("0")) d=d.slice(1);
+  return d.length===12&&[2,3,4].some(L=>d.substr(L,2)==="15"); }
+/* número para llamar (tel:) con la línea de quien está usando la app */
+function telNum(tel){ if(esCel(tel)) return waNum(tel); let d=digits(tel); if(d.startsWith("00")) d=d.slice(2); if(d.startsWith("54")) d=d.slice(2); if(d.startsWith("0")) d=d.slice(1); return d.length>=8?"54"+d:""; }
+/* tiene WhatsApp: un número de WhatsApp cargado, un celular, o alguien lo marcó; «No tiene WhatsApp» lo saca */
+const tieneWa=p=>!p.sinWa&&(!!p.conWa||!!waNum(p.whatsapp)||esCel(p.telefono));
 function copiar(txt,btn){const ok=()=>{toast("Copiado");};try{navigator.clipboard.writeText(txt).then(ok,()=>fallback());}catch(e){fallback();}
   function fallback(){const ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");ok();}catch(e){toast("Seleccioná el texto y copialo");}ta.remove();}}
 const provNom=id=>(PROV[id]||{}).n||"Sin provincia";
@@ -2964,14 +2972,16 @@ function listaProvEst(L,lim){ const PE=S.pEst||"pend", nC=L.filter(yaContactado)
 function estSwitch(act,extra,est,nP,nC){ return `<div class="est-tabs" role="tablist" aria-label="Estado de contacto"><button role="tab" data-act="${act}" ${extra} data-est="pend" aria-selected="${est!=="cont"}"><span>Por contactar</span><b class="num">${nP}</b></button><button role="tab" data-act="${act}" ${extra} data-est="cont" aria-selected="${est==="cont"}"><span>✓ Ya contactados</span><b class="num">${nC}</b></button></div>`; }
 function bandaContacto(p){ if(!yaContactado(p)) return ""; const u=ultimoC(p); const n=contactosDe(p).length;
   return `<div class="cont-band"><span>✓ Contactado${u?" el "+esc(fCorta(u)):""}${n>1?` · ${n} mensajes`:""}</span>${p.proximo&&!["cliente","descartado"].includes(p.etapa)?`<span>Seguimiento: ${esc(fFecha(p.proximo))}</span>`:""}</div>`; }
-const ESPERA_WA=60; // segundos mínimos entre un mensaje y otro
+const ESPERA_WA=10; // segundos mínimos entre un mensaje y otro
 const topeWA=()=>Math.max(5,+S.cfg.limite||20);
-const ultimoEnvioHoy=()=>{const h=hoy();let m=0;S.P.forEach(p=>(p.historial||[]).forEach(x=>{if(x.tipo==="envio"&&x.t&&iso(new Date(x.t))===h&&x.t>m)m=x.t;}));return m;};
+/* cada persona tiene su línea: el tope y la espera cuentan solo los WhatsApp de quien escribe */
+const waMio=x=>{ const r=(typeof MAIL_REM!=="undefined"&&MAIL_REM)||remYo(); return !r||!x.porId||x.porId===r.id; };
+const ultimoEnvioHoy=()=>{const h=hoy();let m=0;S.P.forEach(p=>(p.historial||[]).forEach(x=>{if(x.tipo==="envio"&&x.t&&iso(new Date(x.t))===h&&x.t>m&&waMio(x))m=x.t;}));return m;};
 const enviadoHoyA=p=>(p.historial||[]).some(x=>x.tipo==="envio"&&x.t&&iso(new Date(x.t))===hoy());
 function pintarContadorWA(){ const b=$("#wa-cnt"); if(!b) return; const n=contactosHoy(), t=topeWA(), r=n/t;
   b.querySelector("b").textContent=n+"/"+t; b.dataset.nivel=n>=t?"tope":r>=.75?"alto":"ok";
   b.setAttribute("aria-label",`WhatsApp: ${n} de ${t} mensajes hoy`); b.title=n>=t?"Llegaste al límite de hoy":`Te quedan ${t-n} mensajes hoy`; }
-const contactosHoy=()=>{const h=hoy();let n=0;S.P.forEach(p=>(p.historial||[]).forEach(x=>{if(x.tipo==="envio"&&x.t&&iso(new Date(x.t))===h)n++;}));return n;};
+const contactosHoy=()=>{const h=hoy();let n=0;S.P.forEach(p=>(p.historial||[]).forEach(x=>{if(x.tipo==="envio"&&x.t&&iso(new Date(x.t))===h&&waMio(x))n++;}));return n;};
 const vence=p=>p.proximo&&p.proximo<=hoy()&&!["cliente","descartado"].includes(p.etapa);
 const potOrd={alto:0,medio:1,bajo:2};
 function paraHoy(){ const venc=activos().filter(p=>vence(p)&&!p.noContactar&&!seqActiva(p)).sort((a,b)=>(a.proximo||"").localeCompare(b.proximo||"")||(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1));
@@ -3830,19 +3840,21 @@ function mailSheet(id){ const p=pById(id); if(!p) return; if(bloqDueno(p)) retur
 const candMail=()=>activos().filter(p=>esMail(p.email)&&vfyOk(p)&&!deOtro(p)&&!["cliente","descartado"].includes(p.etapa||"nuevo")&&!yaMail(p)).sort((a,b)=>((a.etapa||"nuevo")==="nuevo"?0:1)-((b.etapa||"nuevo")==="nuevo"?0:1)||(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1)||(a.creado||0)-(b.creado||0));
 /* WhatsApp en tanda: empresas con WhatsApp a las que todavía no se les escribió */
 const yaWa=p=>(p.historial||[]).some(h=>h.tipo==="envio");
-const candWa=()=>activos().filter(p=>waNum(p.whatsapp||p.telefono)&&!deOtro(p)&&!["cliente","descartado"].includes(p.etapa||"nuevo")&&!p.noContactar&&!yaWa(p)).sort((a,b)=>((a.etapa||"nuevo")==="nuevo"?0:1)-((b.etapa||"nuevo")==="nuevo"?0:1)||(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1)||(a.creado||0)-(b.creado||0));
+const candWa=()=>activos().filter(p=>tieneWa(p)&&waNum(p.whatsapp||p.telefono)&&!deOtro(p)&&!["cliente","descartado"].includes(p.etapa||"nuevo")&&!p.noContactar&&!yaWa(p)).sort((a,b)=>((a.etapa||"nuevo")==="nuevo"?0:1)-((b.etapa||"nuevo")==="nuevo"?0:1)||(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1)||(a.creado||0)-(b.creado||0));
+/* Llamadas en tanda: empresas con teléfono pero sin WhatsApp, que todavía nadie contactó */
+const candTel=()=>activos().filter(p=>!tieneWa(p)&&telNum(p.telefono||p.whatsapp)&&!deOtro(p)&&!["cliente","descartado"].includes(p.etapa||"nuevo")&&!p.noContactar&&!contactosDe(p).length).sort((a,b)=>(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1)||(a.creado||0)-(b.creado||0));
 /* quien le escribe se queda con la empresa: así no la contacta otra cuenta */
 function tomarP(p,upd,r){ r=r||remYo(); if(!r||p.asignadoId) return; upd.asignado=nom1(r.nombre); upd.asignadoId=r.id; p.asignado=upd.asignado; p.asignadoId=r.id; }
 function waLimTanda(p){ const n=contactosHoy(), t=topeWA(), r=Math.min(1,n/t), falta=Math.ceil(ESPERA_WA-(Date.now()-ultimoEnvioHoy())/1000), ya=p&&enviadoHoyA(p), esp=!ya&&falta>0&&!!ultimoEnvioHoy()?falta:0;
   const msg=ya?"A esta empresa ya le escribiste hoy: no suma al contador.":n>=t?`<b style="color:#D9483B">Llegaste al límite de WhatsApp de hoy.</b> Para cuidar el número, seguí mañana.`:esp?`Esperá <b class="num">${esp} s</b> antes del próximo: mandar muy seguido hace saltar los bloqueos.`:`Te quedan <b class="num">${t-n}</b> mensajes hoy.`;
   return {html:`<div class="wa-lim" data-nivel="${n>=t?"tope":r>=.75?"alto":"ok"}"><div class="wa-lim-r"><span>WhatsApp hoy</span><b class="num">${n} de ${t}</b></div><div class="wa-bar"><i style="width:${(r*100).toFixed(1)}%"></i></div><p class="hint">${msg}</p></div>`, bloq:!ya&&(n>=t||esp>0), tope:!ya&&n>=t, espera:esp}; }
 function tandaMail(){ let canal=LS.get("tmCanal","mail"), L=[], i=0, hechos=0, salt=0, auto=false, gm=false, err="";
-  const lista=()=>canal==="wa"?candWa():candMail();
-  if(!lista().length) canal=canal==="wa"?"mail":"wa";
+  const lista=()=>canal==="wa"?candWa():canal==="tel"?candTel():candMail();
+  if(!lista().length) canal=canal==="mail"?"wa":"mail";
   abrir("Tanda de envíos",`<div class="ml-hero"><span class="ml-ic" aria-hidden="true">✉️</span><span><b id="tm-tit"></b><small id="tm-hs"></small></span></div>
-   <div class="tm-cfg"><div class="fld"><span>Enviar por</span><div class="seg chips" role="group" aria-label="Por dónde enviar"><button type="button" class="chip" data-tmc="mail">✉️ Mail</button><button type="button" class="chip" data-tmc="wa">💬 WhatsApp</button></div></div>
+   <div class="tm-cfg"><div class="fld"><span>Enviar por</span><div class="seg chips" role="group" aria-label="Por dónde enviar"><button type="button" class="chip" data-tmc="mail">✉️ Mail</button><button type="button" class="chip" data-tmc="wa">💬 WhatsApp</button><button type="button" class="chip" data-tmc="tel">📞 Llamar</button></div></div>
    <div class="fld"><span id="tm-de-t">Sale desde</span>${esAdm()&&(S.eq||[]).length>1?`<select id="tm-de">${(S.eq||[]).map(r=>`<option value="${esc(r.id)}">${esc(r.nombre)} · ${esc(r.email)}</option>`).join("")}</select>`:`<b id="tm-de-b"></b>`}</div><p class="hint" id="tm-de-h"></p>
-   <div class="fld"><span>Mensaje</span><div class="seg chips" role="group" aria-label="Qué mensaje mandar"><button type="button" class="chip" data-tmm="auto">Automático según el rubro</button><button type="button" class="chip" data-tmm="mio">Mensaje general</button></div></div>
+   <div class="fld" id="tm-msj"><span>Mensaje</span><div class="seg chips" role="group" aria-label="Qué mensaje mandar"><button type="button" class="chip" data-tmm="auto">Automático según el rubro</button><button type="button" class="chip" data-tmm="mio">Mensaje general</button></div></div>
    <div id="tm-pl" class="stack" hidden><label class="fld" id="tm-plsu-f"><span>Asunto</span><input id="tm-plsu"></label><label class="fld"><span id="tm-pltx-t">Mensaje</span><textarea id="tm-pltx" rows="9"></textarea></label>
    <p class="hint">Estas palabras se completan solas: <b>{{empresa}}</b>, <b>{{ciudad}}</b>, <b>{{rubro}}</b>, <b>{{saludo}}</b> (buenos días o buenas tardes), <b>{{vendedor}}</b> y <b>{{firma}}</b> (nombre de quien manda). Abajo podés retocar cada uno antes de enviarlo.</p>
    <div class="row"><button type="button" class="btn primary sm" id="tm-plok">Guardar mensaje</button><button type="button" class="btn sm ghost" id="tm-plrst">Volver al de ejemplo</button></div><p class="hint" id="tm-plst" role="status"></p></div></div>
@@ -3854,18 +3866,20 @@ function tandaMail(){ let canal=LS.get("tmCanal","mail"), L=[], i=0, hechos=0, s
     let modo=LS.get("tmModo","auto"), pl=Object.assign({},TM_PL0,S.cfg.msjGeneral||{});
     const deSel=root.querySelector("#tm-de"), plBox=root.querySelector("#tm-pl"), plSu=root.querySelector("#tm-plsu"), plTx=root.querySelector("#tm-pltx"), plSt=root.querySelector("#tm-plst");
     const hs=()=>{ const n=L.length;
+      if(canal==="tel"){ root.querySelector("#tm-tit").textContent=`${n} empresa${n===1?"":"s"} sin WhatsApp para llamar`;
+        root.querySelector("#tm-hs").textContent="Tocás «Llamar»: se abre el teléfono con el número (cada uno llama desde su línea). Al cortar, marcás cómo te fue y pasa a la siguiente."; return; }
       root.querySelector("#tm-tit").textContent=canal==="wa"?`${n} empresa${n===1?"":"s"} con WhatsApp esperando tu mensaje`:`${n} empresa${n===1?"":"s"} con email esperando tu mail`;
       root.querySelector("#tm-hs").textContent=canal==="wa"?"Tocás «Abrir WhatsApp»: se abre el chat con el mensaje escrito, apretás enviar y al volver pasa a la siguiente."
         :gm?"Gmail está conectado: la app los manda sola desde "+mailDe()+". Revisá el texto o tocá «Enviar automáticamente».":"Revisás y tocás «Abrir mail»: se abre tu correo con todo escrito y al volver pasa a la siguiente."; };
     const ponerDe=r=>{ MAIL_REM=r||null; window.__dpDesde=r?r.id:null; if(deSel&&r) deSel.value=r.id;
-      const b=root.querySelector("#tm-de-b"); if(b) b.textContent=canal==="wa"?(r?r.nombre+(r.whatsapp?" · "+r.whatsapp:""):"Vos"):mailDe(); const md=root.querySelector(".ml-de b"); if(md) md.textContent=mailDe();
-      root.querySelector("#tm-de-t").textContent=canal==="wa"?"Escribe":"Sale desde";
-      root.querySelector("#tm-de-h").innerHTML=canal==="wa"?(r?`Firma ${esc(nom1(r.nombre))} y la empresa queda como cliente suyo. Se abre el WhatsApp de este equipo${r.whatsapp?`: fijate que sea el de ${esc(nom1(r.nombre))} (${esc(r.whatsapp)})`:""}.`:"")
+      const b=root.querySelector("#tm-de-b"); if(b) b.textContent=canal!=="mail"?(r?r.nombre+(r.whatsapp?" · "+r.whatsapp:""):"Vos"):mailDe(); const md=root.querySelector(".ml-de b"); if(md) md.textContent=mailDe();
+      root.querySelector("#tm-de-t").textContent=canal==="tel"?"Llama":canal==="wa"?"Escribe":"Sale desde";
+      root.querySelector("#tm-de-h").innerHTML=canal==="tel"?(r?`La empresa queda como cliente de ${esc(nom1(r.nombre))}.`:""):canal==="wa"?(r?`Firma ${esc(nom1(r.nombre))} y la empresa queda como cliente suyo. Se abre el WhatsApp de este equipo${r.whatsapp?`: fijate que sea el de ${esc(nom1(r.nombre))} (${esc(r.whatsapp)})`:""}.`:"")
         :r&&r.conectado===false?`<b>${esc(nom1(r.nombre))} todavía no conectó su Gmail</b>, así que no se puede mandar solo desde ese buzón. <button class="rd-lnk" data-act="irOut" data-href="/remitentes">Conectarlo en Remitentes</button>`
         :`Los mails salen desde este buzón, van firmados con su nombre y cada empresa queda como cliente ${deSel?"de esa persona":"tuyo"}.`; hs(); };
     if(deSel) deSel.onchange=()=>{ LS.set("tmDe",deSel.value); ponerDe(remPorId(deSel.value)); if(!auto) pinta(); };
     const plPoner=()=>{ plSu.value=pl.su; plTx.value=canal==="wa"?pl.wa:pl.tx; root.querySelector("#tm-plsu-f").hidden=canal==="wa"; root.querySelector("#tm-pltx-t").textContent=canal==="wa"?"Mensaje de WhatsApp para todos":"Mensaje para todos"; plSt.textContent=""; };
-    const ponerModo=m=>{ modo=m; LS.set("tmModo",m); root.querySelectorAll("[data-tmm]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.tmm===m)); plBox.hidden=m!=="mio"; };
+    const ponerModo=m=>{ modo=m; LS.set("tmModo",m); root.querySelectorAll("[data-tmm]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.tmm===m)); plBox.hidden=m!=="mio"||canal==="tel"; };
     ponerModo(modo);
     root.querySelectorAll("[data-tmm]").forEach(b=>b.onclick=()=>{ ponerModo(b.dataset.tmm); if(!auto) pinta(); });
     const plEditar=()=>{ if(canal==="wa") pl.wa=plTx.value; else { pl.su=plSu.value; pl.tx=plTx.value; } plSt.textContent="Hay cambios sin guardar."; if(!auto) pinta(); };
@@ -3876,11 +3890,11 @@ function tandaMail(){ let canal=LS.get("tmCanal","mail"), L=[], i=0, hechos=0, s
     const cue=(p,tipo)=>conRem(MAIL_REM,()=>{ if(modo!=="mio") return cuerpoMail(p,tipo); const t=plMail(pl.tx,p); return /\bBAJA\b/.test(t)?t:t+pieBaja(); });
     const txWa=(p,tipo)=>conRem(MAIL_REM,()=>modo==="mio"?plMail(pl.wa,p):plantilla(p,tipo));
     const ponerCanal=c=>{ canal=c; LS.set("tmCanal",c); auto=false; L=lista(); i=0; hechos=0; salt=0; err="";
-      root.querySelectorAll("[data-tmc]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.tmc===c)); root.querySelector("#tm-mailx").hidden=c==="wa";
+      root.querySelectorAll("[data-tmc]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.tmc===c)); root.querySelector("#tm-mailx").hidden=c!=="mail"; root.querySelector("#tm-msj").hidden=c==="tel"; plBox.hidden=modo!=="mio"||c==="tel";
       ponerDe(esAdm()?(remPorId(LS.get("tmDe",""))||remYo()||(S.eq||[])[0]):remYo()); plPoner(); pinta(); };
     root.querySelectorAll("[data-tmc]").forEach(b=>b.onclick=()=>{ if(auto) return; ponerCanal(b.dataset.tmc); });
-    const pintLim=()=>{ const p=L[i], X=canal==="wa"?waLimTanda(p):mailLimHTML(p); lim.innerHTML=X.html; const go=box.querySelector("#tm-go"); if(go) go.setAttribute("aria-disabled",X.bloq?"true":"false"); const sd=box.querySelector("#tm-send"); if(sd) sd.disabled=X.bloq||auto; clearTimeout(tic); if(X.espera>0&&vivo()) tic=setTimeout(pintLim,1000); return X; };
-    const pintAuto=(msg)=>{ if(!gm||canal==="wa"){ ab.hidden=true; return; } ab.hidden=false; const resto=Math.min(L.length-i,Math.max(0,topeMail()-mailsHoy()));
+    const pintLim=()=>{ if(canal==="tel"){ lim.innerHTML=""; return {}; } const p=L[i], X=canal==="wa"?waLimTanda(p):mailLimHTML(p); lim.innerHTML=X.html; const go=box.querySelector("#tm-go"); if(go) go.setAttribute("aria-disabled",X.bloq?"true":"false"); const sd=box.querySelector("#tm-send"); if(sd) sd.disabled=X.bloq||auto; clearTimeout(tic); if(X.espera>0&&vivo()) tic=setTimeout(pintLim,1000); return X; };
+    const pintAuto=(msg)=>{ if(!gm||canal!=="mail"){ ab.hidden=true; return; } ab.hidden=false; const resto=Math.min(L.length-i,Math.max(0,topeMail()-mailsHoy()));
       ab.innerHTML=auto?`<div class="tm-run"><span class="ml-spin"></span><span><b>Enviando solo…</b><small>${msg||`Mandó ${hechos}. Uno cada ${ESPERA_MAIL} segundos para no caer en spam. Podés dejar esta pantalla abierta.`}</small></span><button class="btn sm" id="tm-stop">⏸ Pausar</button></div>`
         :resto?`<button class="btn ml-go block" id="tm-run">▶ Enviar ${resto} automáticamente</button><p class="hint">Salen solos desde ${esc(mailDe())}, uno cada ${ESPERA_MAIL} s${A.on()?", con tu tarjeta adjunta":""}. Podés pausar cuando quieras.</p>${err?`<p class="hint ml-st bad">${esc(err)}</p>`:""}`:(err?`<p class="hint ml-st bad">${esc(err)}</p>`:"");
       const r=ab.querySelector("#tm-run"); if(r) r.onclick=()=>correr(); const s=ab.querySelector("#tm-stop"); if(s) s.onclick=()=>{ auto=false; pintAuto(); pinta(); }; };
@@ -3888,14 +3902,17 @@ function tandaMail(){ let canal=LS.get("tmCanal","mail"), L=[], i=0, hechos=0, s
       const upd={historial:h,actualizado:Date.now(),proximo:addDays(hoy(),+S.cfg.seguir||4)}; if((p.etapa||"nuevo")==="nuevo") upd.etapa="contactado"; tomarP(p,upd,MAIL_REM);
       p.historial=h; if(upd.etapa) p.etapa=upd.etapa; p.proximo=upd.proximo; try{ await S.db.doc("prospectos/"+p.id).update(upd); }catch(x){} await seqTrasEnvio(p,"wa"); pintarContadorWA(); };
     const pinta=()=>{ const p=L[i]; hs();
-      if(!p){ auto=false; box.innerHTML=L.length?`<div class="empty"><b>¡Tanda terminada!</b><span class="hint">${canal==="wa"?"Abriste":gm?"Enviaste":"Abriste"} ${hechos} ${canal==="wa"?"WhatsApp":"mail"+(hechos===1?"":"s")}${salt?` y salteaste ${salt}`:""}. Quedaron como contactados y con seguimiento en ${+S.cfg.seguir||4} días.</span><button class="btn primary" data-act="cerrar">Listo</button></div>`
+      if(!p){ auto=false; box.innerHTML=L.length?`<div class="empty"><b>¡Tanda terminada!</b><span class="hint">${canal==="tel"?"Llamaste a":canal==="wa"?"Abriste":gm?"Enviaste":"Abriste"} ${hechos} ${canal==="tel"?"empresa"+(hechos===1?"":"s"):canal==="wa"?"WhatsApp":"mail"+(hechos===1?"":"s")}${salt?` y salteaste ${salt}`:""}. Quedaron como contactados y con seguimiento en ${+S.cfg.seguir||4} días.</span><button class="btn primary" data-act="cerrar">Listo</button></div>`
+        :canal==="tel"?`<div class="empty"><b>No hay empresas sin WhatsApp para llamar.</b><span class="hint">Acá aparecen las que tienen solo teléfono fijo o que marcaste «No tiene WhatsApp».</span></div>`
         :`<div class="empty"><b>No hay empresas pendientes por ${canal==="wa"?"WhatsApp":"mail"}.</b><span class="hint">Probá con ${canal==="wa"?"mail":"WhatsApp"}.</span></div>`; pintAuto(); pintLim(); return; }
+      if(canal==="tel") return pintaTel(p);
       const tipo=(p.etapa||"nuevo")==="nuevo"?"primer":"seguimiento", loc=[p.ciudad,provNom(p.provincia)].filter(Boolean).join(", "), wa=waNum(p.whatsapp||p.telefono);
       box.innerHTML=`<div class="tm-prog"><span>Empresa <b class="num">${i+1}</b> de <b class="num">${L.length}</b></span><div class="wa-bar"><i style="width:${(i/L.length*100).toFixed(1)}%"></i></div></div>
        <div class="ml-card"><div class="tm-who"><span class="pc-ic" aria-hidden="true">${rubIc(p.rubro)}</span><span><b>${esc(p.nombre)}</b><small>${esc(rubNom(p.rubro))}${loc?" · "+esc(loc):""}</small><small class="tm-to">${canal==="wa"?"+"+esc(wa):esc(p.email)}</small></span></div>
        ${canal==="wa"?"":`<label class="fld"><span>Asunto</span><input id="tm-su" value="${esc(asu(p,tipo))}"></label>`}<label class="fld"><span>Mensaje</span><textarea id="tm-tx" rows="9">${esc(canal==="wa"?txWa(p,tipo):cue(p,tipo))}</textarea></label>
        <div class="row"><button type="button" class="btn sm" id="tm-guardar" title="Lo que escribiste acá queda como el mensaje para todas las empresas de la tanda">💾 Guardar este ${canal==="wa"?"mensaje":"correo"} para todos</button></div><p class="hint" id="tm-gst" role="status"></p></div>
-       ${canal==="wa"?`<a class="btn wa block" id="tm-go" href="#" target="_blank" rel="noopener">${IC.wa}<span>Abrir WhatsApp ${i+1} de ${L.length}</span></a>`
+       ${canal==="wa"?`<a class="btn wa block" id="tm-go" href="#" target="_blank" rel="noopener">${IC.wa}<span>Abrir WhatsApp ${i+1} de ${L.length}</span></a>
+        <div class="row">${telNum(p.telefono||p.whatsapp)?`<a class="btn" href="tel:+${esc(telNum(p.telefono||p.whatsapp))}">📞 Llamar</a>`:""}<button class="btn" id="tm-nowa" title="Sale de la tanda de WhatsApp y pasa a la de llamadas">No tiene WhatsApp</button></div>`
         :gm?`<button class="btn ml-go block" id="tm-send" ${auto?"disabled":""}>${IC.mail}<span>Enviar esta ahora</span></button><p class="hint ml-st" id="tm-st" role="status"></p>`:`<a class="btn ml-go block" id="tm-go" href="#" target="_blank" rel="noopener">${IC.mail}<span>Abrir mail ${i+1} de ${L.length}</span></a>`}
        <div class="row"><button class="btn" id="tm-skip" ${auto?"disabled":""}>Saltear esta</button><button class="btn ghost" data-act="cerrar">Terminar por hoy</button></div>`;
       p._tipo=tipo;
@@ -3908,6 +3925,7 @@ function tandaMail(){ let canal=LS.get("tmCanal","mail"), L=[], i=0, hechos=0, s
           if(A.on()&&!tactil()) copiarTarjeta(); await registrarMail(p,tipo,su.value); hechos++; go.textContent="✓ Abierto"; setTimeout(()=>{ if(vivo()){ i++; pinta(); } },1200); }); }
       if(sd) sd.onclick=async()=>{ if(await mandarUno()) { i++; pinta(); } };
       box.querySelector("#tm-skip").onclick=()=>{ salt++; i++; pinta(); };
+      const nw=box.querySelector("#tm-nowa"); if(nw) nw.onclick=async()=>{ nw.disabled=true; await marcarWa(p,false); L.splice(i,1); toast("Listo: "+p.nombre+" pasó a «📞 Llamar»"); pinta(); };
       box.querySelector("#tm-guardar").onclick=async()=>{ const b=box.querySelector("#tm-guardar"), gst=box.querySelector("#tm-gst");
         conRem(MAIL_REM,()=>{ if(canal==="wa") pl.wa=plVolver(tx.value,p); else { pl.su=plVolver(su.value,p); pl.tx=plVolver(tx.value,p); } });
         const d={msjGeneral:{su:pl.su,tx:pl.tx,wa:pl.wa}}; b.disabled=true;
@@ -3915,6 +3933,22 @@ function tandaMail(){ let canal=LS.get("tmCanal","mail"), L=[], i=0, hechos=0, s
           if(gst) gst.textContent="Guardado. Las próximas empresas de la tanda reciben este mismo texto, con su nombre y su ciudad."; }
         b.disabled=false; };
       pintLim(); pintAuto(); };
+    /* «No tiene WhatsApp» / «Sí tiene WhatsApp»: queda guardado en la empresa para todo el equipo */
+    const marcarWa=async(p,si)=>{ const upd=si?{conWa:true,sinWa:false}:{sinWa:true,conWa:false}; Object.assign(p,upd); try{ await S.db.doc("prospectos/"+p.id).update(upd); }catch(x){} };
+    /* «No atendieron» queda anotado pero la empresa sigue en la lista para volver a llamar otro día */
+    const registrarTel=async(p,res)=>{ const ok=res==="Atendieron", h=[...(p.historial||[]),{t:Date.now(),tipo:ok?"contacto":"llamada",texto:"Llamada: "+res,canal:"tel",...porH(MAIL_REM)}];
+      const upd={historial:h,actualizado:Date.now()}; if(ok){ upd.proximo=addDays(hoy(),+S.cfg.seguir||4); if((p.etapa||"nuevo")==="nuevo") upd.etapa="contactado"; tomarP(p,upd,MAIL_REM); }
+      p.historial=h; if(upd.etapa) p.etapa=upd.etapa; if(upd.proximo) p.proximo=upd.proximo; try{ await S.db.doc("prospectos/"+p.id).update(upd); }catch(x){} };
+    const pintaTel=p=>{ const loc=[p.ciudad,provNom(p.provincia)].filter(Boolean).join(", "), num=telNum(p.telefono||p.whatsapp);
+      box.innerHTML=`<div class="tm-prog"><span>Empresa <b class="num">${i+1}</b> de <b class="num">${L.length}</b></span><div class="wa-bar"><i style="width:${(i/L.length*100).toFixed(1)}%"></i></div></div>
+       <div class="ml-card"><div class="tm-who"><span class="pc-ic" aria-hidden="true">${rubIc(p.rubro)}</span><span><b>${esc(p.nombre)}</b><small>${esc(rubNom(p.rubro))}${loc?" · "+esc(loc):""}</small><small class="tm-to">${esc(p.telefono||p.whatsapp)}</small></span></div>
+       <p class="hint">${p.sinWa?"Lo marcaron «No tiene WhatsApp».":"Parece un teléfono fijo: no tiene WhatsApp."} Pedí por quien se encarga de las compras.</p></div>
+       <a class="btn primary block" id="tm-call" href="tel:+${esc(num)}">📞 Llamar al +${esc(num)}</a>
+       <div class="row"><button class="btn" data-tres="Atendieron">✓ Atendieron</button><button class="btn" data-tres="No atendieron">No atendieron</button></div>
+       <div class="row"><button class="btn" id="tm-siwa" title="Pasa a la tanda de WhatsApp">Sí tiene WhatsApp</button><button class="btn" id="tm-skip">Saltear esta</button><button class="btn ghost" data-act="cerrar">Terminar por hoy</button></div>`;
+      box.querySelectorAll("[data-tres]").forEach(b=>b.onclick=async()=>{ box.querySelectorAll("[data-tres]").forEach(x=>x.disabled=true); await registrarTel(p,b.dataset.tres); hechos++; i++; pinta(); });
+      box.querySelector("#tm-siwa").onclick=async()=>{ await marcarWa(p,true); L.splice(i,1); toast("Listo: "+p.nombre+" pasó a «💬 WhatsApp»"); pinta(); };
+      box.querySelector("#tm-skip").onclick=()=>{ salt++; i++; pinta(); }; };
     const mandarUno=async()=>{ const p=L[i]; if(!p) return false; const X=mailLimHTML(p); if(X.bloq) return false;
       const su=box.querySelector("#tm-su").value, tx=box.querySelector("#tm-tx").value, st=box.querySelector("#tm-st"), sd=box.querySelector("#tm-send");
       if(sd) sd.disabled=true; if(st){ st.className="hint ml-st"; st.innerHTML=`<span class="ml-spin"></span> Enviando a ${esc(p.email)}…`; }

@@ -23,7 +23,23 @@ export function waLink(num: string, text?: string) {
   return `https://wa.me/${num}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
 }
 
+/** ¿Es celular? Solo cuando se nota: +54 9…, o el 15 después del código de área. Un fijo no tiene WhatsApp. */
+export function esCelular(tel: string | null | undefined): boolean {
+  let d = String(tel ?? "").replace(/\D/g, "");
+  if (!d) return false;
+  if (d.startsWith("00")) d = d.slice(2);
+  if (d.startsWith("54")) d = d.slice(2);
+  if (d.startsWith("9") && d.length === 11) return true;
+  if (d.startsWith("0")) d = d.slice(1);
+  return d.length === 12 && [2, 3, 4].some((L) => d.substr(L, 2) === "15");
+}
+
 /** WhatsApp de un contacto: el número de WhatsApp si lo tiene, si no el teléfono. */
 export function contactWa(c: { whatsapp?: string | null; phone?: string | null }) {
   return waNum(c.whatsapp) || waNum(c.phone);
+}
+
+/** Lo mismo, pero el teléfono solo cuenta si es celular: a un fijo no se le carga WhatsApp. */
+export function contactWaCelular(c: { whatsapp?: string | null; phone?: string | null }) {
+  return waNum(c.whatsapp) || (esCelular(c.phone) ? waNum(c.phone) : "");
 }
