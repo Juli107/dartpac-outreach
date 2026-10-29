@@ -26,6 +26,9 @@ const TABS = [
   ["registro", "Registro"],
 ] as const;
 
+// la carga masiva del Radar suma de a tandas, y cada tanda verifica los emails
+export const maxDuration = 60;
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const seq = await db.sequence.findUnique({ where: { id }, select: { name: true } });
