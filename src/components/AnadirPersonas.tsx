@@ -217,13 +217,13 @@ function SumarTodas({ sequenceId, q, filtro, recargar, listo }: { sequenceId: st
     if (!ids?.length) return;
     if (!window.confirm(`¿Sumar ${fmt(ids.length)} ${ids.length === 1 ? "empresa" : "empresas"} del Radar ${que} a esta secuencia?\n\nNo se envía nada ahora: los mensajes salen solo si la secuencia está encendida.`)) return;
     setRes(null);
-    const tot = { sumadas: 0, yaEstaban: 0, sinCanal: 0, bajas: 0, corregidos: 0 };
+    const tot = { sumadas: 0, yaEstaban: 0, sinCanal: 0, bajas: 0, corregidos: 0, deOtro: 0 };
     let error = "";
     setAvance({ hechas: 0, total: ids.length });
     for (let i = 0; i < ids.length; i += TANDA) {
       const r = await inscribirRadarTanda(sequenceId, ids.slice(i, i + TANDA)).catch(() => ({ error: "Se cortó la conexión." }));
       if ("error" in r) { error = r.error; break; }
-      tot.sumadas += r.sumadas; tot.yaEstaban += r.yaEstaban; tot.sinCanal += r.sinCanal; tot.bajas += r.bajas; tot.corregidos += r.corregidos;
+      tot.sumadas += r.sumadas; tot.yaEstaban += r.yaEstaban; tot.sinCanal += r.sinCanal; tot.bajas += r.bajas; tot.corregidos += r.corregidos; tot.deOtro += r.deOtro;
       setAvance({ hechas: Math.min(i + TANDA, ids.length), total: ids.length });
     }
     setAvance(null);
@@ -231,6 +231,7 @@ function SumarTodas({ sequenceId, q, filtro, recargar, listo }: { sequenceId: st
     if (tot.yaEstaban) partes.push(`${fmt(tot.yaEstaban)} ya ${tot.yaEstaban === 1 ? "estaba" : "estaban"}`);
     if (tot.sinCanal) partes.push(`${fmt(tot.sinCanal)} sin email ni WhatsApp válido`);
     if (tot.bajas) partes.push(`${fmt(tot.bajas)} ${tot.bajas === 1 ? "omitida" : "omitidas"} por baja o rebote`);
+    if (tot.deOtro) partes.push(`${fmt(tot.deOtro)} ya ${tot.deOtro === 1 ? "la" : "las"} trabaja otro vendedor`);
     if (tot.corregidos) partes.push(`${fmt(tot.corregidos)} ${tot.corregidos === 1 ? "email corregido" : "emails corregidos"}`);
     setRes(error ? { error: `${error} Alcanzó a sumar ${partes.join(" · ")}. Podés volver a tocar el botón para seguir con las que faltan.` } : { ok: partes.join(" · ") + "." });
     listo();
@@ -325,7 +326,7 @@ export function AnadirPersonas({ sequenceId, tags, porEtiqueta }: { sequenceId: 
                   {tags.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </label>
-              <p className="text-xs text-muted">Se omiten las bajas, los rebotados, quienes ya están en esta secuencia y a quien no le llegaría ningún paso (por ejemplo, sin email válido en una secuencia solo de emails).</p>
+              <p className="text-xs text-muted">Se omiten las bajas, los rebotados, quienes ya están en esta secuencia y a quien no le llegaría ningún paso (sin email válido ni WhatsApp). Si falta uno de los dos, el paso sale por el otro.</p>
               <div className="flex justify-end"><BotonGuardar avisarCambios={false} enviando="Sumando…" listo="Sumados">Sumar</BotonGuardar></div>
               {etqOk && <Aviso r={{ ok: "Listo: los contactos de esa etiqueta quedaron en la secuencia." }} />}
             </form>

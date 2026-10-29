@@ -218,10 +218,10 @@ export async function StepsTab({ seq, sp }: { seq: Seq; sp: TabParams }) {
                     </div>
                   </fieldset>
                 )}
+                <div><AiButton tipo={step.type} orden={step.order} total={total} secuencia={seq.name} subjectId={sId} bodyId={bId} /></div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <VarChips campos={[sId, bId]} lista={chips} />
                   <div className="flex flex-wrap items-center gap-2">
-                    <AiButton tipo={step.type} orden={step.order} total={total} secuencia={seq.name} subjectId={sId} bodyId={bId} />
                     {extra && <button formAction={deleteVariant.bind(null, extra.id)} className="btn-danger text-[13px]">Eliminar variante {extra.label}</button>}
                     <BotonGuardar key={`${step.id}-${selected.label}`} listo={isEmail && variants.length > 1 ? `Variante ${selected.label} guardada` : "Paso guardado"}>
                       Guardar{isEmail && variants.length > 1 ? ` variante ${selected.label}` : ""}

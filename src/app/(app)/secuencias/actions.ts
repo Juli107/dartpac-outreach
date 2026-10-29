@@ -301,21 +301,35 @@ export async function guardarVariables(input: unknown): Promise<{ ok: true } | {
 }
 
 /** "Redactar con IA": propone el texto de un paso (email o WhatsApp) para Plupack Embalajes. */
-export async function redactarConIA(input: { tipo: "EMAIL" | "WHATSAPP" | "TASK"; orden: number; total: number; secuencia: string; borrador?: string }) {
+export type SugerenciaIA = { asunto: string; texto: string; idea: string };
+
+/**
+ * Sugerencias de la IA para un paso: tres versiones distintas (o tres mejoras del borrador, si hay uno) para elegir.
+ * `pedido` es lo que se le pide en palabras: «más corto», «más formal», «mencioná el envío gratis»…
+ */
+export async function redactarConIA(input: { tipo: "EMAIL" | "WHATSAPP" | "TASK"; orden: number; total: number; secuencia: string; borrador?: string; pedido?: string }): Promise<{ opciones: SugerenciaIA[] } | { error: string }> {
   if (!iaConfigurada()) return { error: "La IA todavía no está configurada (falta la clave de la API de Claude en Vercel)." };
   const propias = ((await cargarVariables().catch(() => null))?.propias ?? []).filter((p) => p.clave !== "mi_empresa").slice(0, 12);
   const canal = input.tipo === "EMAIL" ? "email (tono profesional y cercano, 70 a 120 palabras, con asunto corto)" : input.tipo === "WHATSAPP" ? "WhatsApp (tono rioplatense, cercano, 25 a 50 palabras, sin asunto)" : "tarea para el vendedor (qué hacer en la llamada o visita, 1 a 3 frases, con un título corto)";
   const momento = input.orden <= 1 ? "Es el primer contacto: presentate y pedí el contacto de compras." : input.orden >= input.total ? "Es el último mensaje: cerrá con amabilidad y dejá la puerta abierta." : "Es un seguimiento: referí brevemente al mensaje anterior y aportá algo nuevo.";
+  const borrador = input.borrador?.trim().slice(0, 1500);
+  const pedido = input.pedido?.trim().slice(0, 300);
   const prompt = `Sos vendedor B2B en Argentina de ${process.env.COMPANY_NAME ?? "Plupack Embalajes"} (marca DARTPAC), mayorista de film stretch, film PVC, film de polietileno, bolsas, embalaje y descartables con stock permanente y envíos a todo el país.
 Escribí el paso ${input.orden} de ${input.total} de una secuencia de prospección llamada «${input.secuencia}», por ${canal}. ${momento}
 Usá estas variables tal cual, con doble llave, donde correspondan: {{saludo}}, {{empresa}}, {{ciudad}}, {{vendedor}}, {{mi_empresa}}.${propias.length ? ` El equipo también tiene estas (usalas solo si encajan): ${propias.map((p) => `{{${p.clave}}} = «${p.valor.slice(0, 80)}»`).join("; ")}.` : ""} No inventes precios, descuentos ni datos.
-${input.tipo === "EMAIL" ? "Terminá con una despedida corta (por ejemplo «Saludos,») sin firmar: nada de tu nombre, cargo, empresa ni teléfono al final, porque la firma del remitente se agrega sola debajo.\n" : ""}${input.borrador ? `Tomá como base este borrador y mejoralo: ${input.borrador.slice(0, 1500)}` : ""}
-Respondé solo JSON: {"asunto": "...", "texto": "..."}.`;
+${input.tipo === "EMAIL" ? "Terminá con una despedida corta (por ejemplo «Saludos,») sin firmar: nada de tu nombre, cargo, empresa ni teléfono al final, porque la firma del remitente se agrega sola debajo.\n" : ""}${borrador ? `Este es el texto actual (tomalo como base, respetando lo que dice): ${borrador}\n` : ""}${pedido ? `Lo que pide el vendedor: ${pedido}\n` : ""}
+Dame 3 versiones bien distintas entre sí (por ejemplo: una directa, una que arranque con una pregunta, una que destaque el stock y los envíos)${pedido ? ", todas cumpliendo lo que pide el vendedor" : ""}. En "idea" explicá en pocas palabras qué tiene de distinto cada una.
+Respondé solo JSON: {"opciones": [{"idea": "...", "asunto": "...", "texto": "..."}]}.`;
   try {
-    const r = await pedirTexto(prompt, { json: true, rapido: true, maxTokens: 900 });
-    const j = parsearJson(r.text) as { asunto?: string; texto?: string };
-    if (!j?.texto) return { error: "La IA no devolvió un texto. Probá de nuevo." };
-    return { asunto: String(j.asunto ?? "").slice(0, 160), texto: String(j.texto).slice(0, 4000) };
+    const r = await pedirTexto(prompt, { json: true, rapido: true, maxTokens: 2000 });
+    const j = parsearJson(r.text) as { opciones?: { asunto?: string; texto?: string; idea?: string }[]; asunto?: string; texto?: string };
+    const lista = Array.isArray(j?.opciones) ? j.opciones : j?.texto ? [j] : [];
+    const opciones = lista
+      .filter((o) => o && typeof o.texto === "string" && o.texto.trim())
+      .slice(0, 3)
+      .map((o) => ({ asunto: String(o.asunto ?? "").slice(0, 160), texto: String(o.texto).slice(0, 4000), idea: String((o as { idea?: string }).idea ?? "").slice(0, 120) }));
+    if (!opciones.length) return { error: "La IA no devolvió sugerencias. Probá de nuevo." };
+    return { opciones };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "No se pudo redactar ahora." };
   }

@@ -3177,7 +3177,7 @@ function vMapa(){
 const ordenP=(a,b)=>(vence(b)-vence(a))||(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1)||String(a.nombre).localeCompare(String(b.nombre));
 function tarjeta(p){ const et=p.etapa||"nuevo", loc=[p.ciudad,(PROV[p.provincia]||{}).c||provNom(p.provincia)].filter(Boolean).join(", ");
   const sm=S.selMode&&S.tab==="lista", on=sm&&S.sel.has(p.id);
-  return `<button class="pc ${vence(p)?"due":""}${sm?" pc-sel"+(on?" on":""):""}" data-act="${sm?"selT":"ver"}" data-id="${esc(p.id)}"${sm?` aria-pressed="${on}"`:""}>${sm?`<span class="pc-chk" aria-hidden="true"></span>`:""}<span class="pc-ic" aria-hidden="true">${rubIc(p.rubro)}</span><span class="pc-t"><b>${esc(p.nombre)}</b><small>${esc(rubNom(p.rubro))}</small><small class="pc-loc">${IC.pin}${esc(loc)}</small>${yaContactado(p)&&ultimoC(p)?`<small class="pc-cont">✓ Contactado el ${esc(fCorta(ultimoC(p)))}</small>`:""}</span>
+  return `<button class="pc ${vence(p)?"due":""}${sm?" pc-sel"+(on?" on":""):""}" data-act="${sm?"selT":"ver"}" data-id="${esc(p.id)}"${sm?` aria-pressed="${on}"`:""}>${sm?`<span class="pc-chk" aria-hidden="true"></span>`:""}<span class="pc-ic" aria-hidden="true">${rubIc(p.rubro)}</span><span class="pc-t"><b>${esc(p.nombre)}</b><small>${esc(rubNom(p.rubro))}</small><small class="pc-loc">${IC.pin}${esc(loc)}</small>${yaContactado(p)&&ultimoC(p)?`<small class="pc-cont">✓ Contactado el ${esc(fCorta(ultimoC(p)))}</small>`:""}${deOtro(p)?`<small class="pc-cont">👤 Lo trabaja ${esc(deOtro(p))}</small>`:""}</span>
    <span class="pc-r">${ptBadge(p)}<span class="pill et ${et}">${ETN[et]||et}</span>${vence(p)?`<span class="pill pot-alto">Seguir hoy</span>`:p.potencial?`<span class="pot-dot pot-${p.potencial}" title="${POT[p.potencial]}"><i></i>${{alto:"Alto",medio:"Medio",bajo:"Bajo"}[p.potencial]}</span>`:""}</span></button>`; }
 const pct=(a,b)=>b?Math.round(a/b*100):0;
 function cabecera(eyebrow,titulo,sub,acc){ return `<header class="vh"><div class="vh-t"><p class="eyebrow">${eyebrow}</p><h1 class="h1">${titulo}</h1>${sub?`<p class="vh-sub">${sub}</p>`:""}</div>${acc?`<div class="vh-acc">${acc}</div>`:""}</header>`; }
@@ -3387,6 +3387,11 @@ function remDeH(h){ if(!h) return null; if(h.porId){ const r=remPorId(h.porId); 
   return (S.eq||[]).find(r=>norm(r.nombre)===n||norm(nom1(r.nombre))===n||norm(r.email)===n)||null; }
 /* quién firma una línea nueva del historial */
 const porH=r=>{ r=r||remYo(); return r?{por:nom1(r.nombre),porId:r.id}:{por:S.yo||S.cfg.vendedor||""}; };
+/* dueño de la empresa: el vendedor asignado o el último que le escribió (para que no le hablen dos) */
+const duenoP=p=>p&&(p.asignado||((p.historial||[]).filter(h=>["envio","mail","contacto"].includes(h.tipo)&&h.por&&h.por!=="Outreach"&&h.por!=="Automática").map(h=>h.por).pop()))||"";
+const yoNom=()=>{ const r=remYo(); return r?r.nombre:(S.yo||S.cfg.vendedor||""); };
+const deOtro=p=>{ const d=duenoP(p), y=yoNom(); return d&&y&&norm(nom1(d))!==norm(nom1(y))?nom1(d):""; };
+const avisoDueno=p=>{ const d=deOtro(p); return d?`<div class="fx-warn"><b>Ya lo está trabajando ${esc(d)}.</b> Hablalo con ${esc(d)} antes de escribirle, así no le llegan mensajes de dos personas.</div>`:""; };
 /* arma el mensaje como si lo escribiera ese remitente: su nombre, su mail y su WhatsApp en la firma */
 function conRem(r,fn){ if(!r) return fn(); const c=S.cfg, prev={vendedor:c.vendedor,firmaNombre:c.firmaNombre,firmaTel:c.firmaTel,firmaEmail:c.firmaEmail};
   c.vendedor=nom1(r.nombre); c.firmaNombre=r.nombre; c.firmaEmail=r.email; if(r.whatsapp) c.firmaTel=r.whatsapp;
@@ -3777,7 +3782,7 @@ function montarAdj(root,id,gm){ const cb=root.querySelector("#"+id), h=root.quer
 function mailSheet(id){ const p=pById(id); if(!p) return; if(!esMail(p.email)){ toast("Esta empresa no tiene un email válido"); return; }
   const vq=vfyOn()?window.DPV.puedeEnviar(p):null; if(vq&&vq.nivel==="bloquear"){ toast(vq.motivo+" Revisalo en la ficha o en el Verificador."); return; }
   const et=p.etapa||"nuevo"; let tipo=et==="nuevo"?"primer":et==="cotizado"?"cotizacion":"seguimiento";
-  abrir("Mail para "+p.nombre,`<div class="seg chips" role="group" aria-label="Tipo de mail">${[["primer","Primer contacto"],["seguimiento","Seguimiento"],["catalogo","Enviar catálogo"],["cotizacion","Después de cotizar"]].map(([k,t])=>`<button class="chip" data-mt="${k}" aria-pressed="${k===tipo}">${t}</button>`).join("")}</div>
+  abrir("Mail para "+p.nombre,`${avisoDueno(p)}<div class="seg chips" role="group" aria-label="Tipo de mail">${[["primer","Primer contacto"],["seguimiento","Seguimiento"],["catalogo","Enviar catálogo"],["cotizacion","Después de cotizar"]].map(([k,t])=>`<button class="chip" data-mt="${k}" aria-pressed="${k===tipo}">${t}</button>`).join("")}</div>
    ${vq&&vq.nivel==="advertir"?`<div class="fx-warn"><b>Email riesgoso:</b> ${esc(vq.motivo)} Se puede mandar igual.</div>`:""}<div class="ml-card"><div class="ml-r"><span>De</span><b>${esc(mailDe())}</b></div><div class="ml-r"><span>Para</span><b>${esc(p.email)}</b></div>
    <label class="fld"><span>Asunto</span><input id="ml-su"></label><label class="fld"><span>Mensaje (lo podés editar)</span><textarea id="ml-tx" rows="11"></textarea></label></div>
    ${adjHTML("ml-adj")}<div id="ml-lim" aria-live="polite"></div>
@@ -3801,7 +3806,7 @@ function mailSheet(id){ const p=pById(id); if(!p) return; if(!esMail(p.email)){ 
     root.querySelector("#ml-copy").onclick=()=>copiar("Asunto: "+su.value+"\n\n"+tx.value);
     root.querySelector("#ml-ok").onclick=async()=>{ await registrarMail(p,tipo,su.value); toast("Anotado. Te lo recuerdo el "+fFecha(addDays(hoy(),+S.cfg.seguir||4))); cerrar(); render(); };
   }); }
-const candMail=()=>activos().filter(p=>esMail(p.email)&&vfyOk(p)&&!["cliente","descartado"].includes(p.etapa||"nuevo")&&!yaMail(p)).sort((a,b)=>((a.etapa||"nuevo")==="nuevo"?0:1)-((b.etapa||"nuevo")==="nuevo"?0:1)||(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1)||(a.creado||0)-(b.creado||0));
+const candMail=()=>activos().filter(p=>esMail(p.email)&&vfyOk(p)&&!deOtro(p)&&!["cliente","descartado"].includes(p.etapa||"nuevo")&&!yaMail(p)).sort((a,b)=>((a.etapa||"nuevo")==="nuevo"?0:1)-((b.etapa||"nuevo")==="nuevo"?0:1)||(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1)||(a.creado||0)-(b.creado||0));
 function tandaMail(){ let L=candMail(), i=0, hechos=0, salt=0, auto=false, gm=false, err="";
   if(!L.length){ toast("No hay empresas con email pendientes de mail"); return; }
   abrir("Tanda de mails",`<div class="ml-hero"><span class="ml-ic" aria-hidden="true">✉️</span><span><b>${L.length} empresa${L.length===1?"":"s"} con email esperando tu mail</b><small id="tm-hs">Revisás y tocás «Abrir mail»: se abre tu correo con todo escrito y al volver pasa a la siguiente.</small></span></div>
@@ -3847,7 +3852,7 @@ function tandaMail(){ let L=candMail(), i=0, hechos=0, salt=0, auto=false, gm=fa
 let SAMPLE; async function ia(){ if(SAMPLE===undefined){ try{ SAMPLE=window.claude&&window.claude.use?await window.claude.use("sample"):null; }catch(e){ SAMPLE=null; } } return SAMPLE; }
 function mensaje(id){ const p=pById(id); if(!p) return; const et=p.etapa||"nuevo";
   const tipo0=et==="nuevo"?"primer":et==="cotizado"?"cotizacion":"seguimiento"; const wa=waNum(p.whatsapp||p.telefono);
-  abrir("Mensaje para "+p.nombre,`<div class="seg chips" role="group" aria-label="Tipo de mensaje">${[["primer","Primer contacto"],["seguimiento","Seguimiento"],["catalogo","Enviar catálogo"],["cotizacion","Después de cotizar"]].map(([k,t])=>`<button class="chip" data-tipo="${k}" aria-pressed="${k===tipo0}">${t}</button>`).join("")}</div>
+  abrir("Mensaje para "+p.nombre,`${avisoDueno(p)}<div class="seg chips" role="group" aria-label="Tipo de mensaje">${[["primer","Primer contacto"],["seguimiento","Seguimiento"],["catalogo","Enviar catálogo"],["cotizacion","Después de cotizar"]].map(([k,t])=>`<button class="chip" data-tipo="${k}" aria-pressed="${k===tipo0}">${t}</button>`).join("")}</div>
    ${remChips()}<label class="fld"><span>Mensaje (lo podés editar)</span><textarea id="m-txt" rows="9"></textarea></label>
    <div class="ai-box"><div class="row" style="align-items:center;justify-content:space-between"><b style="font-size:14px">Personalizar con IA</b><button class="btn sm" id="m-ia">${IC.ai}Reescribir</button></div><span class="hint" id="m-ia-h">Adapta el mensaje al rubro y a la empresa, sin inventar precios ni plazos.</span></div>
    <label class="adj"><input type="checkbox" id="m-adj" ${LS.get("adjTarjeta",true)?"checked":""}><span class="adj-img" id="m-adj-img" aria-hidden="true"></span><span><b>Adjuntar mi tarjeta</b><small id="m-adj-h">${tactil()?"Se abre el menú de compartir con la imagen y el mensaje: elegí WhatsApp y el contacto.":"Se copia la imagen: en WhatsApp pegala con Ctrl+V antes de enviar."}</small></span></label>

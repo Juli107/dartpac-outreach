@@ -6,6 +6,7 @@ import { tomarTurno } from "./turno";
 import { despertar, pendientes } from "./radar/worker";
 import { armarSemanal, esHoraSemanal } from "./radar/semanal";
 import { getDoc, hoyAR } from "./radar/store";
+import { espejarPendientes } from "./radar/espejo";
 
 /** Una pasada dura como mucho lo que la función de /api/cron (60 s) y un margen. */
 const TURNO_MS = 75_000;
@@ -14,7 +15,7 @@ const CADA_MS = 9 * 60_000;
 
 /**
  * Una pasada del programador: primero las respuestas (para no mandarle un seguimiento a quien acaba de contestar),
- * después los pasos que tocan y las búsquedas del Radar que quedaron a medias. Un solo turno a la vez.
+ * después los pasos que tocan, las búsquedas del Radar que quedaron a medias y las empresas que falten en Contactos. Un solo turno a la vez.
  */
 export async function pasadaProgramador(opts: { bandeja?: boolean; fuente: RunReport["source"] }) {
   const soltar = await tomarTurno("programador", TURNO_MS);
@@ -30,7 +31,9 @@ export async function pasadaProgramador(opts: { bandeja?: boolean; fuente: RunRe
         return jobs.length;
       })
       .catch(() => 0);
-    return { inbox, steps, radar };
+    // red de seguridad: si alguna empresa del Radar no llegó a Contactos, entra ahora
+    const contactos = await espejarPendientes(1000);
+    return { inbox, steps, radar, ...(contactos ? { contactos } : {}) };
   } finally {
     await soltar();
   }

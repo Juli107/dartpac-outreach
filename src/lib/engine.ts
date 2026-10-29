@@ -92,12 +92,16 @@ export async function runDueSteps(now = new Date()) {
     }
 
     const ctx = { sender: sequence.sender, now, timeZone: sequence.timeZone, vars };
-    // Un paso que no se puede hacer por su canal (sin email válido, sin WhatsApp) se saltea y sigue el próximo.
-    const skip = (step.type === "EMAIL" && !sePuedeEnviar(contact)) || (step.type === "WHATSAPP" && !contactWa(contact));
+    // Cambio de canal: si el contacto no tiene email válido, el paso de email sale por WhatsApp, y al revés.
+    // Si no tiene ninguno de los dos, el paso se saltea y sigue el próximo.
+    const mailOk = sePuedeEnviar(contact), waOk = !!contactWa(contact);
+    const cambio = (step.type === "EMAIL" && !mailOk && waOk) || (step.type === "WHATSAPP" && !waOk && mailOk);
+    const tipo = cambio ? (step.type === "EMAIL" ? "WHATSAPP" : "EMAIL") : step.type;
+    const skip = (tipo === "EMAIL" && !mailOk) || (tipo === "WHATSAPP" && !waOk);
 
     if (skip) {
       summary.skipped++;
-    } else if (step.type === "EMAIL") {
+    } else if (tipo === "EMAIL") {
       const { box, limit } = mailboxOf(sequence);
       if ((bySequence.get(sequence.id) ?? 0) >= sequence.dailyLimit) continue;
       if ((byMailbox.get(box) ?? 0) >= limit || !paced(box, limit, sequence)) continue;
@@ -106,7 +110,9 @@ export async function runDueSteps(now = new Date()) {
       const previous = step.sameThread
         ? await db.message.findFirst({ where: { enrollmentId: enr.id, error: null }, orderBy: { sentAt: "desc" } })
         : null;
-      const subject = previous ? `Re: ${previous.subject.replace(/^Re:\s*/i, "")}` : renderTemplate(variant.subject, contact, ctx);
+      // un paso de WhatsApp que sale por email no tiene asunto propio: sigue el hilo anterior o usa uno sencillo
+      const asunto = cambio ? `{{mi_empresa}} · {{empresa}}` : variant.subject;
+      const subject = previous ? `Re: ${previous.subject.replace(/^Re:\s*/i, "")}` : renderTemplate(asunto, contact, ctx);
       const trackingId = randomUUID();
       let messageId = `<${trackingId}@sin-enviar>`;
       let error: string | null = null;
@@ -154,7 +160,7 @@ export async function runDueSteps(now = new Date()) {
         await db.enrollment.update({ where: { id: enr.id }, data: { nextRunAt: new Date(now.getTime() + 3600_000) } });
         continue;
       }
-    } else if (step.type === "WHATSAPP" && step.waTemplate && waApiReady(sequence.sender)) {
+    } else if (tipo === "WHATSAPP" && !cambio && step.waTemplate && waApiReady(sequence.sender)) {
       // WhatsApp automático: plantilla aprobada por Meta desde el número del remitente.
       const sender = sequence.sender!;
       if ((waBySender.get(sender.id) ?? 0) >= sender.waDailyLimit) continue;
@@ -188,11 +194,18 @@ export async function runDueSteps(now = new Date()) {
         });
         summary.tasks++;
       } else await eventoRadar(contact, { k: "wa", secuencia: sequence.name, por: sender.name.split(/\s+/)[0] });
-    } else if (step.type === "WHATSAPP") {
-      // Sin plantilla aprobada o sin número conectado a la API: queda como tarea con el mensaje listo para abrir.
+    } else if (tipo === "WHATSAPP") {
+      // Sin plantilla aprobada o sin número conectado a la API (o un email que pasó a WhatsApp porque no tiene
+      // email válido): queda como tarea con el mensaje listo para abrir.
       const who = contact.company || [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.phone || "contacto";
+      const variant = cambio ? pickVariant(`${enr.id}:${step.id}`, stepVariants(step)) : null;
       await db.task.create({
-        data: { enrollmentId: enr.id, kind: "WHATSAPP", title: renderTemplate(step.subject || `WhatsApp a ${who}`, contact, ctx), notes: renderTemplate(step.body, contact, ctx) },
+        data: {
+          enrollmentId: enr.id,
+          kind: "WHATSAPP",
+          title: cambio ? `WhatsApp a ${who} (no tiene email: va el texto del email)` : renderTemplate(step.subject || `WhatsApp a ${who}`, contact, ctx),
+          notes: renderTemplate(variant ? variant.body : step.body, contact, ctx),
+        },
       });
       summary.tasks++;
     } else {

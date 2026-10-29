@@ -5,6 +5,7 @@ import { camposContacto, verificar } from "../verifier";
 import { waNum } from "../whatsapp";
 import { getDoc, hoyAR, touchProspect, type RadarData } from "./store";
 import { provNom, rubNom } from "./geo";
+import { deOtroVendedor } from "../dueno";
 
 /**
  * Puente entre el Radar y las secuencias de Outreach: una empresa del Radar se suma a una secuencia como contacto
@@ -24,7 +25,7 @@ export function datosContacto(radarId: string, p: RadarData) {
   };
 }
 
-export type ResultadoEnrolar = { sumadas: number; yaEstaban: number; sinEmail: number; emailMalo: number; sinCanal: number; corregidos: number; noEncontradas: number; bajas: number };
+export type ResultadoEnrolar = { sumadas: number; yaEstaban: number; sinEmail: number; emailMalo: number; sinCanal: number; corregidos: number; noEncontradas: number; bajas: number; deOtro: number };
 
 /** Suma empresas del Radar a una secuencia de Outreach. Verifica cada email antes (y corrige tipeos evidentes). */
 export async function enrolarProspectos(sequenceId: string, ids: string[], por = "Outreach"): Promise<ResultadoEnrolar> {
@@ -33,7 +34,7 @@ export async function enrolarProspectos(sequenceId: string, ids: string[], por =
   const first = seq.steps[0];
   if (!first) throw new Error("La secuencia no tiene pasos: agregale al menos uno en Outreach.");
   const tieneMail = seq.steps.some((st) => st.type === "EMAIL");
-  const r: ResultadoEnrolar = { sumadas: 0, yaEstaban: 0, sinEmail: 0, emailMalo: 0, sinCanal: 0, corregidos: 0, noEncontradas: 0, bajas: 0 };
+  const r: ResultadoEnrolar = { sumadas: 0, yaEstaban: 0, sinEmail: 0, emailMalo: 0, sinCanal: 0, corregidos: 0, noEncontradas: 0, bajas: 0, deOtro: 0 };
   const runAt = nextSendTime(new Date(), first.delayDays, windowFor(seq));
 
   for (const id of [...new Set(ids)].slice(0, 500)) {
@@ -99,6 +100,11 @@ export async function enrolarProspectos(sequenceId: string, ids: string[], por =
     const ya = await db.enrollment.findUnique({ where: { sequenceId_contactId: { sequenceId, contactId: contact.id } }, select: { id: true } });
     if (ya) {
       r.yaEstaban++;
+      continue;
+    }
+    // la empresa ya la trabaja otro vendedor: no se le escribe dos veces
+    if ((await deOtroVendedor(sequenceId, [contact.id])).size) {
+      r.deOtro++;
       continue;
     }
     await db.enrollment.create({ data: { sequenceId, contactId: contact.id, nextStep: first.order, nextRunAt: runAt } });
