@@ -8,6 +8,8 @@ import { asignarDuenosPendientes } from "@/lib/dueno";
 import { primerNombre, usuarioActual } from "@/lib/usuario";
 import { MarcarContacto, MarcarTodos, SumarASecuencia } from "@/components/SumarASecuencia";
 import { AsignarVendedor } from "@/components/AsignarVendedor";
+import { WhatsappContacto } from "@/components/WhatsappContacto";
+import { contactWa } from "@/lib/whatsapp";
 import { addContact, corregirEmail, deleteContact, verificarContactos } from "./actions";
 
 export const metadata = { title: "Contactos" };
@@ -220,11 +222,17 @@ export default async function Contacts({
                         )}
                       </td>
                       <td className="w-px">
+                        <span className="flex items-center">
+                        {/* WhatsApp desde el número de quien escribe (no a los clientes de otro, ni a bajas o «no contactar») */}
+                        {contactWa(c) && !c.unsubscribed && !c.tags.includes("no contactar") && (u.admin || !c.ownerId || c.ownerId === u.senderId) && (
+                          <WhatsappContacto id={c.id} nombre={fullName(c)} />
+                        )}
                         {(u.admin || !c.ownerId || c.ownerId === u.senderId) && <form action={deleteContact.bind(null, c.id)}>
                           <button className="grid h-8 w-8 place-items-center rounded-lg text-[#FF9A9A] transition hover:bg-bad/15 hover:text-white" aria-label={`Eliminar ${fullName(c)}`} title="Eliminar contacto">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 7h16M10 11v6M14 11v6M5.5 7l1 12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>
                           </button>
                         </form>}
+                        </span>
                       </td>
                     </tr>
                   );
