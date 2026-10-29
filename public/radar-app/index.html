@@ -789,6 +789,9 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
 #rdr .ml-lim[data-nivel="tope"] .wa-bar i{background:#D9483B}
 #rdr .ml-modo{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 #rdr .ml-de{margin-top:-6px}
+#rdr .tm-cfg{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:18px;border:1px solid var(--line);background:var(--surface)}
+#rdr .tm-cfg .hint{margin:0}
+#rdr .tm-cfg .chips{flex-wrap:wrap}
 #rdr .ml-hero{display:flex;gap:12px;align-items:center;padding:14px;border-radius:18px;border:1px solid color-mix(in srgb,#4F8DF5 40%,var(--line));background:color-mix(in srgb,#4F8DF5 10%,var(--surface))}
 #rdr .ml-hero b{display:block;font:650 16px/1.25 var(--display)}
 #rdr .ml-hero small{display:block;color:var(--muted);font-size:13px;margin-top:3px}
@@ -1458,7 +1461,7 @@ body.dp-solo #rdr .brand-back .bk svg{width:20px;height:20px}
         return { payload: j };
       }
       if (server === "Gmail" && (tool === "send_message" || tool === "search_threads" || tool === "get_thread")) {
-        var r = await api("/gmail", { tool: tool, input: input || {}, desde: yo().senderId || null });
+        var r = await api("/gmail", { tool: tool, input: input || {}, desde: window.__dpDesde || yo().senderId || null });
         return { payload: r.payload };
       }
       throw err("not_in_manifest", "Herramienta no disponible en la web: " + server + " · " + tool);
@@ -3331,7 +3334,7 @@ function vSpeech(){ const r=LS.get("spRub","logistica"); const R=RUB[r]||RUB.otr
   </section>`; }
 
 /* ---------- hojas ---------- */
-function abrir(titulo,html,montar){ const sh=$("#sheet"); sh.innerHTML=`<div class="sheet-back" data-act="cerrar"></div><div class="sheet-panel" role="dialog" aria-modal="true" aria-label="${esc(titulo)}"><div class="sheet-head"><h2>${esc(titulo)}</h2><button class="icon-btn" data-act="cerrar" aria-label="Cerrar">${IC.x}</button></div><div class="sheet-body">${html}</div></div>`; sh.hidden=false; RSCROLL.style.overflow="hidden"; if(montar) montar(sh.querySelector(".sheet-body")); }
+function abrir(titulo,html,montar){ MAIL_REM=null; window.__dpDesde=null; const sh=$("#sheet"); sh.innerHTML=`<div class="sheet-back" data-act="cerrar"></div><div class="sheet-panel" role="dialog" aria-modal="true" aria-label="${esc(titulo)}"><div class="sheet-head"><h2>${esc(titulo)}</h2><button class="icon-btn" data-act="cerrar" aria-label="Cerrar">${IC.x}</button></div><div class="sheet-body">${html}</div></div>`; sh.hidden=false; RSCROLL.style.overflow="hidden"; if(montar) montar(sh.querySelector(".sheet-body")); }
 function cerrar(){ const sh=$("#sheet"); sh.hidden=true; sh.innerHTML=""; RSCROLL.style.overflow=""; }
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!$("#sheet").hidden&&radarVisible()) cerrar(); });
 const pById=id=>S.P.find(p=>p.id===id);
@@ -3708,7 +3711,14 @@ function plantilla0(p,tipo){ const c=S.cfg, R=RUB[p.rubro]||RUB.otro, yo=c.vende
 /* =================== MAIL: desde tu correo (luis@plupackembalajes.com) =================== */
 /* en la web cada persona elige quién es (Ajustes): su nombre firma los mensajes y su buzón manda los mails */
 function yoCfg(){ const y=(window.__dpYo&&window.__dpYo())||{}, o={}; if(y.name) o.vendedor=y.name; if(y.email) o.mailDe=y.email; return o; }
-const mailDe=()=>S.cfg.mailDe||S.cfg.firmaEmail||"luis@plupackembalajes.com";
+/* buzón elegido en la «Tanda de mails» (solo mientras está abierta) */
+let MAIL_REM=null;
+const mailDe=()=>(MAIL_REM&&MAIL_REM.email)||S.cfg.mailDe||S.cfg.firmaEmail||"luis@plupackembalajes.com";
+/* mensaje propio para la tanda: {{empresa}}, {{ciudad}}, {{rubro}}, {{saludo}}, {{vendedor}} se completan en cada mail */
+const TM_PL0={su:"{{mi_empresa}} - {{empresa}}",tx:"{{saludo}}, equipo de {{empresa}}:\n\nMi nombre es {{vendedor}} y les escribo de {{mi_empresa}}. Trabajamos film stretch, bolsas y descartables para comercios de {{ciudad}}.\n\n¿Podrían indicarme con quién puedo hablar sobre compras?\n\nSaludos cordiales,\n{{firma}}"};
+function plMail(t,p){ const c=S.cfg, yo=c.firmaNombre||c.vendedor||"", v={empresa:p.nombre||"su empresa",ciudad:p.ciudad||provNom(p.provincia)||"su zona",rubro:rubNom(p.rubro).toLowerCase(),
+    saludo:new Date().getHours()<13?"Buenos días":"Buenas tardes",vendedor:nom1(yo),firma:yo,mi_empresa:EMP_MAIL};
+  return String(t||"").replace(/\{\{\s*(\w+)\s*\}\}/g,(m,k)=>k in v?v[k]:m); }
 const mailModo=()=>LS.get("mailModo","app");
 const topeMail=()=>Math.max(5,+S.cfg.limiteMail||40);
 const esMail=e=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(e||"").trim());
@@ -3815,10 +3825,31 @@ const candMail=()=>activos().filter(p=>esMail(p.email)&&vfyOk(p)&&!deOtro(p)&&![
 function tandaMail(){ let L=candMail(), i=0, hechos=0, salt=0, auto=false, gm=false, err="";
   if(!L.length){ toast("No hay empresas con email pendientes de mail"); return; }
   abrir("Tanda de mails",`<div class="ml-hero"><span class="ml-ic" aria-hidden="true">✉️</span><span><b>${L.length} empresa${L.length===1?"":"s"} con email esperando tu mail</b><small id="tm-hs">Revisás y tocás «Abrir mail»: se abre tu correo con todo escrito y al volver pasa a la siguiente.</small></span></div>
+   <div class="tm-cfg"><div class="fld"><span>Sale desde</span>${esAdm()&&(S.eq||[]).length>1?`<select id="tm-de">${(S.eq||[]).map(r=>`<option value="${esc(r.id)}">${esc(r.nombre)} · ${esc(r.email)}${r.conectado===false?" (sin conectar)":""}</option>`).join("")}</select>`:`<b id="tm-de-b"></b>`}</div><p class="hint" id="tm-de-h"></p>
+   <div class="fld"><span>Mensaje</span><div class="seg chips" role="group" aria-label="Qué mensaje mandar"><button type="button" class="chip" data-tmm="auto">Automático según el rubro</button><button type="button" class="chip" data-tmm="mio">Escribir el mío</button></div></div>
+   <div id="tm-pl" class="stack" hidden><label class="fld"><span>Asunto para todos</span><input id="tm-plsu"></label><label class="fld"><span>Mensaje para todos</span><textarea id="tm-pltx" rows="9"></textarea></label>
+   <p class="hint">Estas palabras se completan solas en cada mail: <b>{{empresa}}</b>, <b>{{ciudad}}</b>, <b>{{rubro}}</b>, <b>{{saludo}}</b> (buenos días o buenas tardes), <b>{{vendedor}}</b> y <b>{{firma}}</b> (nombre de quien manda). Abajo podés retocar cada mail antes de enviarlo.</p>
+   <button type="button" class="btn sm ghost" id="tm-plrst">Volver al texto de ejemplo</button></div></div>
    <div id="tm-lim" aria-live="polite"></div>${adjHTML("tm-adj")}<div id="tm-auto" hidden></div><div id="tm-man">${mailModoHTML()}</div><div id="tm-box"></div>`,root=>{
     const box=root.querySelector("#tm-box"), lim=root.querySelector("#tm-lim"), ab=root.querySelector("#tm-auto"); let tic=null;
     const A=montarAdj(root,"tm-adj",()=>gm);
     const vivo=()=>document.body.contains(box);
+    let modo=LS.get("tmModo","auto"), pl=Object.assign({},TM_PL0,LS.get("tmPl",{}));
+    const deSel=root.querySelector("#tm-de"), plBox=root.querySelector("#tm-pl"), plSu=root.querySelector("#tm-plsu"), plTx=root.querySelector("#tm-pltx");
+    const hs=()=>{ if(gm) root.querySelector("#tm-hs").textContent="Gmail está conectado: la app los manda sola desde "+mailDe()+". Revisá el texto o tocá «Enviar automáticamente»."; };
+    const ponerDe=r=>{ MAIL_REM=r||null; window.__dpDesde=r?r.id:null; const b=root.querySelector("#tm-de-b"); if(b) b.textContent=mailDe(); const md=root.querySelector(".ml-de b"); if(md) md.textContent=mailDe(); if(deSel&&r) deSel.value=r.id;
+      root.querySelector("#tm-de-h").innerHTML=r&&r.conectado===false?`<b>${esc(nom1(r.nombre))} todavía no conectó su Gmail</b>, así que no se puede mandar solo desde ese buzón. <button class="rd-lnk" data-act="irOut" data-href="/remitentes">Conectarlo en Remitentes</button>`
+        :deSel?"Los mails salen desde este buzón y van firmados con su nombre.":"Los mails salen desde tu buzón y van firmados con tu nombre."; hs(); };
+    ponerDe(esAdm()?(remPorId(LS.get("tmDe",""))||remYo()||(S.eq||[])[0]):remYo());
+    if(deSel) deSel.onchange=()=>{ LS.set("tmDe",deSel.value); ponerDe(remPorId(deSel.value)); if(!auto) pinta(); };
+    const ponerModo=m=>{ modo=m; LS.set("tmModo",m); root.querySelectorAll("[data-tmm]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.tmm===m)); plBox.hidden=m!=="mio"; };
+    plSu.value=pl.su; plTx.value=pl.tx; ponerModo(modo);
+    root.querySelectorAll("[data-tmm]").forEach(b=>b.onclick=()=>{ ponerModo(b.dataset.tmm); if(!auto) pinta(); });
+    const plGuardar=()=>{ pl={su:plSu.value,tx:plTx.value}; LS.set("tmPl",pl); if(!auto) pinta(); };
+    plSu.oninput=plGuardar; plTx.oninput=plGuardar;
+    root.querySelector("#tm-plrst").onclick=()=>{ plSu.value=TM_PL0.su; plTx.value=TM_PL0.tx; plGuardar(); };
+    const asu=(p,tipo)=>conRem(MAIL_REM,()=>modo==="mio"?plMail(pl.su,p):asuntoMail(p,tipo));
+    const cue=(p,tipo)=>conRem(MAIL_REM,()=>{ if(modo!=="mio") return cuerpoMail(p,tipo); const t=plMail(pl.tx,p); return /\bBAJA\b/.test(t)?t:t+pieBaja(); });
     const pintLim=()=>{ const p=L[i], X=mailLimHTML(p); lim.innerHTML=X.html; const go=box.querySelector("#tm-go"); if(go) go.setAttribute("aria-disabled",X.bloq?"true":"false"); const sd=box.querySelector("#tm-send"); if(sd) sd.disabled=X.bloq||auto; clearTimeout(tic); if(X.espera>0&&vivo()) tic=setTimeout(pintLim,1000); return X; };
     const pintAuto=(msg)=>{ if(!gm){ ab.hidden=true; return; } ab.hidden=false; const resto=Math.min(L.length-i,Math.max(0,topeMail()-mailsHoy()));
       ab.innerHTML=auto?`<div class="tm-run"><span class="ml-spin"></span><span><b>Enviando solo…</b><small>${msg||`Mandó ${hechos}. Uno cada ${ESPERA_MAIL} segundos para no caer en spam. Podés dejar esta pantalla abierta.`}</small></span><button class="btn sm" id="tm-stop">⏸ Pausar</button></div>`
@@ -3829,7 +3860,7 @@ function tandaMail(){ let L=candMail(), i=0, hechos=0, salt=0, auto=false, gm=fa
       const tipo=(p.etapa||"nuevo")==="nuevo"?"primer":"seguimiento", loc=[p.ciudad,provNom(p.provincia)].filter(Boolean).join(", ");
       box.innerHTML=`<div class="tm-prog"><span>Empresa <b class="num">${i+1}</b> de <b class="num">${L.length}</b></span><div class="wa-bar"><i style="width:${(i/L.length*100).toFixed(1)}%"></i></div></div>
        <div class="ml-card"><div class="tm-who"><span class="pc-ic" aria-hidden="true">${rubIc(p.rubro)}</span><span><b>${esc(p.nombre)}</b><small>${esc(rubNom(p.rubro))}${loc?" · "+esc(loc):""}</small><small class="tm-to">${esc(p.email)}</small></span></div>
-       <label class="fld"><span>Asunto</span><input id="tm-su" value="${esc(asuntoMail(p,tipo))}"></label><label class="fld"><span>Mensaje</span><textarea id="tm-tx" rows="9">${esc(cuerpoMail(p,tipo))}</textarea></label></div>
+       <label class="fld"><span>Asunto</span><input id="tm-su" value="${esc(asu(p,tipo))}"></label><label class="fld"><span>Mensaje</span><textarea id="tm-tx" rows="9">${esc(cue(p,tipo))}</textarea></label></div>
        ${gm?`<button class="btn ml-go block" id="tm-send" ${auto?"disabled":""}>${IC.mail}<span>Enviar esta ahora</span></button><p class="hint ml-st" id="tm-st" role="status"></p>`:`<a class="btn ml-go block" id="tm-go" href="#" target="_blank" rel="noopener">${IC.mail}<span>Abrir mail ${i+1} de ${L.length}</span></a>`}
        <div class="row"><button class="btn" id="tm-skip" ${auto?"disabled":""}>Saltear esta</button><button class="btn ghost" data-act="cerrar">Terminar por hoy</button></div>`;
       p._tipo=tipo;
@@ -3850,7 +3881,7 @@ function tandaMail(){ let L=candMail(), i=0, hechos=0, salt=0, auto=false, gm=fa
       while(auto&&vivo()&&L[i]){ if(mailsHoy()>=topeMail()){ err="Llegaste al límite de mails de hoy. Mañana seguís."; break; }
         if(!await esperar()) break; pinta(); if(!await mandarUno()) break; i++; pinta(); }
       auto=false; if(vivo()){ pinta(); } };
-    mcpGmail().then(m=>{ if(!m||!vivo()) return; gm=true; A.txt(); root.querySelector("#tm-man").hidden=true; root.querySelector("#tm-hs").textContent="Gmail está conectado: la app los manda sola desde "+mailDe()+". Revisá el texto o tocá «Enviar automáticamente»."; pinta(); });
+    mcpGmail().then(m=>{ if(!m||!vivo()) return; gm=true; A.txt(); root.querySelector("#tm-man").hidden=true; hs(); pinta(); });
     root.querySelectorAll("[data-mlm]").forEach(b=>b.onclick=()=>{ LS.set("mailModo",b.dataset.mlm); root.querySelectorAll("[data-mlm]").forEach(x=>x.setAttribute("aria-pressed",x===b)); const go=box.querySelector("#tm-go"), p=L[i]; if(go&&p) go.href=mailLink(p.email,box.querySelector("#tm-su").value,box.querySelector("#tm-tx").value); });
     pinta(); }); }
 
