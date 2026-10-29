@@ -24,7 +24,7 @@ export function datosContacto(radarId: string, p: RadarData) {
   };
 }
 
-export type ResultadoEnrolar = { sumadas: number; yaEstaban: number; sinEmail: number; emailMalo: number; sinCanal: number; corregidos: number; noEncontradas: number };
+export type ResultadoEnrolar = { sumadas: number; yaEstaban: number; sinEmail: number; emailMalo: number; sinCanal: number; corregidos: number; noEncontradas: number; bajas: number };
 
 /** Suma empresas del Radar a una secuencia de Outreach. Verifica cada email antes (y corrige tipeos evidentes). */
 export async function enrolarProspectos(sequenceId: string, ids: string[], por = "Outreach"): Promise<ResultadoEnrolar> {
@@ -33,7 +33,7 @@ export async function enrolarProspectos(sequenceId: string, ids: string[], por =
   const first = seq.steps[0];
   if (!first) throw new Error("La secuencia no tiene pasos: agregale al menos uno en Outreach.");
   const tieneMail = seq.steps.some((st) => st.type === "EMAIL");
-  const r: ResultadoEnrolar = { sumadas: 0, yaEstaban: 0, sinEmail: 0, emailMalo: 0, sinCanal: 0, corregidos: 0, noEncontradas: 0 };
+  const r: ResultadoEnrolar = { sumadas: 0, yaEstaban: 0, sinEmail: 0, emailMalo: 0, sinCanal: 0, corregidos: 0, noEncontradas: 0, bajas: 0 };
   const runAt = nextSendTime(new Date(), first.delayDays, windowFor(seq));
 
   for (const id of [...new Set(ids)].slice(0, 500)) {
@@ -67,6 +67,11 @@ export async function enrolarProspectos(sequenceId: string, ids: string[], por =
     const base = datosContacto(id, p);
     let contact = await db.contact.findFirst({ where: { radarId: id } });
     if (!contact && email) contact = await db.contact.findUnique({ where: { email } });
+    // a quien pidió la baja o rebotó no se le vuelve a escribir
+    if (contact && (contact.unsubscribed || contact.bounced)) {
+      r.bajas++;
+      continue;
+    }
     const emailData = email && vfy ? { email, ...camposContacto(vfy) } : {};
     if (contact) {
       const taken = email && contact.email !== email ? await db.contact.findUnique({ where: { email }, select: { id: true } }) : null;

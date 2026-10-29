@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  agregarPersona, buscarContactos, buscarRadar, inscribirContactos, inscribirRadar,
-  type ContactoHallado, type EmpresaHallada, type Resultado,
+  agregarPersona, buscarContactos, buscarRadar, idsRadar, inscribirContactos, inscribirRadar, inscribirRadarTanda,
+  type ContactoHallado, type EmpresaHallada, type FiltroRadar, type Resultado,
 } from "@/app/(app)/secuencias/personas-actions";
 import { BotonCerrar } from "./BotonCerrar";
 import { BotonGuardar } from "./BotonGuardar";
@@ -66,7 +66,7 @@ function UnaPersona({ sequenceId }: { sequenceId: string }) {
 
 /** Buscador con casillas: contactos de Outreach o empresas del Radar. */
 function Buscador<T extends { id: string }>({
-  placeholder, buscar, sumar, fila, deshabilitada, vacio, sumarTexto,
+  placeholder, buscar, sumar, fila, deshabilitada, vacio, sumarTexto, cabecera, recargar = 0,
 }: {
   placeholder: string;
   buscar: (q: string) => Promise<T[]>;
@@ -75,6 +75,10 @@ function Buscador<T extends { id: string }>({
   deshabilitada?: (x: T) => string | null;
   vacio: string;
   sumarTexto: (n: number) => string;
+  /** Lo que va entre el buscador y la lista; recibe lo que está escrito. */
+  cabecera?: (q: string) => React.ReactNode;
+  /** Cambiarlo vuelve a buscar (por ejemplo, después de una carga masiva). */
+  recargar?: number;
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -90,12 +94,13 @@ function Buscador<T extends { id: string }>({
       startB(async () => { const r = await buscar(q); if (n === turno.current) setLista(r); });
     }, q ? 250 : 0);
     return () => clearTimeout(t);
-  }, [q, buscar]);
+  }, [q, buscar, recargar]);
   const elegibles = (lista ?? []).filter((x) => !deshabilitada?.(x));
   const todas = elegibles.length > 0 && elegibles.every((x) => sel.has(x.id));
   return (
     <div className="flex flex-col gap-3">
       <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} className="input" autoFocus aria-label="Buscar" />
+      {cabecera?.(q)}
       <div className="flex flex-wrap items-center justify-between gap-2 text-[13px] text-muted">
         <span>{buscando && !lista ? "Buscando…" : lista ? `${lista.length === 40 ? "Las primeras 40" : lista.length} · ${sel.size} elegida${sel.size === 1 ? "" : "s"}` : ""}</span>
         {elegibles.length > 0 && (
@@ -144,6 +149,121 @@ function Buscador<T extends { id: string }>({
   );
 }
 
+const FILTROS: [FiltroRadar, string][] = [["canal", "Con email o WhatsApp"], ["email", "Con email"], ["wa", "Con WhatsApp"], ["todas", "Todas"]];
+const TANDA = 25;
+
+/**
+ * Empresas del Radar: se eligen a mano o se suman todas las que cumplen el filtro (no solo las 40 que se ven).
+ * La carga masiva va de a tandas para no pasarse del tiempo de cada pedido y mostrar cuánto falta.
+ */
+function DelRadar({ sequenceId }: { sequenceId: string }) {
+  const router = useRouter();
+  const [filtro, setFiltro] = useState<FiltroRadar>("canal");
+  const [recargar, setRecargar] = useState(0);
+  const buscar = useCallback((q: string) => buscarRadar(sequenceId, q, filtro), [sequenceId, filtro]);
+  const pl = (n: number, a: string, b: string) => `${n.toLocaleString("es-AR")} ${n === 1 ? a : b}`;
+  return (
+    <Buscador<EmpresaHallada>
+      placeholder="Buscá empresas del Radar por nombre, ciudad, email o teléfono"
+      buscar={buscar}
+      recargar={recargar}
+      sumar={(ids) => inscribirRadar(sequenceId, ids)}
+      vacio="No hay empresas del Radar con esa búsqueda."
+      deshabilitada={(p) => (p.ya ? "Ya está" : p.bloqueo ?? (p.sinCanal ? "Sin email ni WhatsApp" : null))}
+      sumarTexto={(n) => (n ? `Sumar ${pl(n, "empresa", "empresas")}` : "Elegí qué empresas sumar")}
+      cabecera={(q) => (
+        <>
+          <div className="seg" role="group" aria-label="Qué empresas mostrar">
+            {FILTROS.map(([k, t]) => (
+              <button key={k} type="button" className="seg-item" aria-pressed={filtro === k} aria-current={filtro === k ? "page" : undefined} onClick={() => setFiltro(k)}>
+                {t}
+              </button>
+            ))}
+          </div>
+          {filtro !== "todas" && (
+            <SumarTodas sequenceId={sequenceId} q={q} filtro={filtro} recargar={recargar} listo={() => { setRecargar((n) => n + 1); router.refresh(); }} />
+          )}
+        </>
+      )}
+      fila={(p) => (
+        <>
+          <b className="block truncate font-medium text-white">{p.nombre}</b>
+          <span className="block truncate text-xs text-muted">{[p.lugar, p.email, p.telefono].filter(Boolean).join(" · ")}</span>
+        </>
+      )}
+    />
+  );
+}
+
+/** «Sumar las N»: cuenta todas las empresas que cumplen la búsqueda y el filtro y las suma de a tandas. */
+function SumarTodas({ sequenceId, q, filtro, recargar, listo }: { sequenceId: string; q: string; filtro: FiltroRadar; recargar: number; listo: () => void }) {
+  const [ids, setIds] = useState<string[] | null>(null);
+  const [avance, setAvance] = useState<{ hechas: number; total: number } | null>(null);
+  const [res, setRes] = useState<Resultado | null>(null);
+  const turno = useRef(0);
+  useEffect(() => {
+    setIds(null);
+    const t = setTimeout(() => {
+      const n = ++turno.current;
+      idsRadar(sequenceId, q, filtro).then((r) => { if (n === turno.current) setIds(r); }, () => { if (n === turno.current) setIds([]); });
+    }, q ? 250 : 0);
+    return () => clearTimeout(t);
+  }, [sequenceId, q, filtro, recargar]);
+  const que = filtro === "email" ? "con email" : filtro === "wa" ? "con WhatsApp" : "con email o WhatsApp";
+  const n = ids?.length ?? 0;
+  const fmt = (x: number) => x.toLocaleString("es-AR");
+
+  async function sumarTodas() {
+    if (!ids?.length) return;
+    if (!window.confirm(`¿Sumar ${fmt(ids.length)} ${ids.length === 1 ? "empresa" : "empresas"} del Radar ${que} a esta secuencia?\n\nNo se envía nada ahora: los mensajes salen solo si la secuencia está encendida.`)) return;
+    setRes(null);
+    const tot = { sumadas: 0, yaEstaban: 0, sinCanal: 0, bajas: 0, corregidos: 0 };
+    let error = "";
+    setAvance({ hechas: 0, total: ids.length });
+    for (let i = 0; i < ids.length; i += TANDA) {
+      const r = await inscribirRadarTanda(sequenceId, ids.slice(i, i + TANDA)).catch(() => ({ error: "Se cortó la conexión." }));
+      if ("error" in r) { error = r.error; break; }
+      tot.sumadas += r.sumadas; tot.yaEstaban += r.yaEstaban; tot.sinCanal += r.sinCanal; tot.bajas += r.bajas; tot.corregidos += r.corregidos;
+      setAvance({ hechas: Math.min(i + TANDA, ids.length), total: ids.length });
+    }
+    setAvance(null);
+    const partes = [`${fmt(tot.sumadas)} ${tot.sumadas === 1 ? "empresa sumada" : "empresas sumadas"}`];
+    if (tot.yaEstaban) partes.push(`${fmt(tot.yaEstaban)} ya ${tot.yaEstaban === 1 ? "estaba" : "estaban"}`);
+    if (tot.sinCanal) partes.push(`${fmt(tot.sinCanal)} sin email ni WhatsApp válido`);
+    if (tot.bajas) partes.push(`${fmt(tot.bajas)} ${tot.bajas === 1 ? "omitida" : "omitidas"} por baja o rebote`);
+    if (tot.corregidos) partes.push(`${fmt(tot.corregidos)} ${tot.corregidos === 1 ? "email corregido" : "emails corregidos"}`);
+    setRes(error ? { error: `${error} Alcanzó a sumar ${partes.join(" · ")}. Podés volver a tocar el botón para seguir con las que faltan.` } : { ok: partes.join(" · ") + "." });
+    listo();
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="well flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-[13px]">
+        <span className="text-muted">
+          {avance
+            ? `Sumando… ${fmt(avance.hechas)} de ${fmt(avance.total)}`
+            : ids === null
+              ? "Contando…"
+              : n
+                ? <><b className="font-semibold text-white">{fmt(n)}</b> {n === 1 ? "empresa" : "empresas"} {que}{q.trim() ? " con esa búsqueda" : ""} para sumar</>
+                : `No quedan empresas ${que} para sumar${q.trim() ? " con esa búsqueda" : ""}.`}
+        </span>
+        {n > 0 && (
+          <button type="button" className="btn" disabled={!!avance} onClick={sumarTodas}>
+            {avance ? "Sumando…" : `Sumar las ${fmt(n)}`}
+          </button>
+        )}
+      </div>
+      {avance && (
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/[.08]" role="progressbar" aria-valuemin={0} aria-valuemax={avance.total} aria-valuenow={avance.hechas}>
+          <div className="h-full rounded-full bg-brand-2 transition-all" style={{ width: `${(avance.hechas / avance.total) * 100}%` }} />
+        </div>
+      )}
+      <Aviso r={res} />
+    </div>
+  );
+}
+
 /**
  * «Añadir personas» de una secuencia: una persona cargada a mano, contactos que ya están en Outreach, empresas del
  * Radar o todos los de una etiqueta. Es un diálogo nativo: va por encima de la tabla.
@@ -153,7 +273,6 @@ export function AnadirPersonas({ sequenceId, tags, porEtiqueta }: { sequenceId: 
   const [pestaña, setPestaña] = useState<Pestaña>("persona");
   const [etqOk, setEtqOk] = useState(false);
   const bContactos = useRef((q: string) => buscarContactos(sequenceId, q)).current;
-  const bRadar = useRef((q: string) => buscarRadar(sequenceId, q)).current;
   const pl = (n: number, a: string, b: string) => `${n} ${n === 1 ? a : b}`;
   return (
     <>
@@ -196,22 +315,7 @@ export function AnadirPersonas({ sequenceId, tags, porEtiqueta }: { sequenceId: 
               )}
             />
           )}
-          {pestaña === "radar" && (
-            <Buscador<EmpresaHallada>
-              placeholder="Buscá empresas del Radar por nombre, ciudad, email o teléfono"
-              buscar={bRadar}
-              sumar={(ids) => inscribirRadar(sequenceId, ids)}
-              vacio="No hay empresas del Radar con esa búsqueda."
-              deshabilitada={(p) => (p.ya ? "Ya está" : p.sinCanal ? "Sin email ni WhatsApp" : null)}
-              sumarTexto={(n) => (n ? `Sumar ${pl(n, "empresa", "empresas")}` : "Elegí qué empresas sumar")}
-              fila={(p) => (
-                <>
-                  <b className="block truncate font-medium text-white">{p.nombre}</b>
-                  <span className="block truncate text-xs text-muted">{[p.lugar, p.email, p.telefono].filter(Boolean).join(" · ")}</span>
-                </>
-              )}
-            />
-          )}
+          {pestaña === "radar" && <DelRadar sequenceId={sequenceId} />}
           {pestaña === "etiqueta" && (
             <form action={async (f) => { await porEtiqueta(f); setEtqOk(true); }} className="flex flex-col gap-3">
               <label className="flex flex-col">

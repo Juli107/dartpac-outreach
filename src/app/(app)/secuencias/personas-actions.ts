@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { nextSendTime, windowFor } from "@/lib/schedule";
 import { camposContacto, verificar } from "@/lib/verifier";
-import { enrolarProspectos } from "@/lib/radar/outreach";
+import { enrolarProspectos, type ResultadoEnrolar } from "@/lib/radar/outreach";
 import { provNom } from "@/lib/radar/geo";
 import type { RadarData } from "@/lib/radar/store";
 import { waNum } from "@/lib/whatsapp";
@@ -12,7 +13,7 @@ import { quienSoy } from "@/lib/yo";
 
 export type Resultado = { ok?: string; error?: string };
 export type ContactoHallado = { id: string; nombre: string; email: string | null; empresa: string | null; telefono: string | null; aviso: string | null };
-export type EmpresaHallada = { id: string; nombre: string; lugar: string; email: string | null; telefono: string | null; ya: boolean; sinCanal: boolean };
+export type EmpresaHallada = { id: string; nombre: string; lugar: string; email: string | null; telefono: string | null; ya: boolean; sinCanal: boolean; bloqueo: string | null };
 
 const plural = (n: number, a: string, b: string) => `${n.toLocaleString("es-AR")} ${n === 1 ? a : b}`;
 
@@ -136,31 +137,84 @@ export async function inscribirContactos(sequenceId: string, ids: string[]): Pro
   }
 }
 
-/** Empresas del Radar (por nombre, ciudad, email o teléfono), marcando las que ya están en esta secuencia. */
-export async function buscarRadar(sequenceId: string, q: string): Promise<EmpresaHallada[]> {
+/** Qué empresas del Radar mostrar según cómo se les puede escribir. */
+export type FiltroRadar = "todas" | "canal" | "email" | "wa";
+
+/** Condiciones SQL del buscador del Radar: el texto buscado y, si se pide, que tenga email y/o WhatsApp. */
+function whereRadar(q: string, filtro: FiltroRadar) {
   const t = q.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const like = `%${t.replace(/[%_\\]/g, (c) => "\\" + c)}%`;
+  const conEmail = Prisma.sql`coalesce(trim(data->>'email'), '') <> ''`;
+  // aproximado (8 dígitos o más); waNum lo confirma después
+  const conWa = Prisma.sql`(length(regexp_replace(coalesce(data->>'whatsapp', ''), '[^0-9]', '', 'g')) >= 8 OR length(regexp_replace(coalesce(data->>'telefono', ''), '[^0-9]', '', 'g')) >= 8)`;
+  const canal =
+    filtro === "email" ? Prisma.sql`AND ${conEmail}` :
+    filtro === "wa" ? Prisma.sql`AND ${conWa}` :
+    filtro === "canal" ? Prisma.sql`AND (${conEmail} OR ${conWa})` : Prisma.empty;
+  return Prisma.sql`col = 'prospectos' AND deleted = false
+      AND translate(lower(concat_ws(' ', data->>'nombre', data->>'ciudad', data->>'email', data->>'telefono', data->>'whatsapp')), 'áéíóúüñ', 'aeiouun') LIKE ${like}
+      ${canal}`;
+}
+
+const txt = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+const tieneWa = (p: RadarData) => !!(waNum(txt(p.whatsapp)) || waNum(txt(p.telefono)));
+const noSePuede = (p: RadarData) => !!p.noContactar || p.etapa === "descartado";
+
+/** Empresas del Radar (por nombre, ciudad, email o teléfono), marcando las que ya están en esta secuencia. */
+export async function buscarRadar(sequenceId: string, q: string, filtro: FiltroRadar = "todas"): Promise<EmpresaHallada[]> {
   const rows = await db.$queryRaw<{ id: string; data: RadarData }[]>`
     SELECT id, data FROM "RadarDoc"
-    WHERE col = 'prospectos' AND deleted = false
-      AND translate(lower(concat_ws(' ', data->>'nombre', data->>'ciudad', data->>'email', data->>'telefono', data->>'whatsapp')), 'áéíóúüñ', 'aeiouun') LIKE ${like}
+    WHERE ${whereRadar(q, filtro)}
     ORDER BY data->>'nombre'
     LIMIT 40`;
   const ids = rows.map((r) => r.id);
-  const en = ids.length
-    ? await db.contact.findMany({ where: { radarId: { in: ids }, enrollments: { some: { sequenceId } } }, select: { radarId: true } })
+  const vinc = ids.length
+    ? await db.contact.findMany({
+        where: { radarId: { in: ids }, OR: [{ enrollments: { some: { sequenceId } } }, { unsubscribed: true }, { bounced: true }] },
+        select: { radarId: true, unsubscribed: true, bounced: true, enrollments: { where: { sequenceId }, select: { id: true } } },
+      })
     : [];
-  const ya = new Set(en.map((c) => c.radarId));
-  const s = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const ya = new Set(vinc.filter((c) => c.enrollments.length).map((c) => c.radarId));
+  const baja = new Map(vinc.filter((c) => c.unsubscribed || c.bounced).map((c) => [c.radarId, c.unsubscribed ? "Pidió la baja" : "Rebotó"]));
   return rows.map(({ id, data: p }) => ({
     id,
-    nombre: s(p.nombre) || "Sin nombre",
-    lugar: [s(p.ciudad), provNom(s(p.provincia))].filter(Boolean).join(", "),
-    email: s(p.email) || null,
-    telefono: s(p.whatsapp) || s(p.telefono) || null,
+    nombre: txt(p.nombre) || "Sin nombre",
+    lugar: [txt(p.ciudad), provNom(txt(p.provincia))].filter(Boolean).join(", "),
+    email: txt(p.email) || null,
+    telefono: txt(p.whatsapp) || txt(p.telefono) || null,
     ya: ya.has(id),
-    sinCanal: !s(p.email) && !waNum(s(p.whatsapp)) && !waNum(s(p.telefono)),
+    sinCanal: !txt(p.email) && !tieneWa(p),
+    bloqueo: noSePuede(p) ? "No contactar" : baja.get(id) ?? null,
   }));
+}
+
+/**
+ * Todas las empresas del Radar que cumplen la búsqueda y el filtro y que se pueden sumar: con email y/o WhatsApp
+ * (según el filtro), sin «no contactar» ni descartadas, que no estén ya en esta secuencia y cuyo contacto no haya
+ * pedido la baja ni rebotado.
+ */
+export async function idsRadar(sequenceId: string, q: string, filtro: FiltroRadar): Promise<string[]> {
+  const rows = await db.$queryRaw<{ id: string; data: RadarData }[]>`
+    SELECT id, jsonb_build_object('email', data->'email', 'whatsapp', data->'whatsapp', 'telefono', data->'telefono',
+      'noContactar', data->'noContactar', 'etapa', data->'etapa') AS data
+    FROM "RadarDoc"
+    WHERE ${whereRadar(q, filtro)}
+    ORDER BY data->>'nombre'`;
+  const sirve = rows.filter(({ data: p }) => {
+    if (noSePuede(p)) return false;
+    const mail = !!txt(p.email), wa = tieneWa(p);
+    return filtro === "email" ? mail : filtro === "wa" ? wa : mail || wa;
+  });
+  if (!sirve.length) return [];
+  const fuera = await db.contact.findMany({
+    where: {
+      radarId: { in: sirve.map((r) => r.id) },
+      OR: [{ enrollments: { some: { sequenceId } } }, { unsubscribed: true }, { bounced: true }],
+    },
+    select: { radarId: true },
+  });
+  const no = new Set(fuera.map((c) => c.radarId));
+  return sirve.map((r) => r.id).filter((id) => !no.has(id));
 }
 
 /** Suma a la secuencia las empresas elegidas del Radar (crea o vincula su contacto en Outreach). */
@@ -172,8 +226,21 @@ export async function inscribirRadar(sequenceId: string, ids: string[]): Promise
     const partes = [plural(r.sumadas, "empresa sumada", "empresas sumadas")];
     if (r.yaEstaban) partes.push(plural(r.yaEstaban, "ya estaba", "ya estaban"));
     if (r.sinCanal) partes.push(`${plural(r.sinCanal, "sin email ni WhatsApp", "sin email ni WhatsApp")} (o descartadas)`);
+    if (r.bajas) partes.push(`${plural(r.bajas, "omitida", "omitidas")} por baja o rebote`);
     if (r.corregidos) partes.push(plural(r.corregidos, "email corregido", "emails corregidos"));
     return { ok: partes.join(" · ") + "." };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "No se pudo sumar." };
+  }
+}
+
+/** Una tanda de la carga masiva del Radar: devuelve los números para que la pantalla los vaya sumando. */
+export async function inscribirRadarTanda(sequenceId: string, ids: string[]): Promise<ResultadoEnrolar | { error: string }> {
+  try {
+    const yo = await quienSoy().catch(() => null);
+    const r = await enrolarProspectos(sequenceId, ids.slice(0, 50), yo?.name.split(/\s+/)[0] ?? "Outreach");
+    refresh(sequenceId);
+    return r;
   } catch (e) {
     return { error: e instanceof Error ? e.message : "No se pudo sumar." };
   }
