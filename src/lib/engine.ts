@@ -66,6 +66,12 @@ export async function runDueSteps(now = new Date()) {
   for (const r of await db.waMessage.groupBy({ by: ["senderId"], where: { sentAt: { gte: todayStart(now) }, error: null }, _count: true })) {
     if (r.senderId) waBySender.set(r.senderId, r._count);
   }
+  // los WhatsApp que quedan como tarea para mandar a mano también cuentan para el tope diario del remitente
+  for (const t of await db.task.findMany({ where: { kind: "WHATSAPP", createdAt: { gte: todayStart(now) } }, select: { enrollment: { select: { sequence: { select: { senderId: true } } } } } })) {
+    const sid = t.enrollment.sequence.senderId;
+    if (sid) waBySender.set(sid, (waBySender.get(sid) ?? 0) + 1);
+  }
+  const waLleno = (s: { id: string; waDailyLimit: number } | null) => !!s && (waBySender.get(s.id) ?? 0) >= s.waDailyLimit;
 
   const due = await db.enrollment.findMany({
     where: { status: "ACTIVE", nextRunAt: { lte: now }, sequenceId: { in: ready } },
@@ -90,7 +96,7 @@ export async function runDueSteps(now = new Date()) {
 
     const step = sequence.steps.find((s) => s.order === enr.nextStep);
     if (!step) {
-      await db.enrollment.update({ where: { id: enr.id }, data: { status: "FINISHED", nextRunAt: null } });
+      await db.enrollment.update({ where: { id: enr.id }, data: { status: "FINISHED", nextRunAt: null, finishedAt: now } });
       summary.finished++;
       continue;
     }
@@ -170,7 +176,10 @@ export async function runDueSteps(now = new Date()) {
     } else if (tipo === "WHATSAPP" && !cambio && step.waTemplate && waApiReady(sequence.sender)) {
       // WhatsApp automático: plantilla aprobada por Meta desde el número del remitente.
       const sender = sequence.sender!;
-      if ((waBySender.get(sender.id) ?? 0) >= sender.waDailyLimit) continue;
+      if (waLleno(sender)) {
+        await db.enrollment.update({ where: { id: enr.id }, data: { nextRunAt: nextSendTime(now, 1, window) } });
+        continue;
+      }
       const to = contactWa(contact);
       let wamid: string | null = null;
       let error: string | null = null;
@@ -206,7 +215,11 @@ export async function runDueSteps(now = new Date()) {
       }
     } else if (tipo === "WHATSAPP") {
       // Sin plantilla aprobada o sin número conectado a la API (o un email que pasó a WhatsApp porque no tiene
-      // email válido): queda como tarea con el mensaje listo para abrir.
+      // email válido): queda como tarea con el mensaje listo para abrir. Con el tope de WhatsApp del día lleno, pasa a mañana.
+      if (waLleno(sequence.sender)) {
+        await db.enrollment.update({ where: { id: enr.id }, data: { nextRunAt: nextSendTime(now, 1, window) } });
+        continue;
+      }
       const who = contact.company || [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.phone || "contacto";
       const variant = cambio ? pickVariant(`${enr.id}:${step.id}`, stepVariants(step)) : null;
       await db.task.create({
@@ -218,6 +231,7 @@ export async function runDueSteps(now = new Date()) {
         },
       });
       summary.tasks++;
+      if (sequence.sender) waBySender.set(sequence.sender.id, (waBySender.get(sequence.sender.id) ?? 0) + 1);
     } else {
       await db.task.create({
         data: { enrollmentId: enr.id, kind: "TASK", title: renderTemplate(step.subject || "Tarea manual", contact, ctx), notes: renderTemplate(step.body, contact, ctx) },
@@ -230,7 +244,7 @@ export async function runDueSteps(now = new Date()) {
       where: { id: enr.id },
       data: following
         ? { nextStep: following.order, nextRunAt: nextSendTime(now, following.delayDays, window) }
-        : { nextStep: step.order + 1, status: "FINISHED", nextRunAt: null },
+        : { nextStep: step.order + 1, status: "FINISHED", nextRunAt: null, finishedAt: now },
     });
     if (!following) {
       summary.finished++;
