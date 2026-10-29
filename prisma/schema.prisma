@@ -136,6 +136,8 @@ model Enrollment {
   nextStep   Int              @default(1)
   nextRunAt  DateTime?        @default(now())
   createdAt  DateTime         @default(now())
+  /// Cuándo terminó la secuencia: una semana después, otro remitente puede volver a escribirle.
+  finishedAt DateTime?
   messages   Message[]
   tasks      Task[]
   waMessages WaMessage[]
@@ -271,6 +273,11 @@ model Sender {
   signatureImageVersion Int        @default(0)
   /// Máximo de emails al día desde este buzón, sumando todas sus secuencias.
   dailyLimit            Int        @default(50)
+  /// Reparto diario: si participa, cuántos contactos nuevos recibe por día y sus dos secuencias (mails y WhatsApp).
+  repartoOn             Boolean    @default(false)
+  repartoDia            Int        @default(100)
+  seqMailId             String?
+  seqWaId               String?
   /// Última comprobación de la conexión SMTP (sin enviar nada).
   lastCheckAt           DateTime?
   lastCheckError        String?
@@ -334,4 +341,7 @@ model Setting {
   /// Bot de WhatsApp: lo que sabe del negocio y el mensaje que manda cuando no puede responder solo.
   botInfo           String    @default("")
   botSaludo         String    @default("")
+  /// Reparto diario de contactos a los remitentes (apagado hasta que el administrador lo encienda) y el último día que corrió.
+  repartoOn         Boolean   @default(false)
+  repartoUltimo     String    @default("")
 }

@@ -13,6 +13,7 @@ export const TIPOS_ACTIVIDAD: Record<string, string> = {
   alta: "Cargó un cliente",
   importo: "Importó",
   asigno: "Repartió clientes",
+  reparto: "Reparto diario",
   bloqueo: "Bloqueado",
 };
 

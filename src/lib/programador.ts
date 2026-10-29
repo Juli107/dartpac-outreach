@@ -7,6 +7,7 @@ import { despertar, pendientes } from "./radar/worker";
 import { armarSemanal, esHoraSemanal } from "./radar/semanal";
 import { getDoc, hoyAR } from "./radar/store";
 import { espejarPendientes } from "./radar/espejo";
+import { repartoSiHaceFalta } from "./reparto";
 
 /** Una pasada dura como mucho lo que la función de /api/cron (60 s) y un margen. */
 const TURNO_MS = 75_000;
@@ -23,6 +24,8 @@ export async function pasadaProgramador(opts: { bandeja?: boolean; fuente: RunRe
   try {
     const checkInbox = opts.bandeja || new Date().getUTCMinutes() % 5 === 0;
     const inbox = checkInbox ? await syncInbox().catch((e) => ({ error: String(e) })) : "omitida";
+    // desde las 8 de cada día hábil, los contactos nuevos de cada remitente (si el reparto está encendido)
+    const reparto = await repartoSiHaceFalta().catch((e) => ({ error: String(e) }));
     const steps = await runDueSteps();
     await recordRun({ at: new Date().toISOString(), steps, inbox, source: opts.fuente }).catch(() => undefined);
     const radar = await pendientes()
@@ -33,7 +36,7 @@ export async function pasadaProgramador(opts: { bandeja?: boolean; fuente: RunRe
       .catch(() => 0);
     // red de seguridad: si alguna empresa del Radar no llegó a Contactos, entra ahora
     const contactos = await espejarPendientes(1000);
-    return { inbox, steps, radar, ...(contactos ? { contactos } : {}) };
+    return { inbox, steps, radar, ...(contactos ? { contactos } : {}), ...(reparto ? { reparto } : {}) };
   } finally {
     await soltar();
   }

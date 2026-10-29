@@ -22,6 +22,7 @@ const ICONS: Record<string, React.ReactNode> = {
   "/bandeja": <path d="M3.5 13.5l2.6-7.7A1.8 1.8 0 0 1 7.8 4.5h8.4a1.8 1.8 0 0 1 1.7 1.3l2.6 7.7M3.5 13.5V18a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-4.5h-5.2l-1.4 2.4h-3.8l-1.4-2.4z" />,
   "/whatsapp": <path d="M4.3 19.7l1.1-3.9A8.2 8.2 0 1 1 8.6 19zM9 8.6c.2 2.9 3.4 6.1 6.4 6.4l1.1-1.4-2-1-.9.8c-1-.4-2.1-1.5-2.5-2.5l.8-.9-1-2z" />,
   "/equipo": <path d="M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM15.5 11a3 3 0 1 0 0-6M3 19.5c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M16.6 14.8c2.3.3 3.9 2 4.4 4.7" />,
+  "/reparto": <path d="M12 3v6M12 9l-6 5M12 9l6 5M12 9v6M4 17h4v4H4zM10 17h4v4h-4zM16 17h4v4h-4z" />,
   "/tareas": <path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2" />,
   "/analiticas": <path d="M5 20v-7M10 20V5M15 20v-9M20 20V8" />,
   "/radar": (
@@ -45,6 +46,7 @@ const GROUPS: { label: string; items: { href: string; label: string }[] }[] = [
       { href: "/secuencias", label: "Secuencias" },
       { href: "/contactos", label: "Contactos" },
       { href: "/equipo", label: "Equipo" },
+      { href: "/reparto", label: "Reparto diario" },
       { href: "/bandeja", label: "Bandeja" },
       { href: "/whatsapp", label: "WhatsApp" },
       { href: "/tareas", label: "Tareas" },
@@ -138,7 +140,7 @@ export function Sidebar({ counts, live, health, usuario }: { counts: Record<stri
         {GROUPS.map((g, gi) => (
           <div key={g.label} className="flex flex-col gap-0.5">
             <p className={`mb-1.5 pl-3 text-[10.5px] font-semibold uppercase tracking-[.16em] text-faint ${gi ? "mt-4" : ""}`}>{g.label}</p>
-            {g.items.map((item) => {
+            {g.items.filter((item) => usuario.admin || item.href !== "/reparto").map((item) => {
               const active = isActive(item.href, path);
               const n = counts[item.href];
               return (
@@ -169,7 +171,7 @@ export function Sidebar({ counts, live, health, usuario }: { counts: Record<stri
       {/* En el móvil: las secciones secundarias arriba y las cinco principales en una barra fija abajo, como en iOS.
           En el Radar no se muestran: ocupa toda la pantalla con su propio menú, y su marca vuelve a Outreach. */}
       <nav aria-label="Más secciones" className={`-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-1 md:hidden ${enRadar ? "max-md:hidden" : ""}`} style={{ scrollbarWidth: "none" }}>
-        {NAV.filter((i) => !TAB_BAR.includes(i.href)).map((item) => {
+        {NAV.filter((i) => !TAB_BAR.includes(i.href) && (usuario.admin || i.href !== "/reparto")).map((item) => {
           const active = isActive(item.href, path);
           return (
             <Link
