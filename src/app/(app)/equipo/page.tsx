@@ -29,7 +29,10 @@ export default async function Equipo({ searchParams }: { searchParams: Promise<{
   const sp = await searchParams;
   await asignarDuenosPendientes();
   const u = await usuarioActual();
-  const senders = await db.sender.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, email: true } });
+  const [senders, setting] = await Promise.all([
+    db.sender.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, email: true, lastSeenAt: true } }),
+    db.setting.findUnique({ where: { id: "app" }, select: { adminSeenAt: true } }),
+  ]);
   const visibles = u.admin ? senders : senders.filter((x) => x.id === u.senderId);
   const quien = u.admin ? (sp.quien ?? "") : (u.senderId ?? "-");
   const tipo = sp.tipo && TIPOS_ACTIVIDAD[sp.tipo] ? sp.tipo : "";
@@ -54,6 +57,14 @@ export default async function Equipo({ searchParams }: { searchParams: Promise<{
     return `/equipo?${new URLSearchParams(x)}`;
   };
 
+  // quién tiene la app abierta: la pestaña avisa cada minuto, así que más de 3 minutos sin aviso es «desconectado»
+  const conectado = (d: Date | null | undefined) => !!d && Date.now() - d.getTime() < 3 * 60_000;
+  const presencia = [
+    ...visibles.map((x) => ({ id: x.id, name: x.name, sub: x.email, visto: x.lastSeenAt })),
+    ...(u.admin ? [{ id: "admin", name: "Administrador", sub: "Entró con la contraseña común", visto: setting?.adminSeenAt ?? null }] : []),
+  ].sort((a, b) => (b.visto?.getTime() ?? 0) - (a.visto?.getTime() ?? 0));
+  const enLinea = presencia.filter((p) => conectado(p.visto)).length;
+
   // la actividad, agrupada por día
   const dias: { dia: string; items: typeof actividad }[] = [];
   for (const a of actividad) {
@@ -72,6 +83,45 @@ export default async function Equipo({ searchParams }: { searchParams: Promise<{
         <Link href="/contactos" className="btn-ghost">Ver contactos</Link>
         <a href="/login/salir" className="btn-ghost">Salir ({primerNombre(u.name)})</a>
       </PageHeader>
+
+      <section className="card appear flex flex-col gap-3 p-5">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="font-semibold text-white">Usuarios conectados</p>
+          <span className="text-xs text-muted">{enLinea === 0 ? "Nadie conectado ahora" : `${enLinea} conectado${enLinea === 1 ? "" : "s"} ahora`}</span>
+        </div>
+        <ul className="divide-y divide-line/40">
+          {presencia.map((p) => {
+            const on = conectado(p.visto);
+            return (
+              <li key={p.id} className="flex items-center gap-3 py-2.5">
+                <span className="relative">
+                  <Avatar name={p.name} size={32} />
+                  <span
+                    className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-[#0B2545] ${on ? "bg-emerald-400" : "bg-white/25"}`}
+                    aria-hidden
+                  />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13.5px] font-medium text-white">{p.name}</span>
+                  <span className="block truncate text-[11px] text-faint">{p.sub}</span>
+                </span>
+                <span className="text-right text-xs">
+                  {on ? (
+                    <Pill tone="ok">Conectado ahora</Pill>
+                  ) : p.visto ? (
+                    <>
+                      <span className="block text-ink/90">Última vez {relativeTime(p.visto)}</span>
+                      <span className="block text-[11px] text-faint">{formatDate(p.visto)}</span>
+                    </>
+                  ) : (
+                    <span className="text-muted">Sin registro todavía</span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
 
       <div className="grid gap-4 sm:grid-cols-2">
         {visibles.map((x) => {
