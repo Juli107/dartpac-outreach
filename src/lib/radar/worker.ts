@@ -5,6 +5,8 @@ import { FUENTES, norm, PROV, provNom, RUB, rubNom } from "./geo";
 import { verificarLocal } from "../verifier";
 import { espejarProspectos } from "./espejo";
 import { sumarUsoDia, topeDiario, topeDiarioSuperado } from "./uso";
+import { db } from "../db";
+import { senderPorNombre } from "../dueno";
 
 /**
  * El buscador de clientes del Radar, ahora con la API de Claude: recorre la zona partido por partido, busca
@@ -92,7 +94,19 @@ Reglas:
 
 Rubros (id: nombre): ${RUBROS_TXT()}.`;
 
-function herramientaGuardar(ctx: { provincia: string; zona: string; idx: Indice; nuevas: string[]; por: string }): ClientTool {
+type Dueno = { id: string; nombre: string; seccion: string } | null;
+
+/**
+ * Para quién es la búsqueda: el vendedor que la lanzó. Lo que encuentra queda a su nombre y en su sección,
+ * con la zona buscada («Córdoba – Luis Mendieta»), así nadie más le escribe a esos clientes.
+ */
+async function duenoBusqueda(b: RadarData, zonaNom: string): Promise<Dueno> {
+  const senders = await db.sender.findMany({ select: { id: true, name: true } });
+  const x = senders.find((r) => r.id === s(b.porId)) ?? senderPorNombre(s(b.por), senders);
+  return x ? { id: x.id, nombre: x.name, seccion: `${zonaNom} – ${x.name}` } : null;
+}
+
+function herramientaGuardar(ctx: { provincia: string; zona: string; idx: Indice; nuevas: string[]; por: string; dueno?: Dueno; grupo?: string }): ClientTool {
   return {
     name: "guardar_empresas",
     description: "Guarda en la base del Radar las empresas reales que encontraste y verificaste. Devuelve cuáles se guardaron, cuáles estaban repetidas y cuáles se descartaron.",
@@ -168,7 +182,10 @@ function herramientaGuardar(ctx: { provincia: string; zona: string; idx: Indice;
         for (const k of ["instagram", "facebook", "tiktok"] as const) if (/^https?:\/\//i.test(s(e[k]))) redes[k] = { url: s(e[k]) };
         const canal = redes.instagram ? "instagram" : redes.facebook ? "facebook" : redes.tiktok ? "tiktok" : undefined;
         const t = Date.now();
-        const doc: RadarData = { ...p, ...redes, ...(canal ? { canal } : {}), etapa: "nuevo", creado: t, historial: [{ t, tipo: "alta", texto: `Encontrado por Claude · ${ctx.zona}`, por: ctx.por }] };
+        const d = ctx.dueno;
+        const delDueno: RadarData = d ? { asignado: d.nombre.split(/\s+/)[0], asignadoId: d.id, seccion: d.seccion, ...(ctx.grupo ? { busqueda: ctx.grupo } : {}) } : {};
+        const texto = `Encontrado por Claude${d ? ` para ${d.nombre.split(/\s+/)[0]}` : ""} · ${ctx.zona}`;
+        const doc: RadarData = { ...p, ...redes, ...(canal ? { canal } : {}), ...delDueno, etapa: "nuevo", creado: t, historial: [{ t, tipo: "alta", texto, por: ctx.por }] };
         const id = nuevoId();
         await setDoc("prospectos", id, doc);
         agregar(ctx.idx, doc);
@@ -229,6 +246,7 @@ async function procesarBusqueda(job: Job, runner: string, hasta: number): Promis
   }
   const unidades = unidadesDe(b);
   const zonaNom = s((b.zona as RadarData)?.nombre) || provNom(prov);
+  const dueno = await duenoBusqueda(b, zonaNom);
   const rubros = (Array.isArray(b.rubros) ? (b.rubros as string[]) : []).filter((r) => RUB[r]);
   const fuentes = Array.isArray(b.fuentes) ? (b.fuentes as string[]) : ["web"];
   const { idx, todos } = await indice();
@@ -250,7 +268,7 @@ async function procesarBusqueda(job: Job, runner: string, hasta: number): Promis
     const k = hechos.length + 1;
     await updateDoc(job.col, job.id, { progreso: `Recorriendo ${k} de ${unidades.length}: ${u.nombre}`, latido: Date.now(), lease: Date.now() + LEASE_MS }).catch(() => null);
     const nuevas: string[] = [];
-    const ctx = { provincia: prov, zona: zonaNom, idx, nuevas, por: "Claude" };
+    const ctx = { provincia: prov, zona: zonaNom, idx, nuevas, por: "Claude", dueno, grupo: s(b.grupo) || job.id };
     const fuentesTxt = FUENTES.filter((f) => fuentes.includes(f.k)).map((f) => `${f.t} (${f.d})`).join("; ");
     const user = [
       `ZONA: ${u.detalle}`,

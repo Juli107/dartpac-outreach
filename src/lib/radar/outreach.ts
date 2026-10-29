@@ -5,7 +5,7 @@ import { camposContacto, verificar } from "../verifier";
 import { waNum } from "../whatsapp";
 import { getDoc, hoyAR, touchProspect, type RadarData } from "./store";
 import { provNom, rubNom } from "./geo";
-import { deOtroVendedor } from "../dueno";
+import { deOtroVendedor, tomarClientes } from "../dueno";
 
 /**
  * Puente entre el Radar y las secuencias de Outreach: una empresa del Radar se suma a una secuencia como contacto
@@ -108,6 +108,7 @@ export async function enrolarProspectos(sequenceId: string, ids: string[], por =
       continue;
     }
     await db.enrollment.create({ data: { sequenceId, contactId: contact.id, nextStep: first.order, nextRunAt: runAt } });
+    await tomarClientes([contact.id], seq.senderId);
     r.sumadas++;
     await touchProspect(
       id,

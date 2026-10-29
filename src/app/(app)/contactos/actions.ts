@@ -6,6 +6,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { parseContactsCsv } from "@/lib/csv";
 import { camposContacto, verificar, verificarLista } from "@/lib/verifier";
+import { usuarioActual } from "@/lib/usuario";
+import { registrar } from "@/lib/actividad";
 
 function parseTags(raw: FormDataEntryValue | null) {
   return String(raw ?? "").split(",").map((t) => t.trim()).filter(Boolean);
@@ -34,17 +36,47 @@ export async function addContact(form: FormData) {
   }
   if (vfy?.estado === "invalido") redirect(`/contactos?error=${encodeURIComponent(`Ese email no sirve: ${vfy.motivos[0]?.t ?? "revisalo"}.`)}`);
   const extra = vfy ? camposContacto(vfy) : {};
-  if (data.email) {
-    await db.contact.upsert({ where: { email: data.email }, create: { ...data, ...extra, tags }, update: { ...data, ...extra, tags } });
-  } else {
-    await db.contact.create({ data: { ...data, email: null, tags } });
+  // lo que carga un vendedor queda como cliente suyo; lo que carga el administrador queda libre para repartir
+  const u = await usuarioActual();
+  const dueno = !u.admin && u.senderId ? { ownerId: u.senderId, ownerAt: new Date() } : {};
+  const nombre = data.company || [data.firstName, data.lastName].filter(Boolean).join(" ") || data.email || data.phone || "un contacto";
+  const existe = data.email
+    ? await db.contact.findUnique({ where: { email: data.email }, select: { id: true, ownerId: true, owner: { select: { name: true } } } })
+    : null;
+  if (existe?.ownerId && existe.owner && !u.admin && existe.ownerId !== u.senderId) {
+    await registrar(u, "bloqueo", `Quiso cargar a ${nombre}, que es cliente de ${existe.owner.name}`, { contactId: existe.id });
+    redirect(`/contactos?error=${encodeURIComponent(`No: ${nombre} ya lo contactó ${existe.owner.name}. Es su cliente.`)}`);
   }
+  let id: string;
+  if (data.email) {
+    id = (await db.contact.upsert({ where: { email: data.email }, create: { ...data, ...extra, tags, ...dueno }, update: { ...data, ...extra, tags, ...(existe?.ownerId ? {} : dueno) } })).id;
+  } else {
+    id = (await db.contact.create({ data: { ...data, email: null, tags, ...dueno } })).id;
+  }
+  await registrar(u, "alta", `Cargó a ${nombre}`, { contactId: id });
   revalidatePath("/contactos");
 }
 
 export async function deleteContact(id: string) {
+  const u = await usuarioActual();
+  // un vendedor solo borra sus clientes o los libres
+  const c = await db.contact.findUnique({ where: { id }, select: { ownerId: true } });
+  if (!c || (!u.admin && c.ownerId && c.ownerId !== u.senderId)) return;
   await db.contact.delete({ where: { id } });
   revalidatePath("/contactos");
+}
+
+/** Solo el administrador: pasa contactos a un vendedor ("" = dejarlos libres). */
+export async function asignarContactos(ids: string[], senderId: string): Promise<{ ok: string } | { error: string }> {
+  const u = await usuarioActual();
+  if (!u.admin) return { error: "Solo el administrador puede repartir clientes." };
+  const sender = senderId ? await db.sender.findUnique({ where: { id: senderId }, select: { id: true, name: true } }) : null;
+  if (senderId && !sender) return { error: "Ese vendedor ya no existe." };
+  const r = await db.contact.updateMany({ where: { id: { in: ids.slice(0, 1000) } }, data: { ownerId: sender?.id ?? null, ownerAt: sender ? new Date() : null } });
+  await registrar(u, "asigno", `Pasó ${r.count} ${r.count === 1 ? "contacto" : "contactos"} a ${sender?.name ?? "libres"}`);
+  revalidatePath("/contactos");
+  revalidatePath("/equipo");
+  return { ok: `Listo: ${r.count} ${r.count === 1 ? "contacto pasó" : "contactos pasaron"} a ${sender?.name ?? "libres"}.` };
 }
 
 /** Aplica la corrección propuesta por el verificador (por ejemplo gmial.com → gmail.com). */
@@ -85,7 +117,9 @@ export async function importContacts(form: FormData) {
   const { contacts, skipped } = parseContactsCsv(text);
   const tags = parseTags(form.get("tags"));
   const checks = await verificarLista(contacts.map((c) => c.email), { concurrency: 10 });
-  let created = 0, updated = 0, corregidos = 0, invalidos = 0;
+  const u = await usuarioActual();
+  const dueno = !u.admin && u.senderId ? { ownerId: u.senderId, ownerAt: new Date() } : {};
+  let created = 0, updated = 0, corregidos = 0, invalidos = 0, deOtro = 0;
   for (const [i, c0] of contacts.entries()) {
     let c = c0, r = checks[i];
     if (r.estado === "corregible" && r.sugerencia) {
@@ -98,15 +132,21 @@ export async function importContacts(form: FormData) {
       continue;
     }
     const extra = camposContacto(r);
-    const existing = await db.contact.findUnique({ where: { email: c.email }, select: { tags: true } });
+    const existing = await db.contact.findUnique({ where: { email: c.email }, select: { tags: true, ownerId: true } });
     if (existing) {
-      await db.contact.update({ where: { email: c.email }, data: { ...c, ...extra, tags: [...new Set([...existing.tags, ...tags])] } });
+      // el cliente de otro vendedor no se toca
+      if (!u.admin && existing.ownerId && existing.ownerId !== u.senderId) {
+        deOtro++;
+        continue;
+      }
+      await db.contact.update({ where: { email: c.email }, data: { ...c, ...extra, tags: [...new Set([...existing.tags, ...tags])], ...(existing.ownerId ? {} : dueno) } });
       updated++;
     } else {
-      await db.contact.create({ data: { ...c, ...extra, tags } });
+      await db.contact.create({ data: { ...c, ...extra, tags, ...dueno } });
       created++;
     }
   }
+  await registrar(u, "importo", `Importó un CSV: ${created} nuevos, ${updated} actualizados${deOtro ? `, ${deOtro} de otro vendedor sin tocar` : ""}`);
   revalidatePath("/contactos");
-  redirect(`/contactos?importados=${created}&actualizados=${updated}&omitidos=${skipped}&corregidos=${corregidos}&invalidos=${invalidos}`);
+  redirect(`/contactos?importados=${created}&actualizados=${updated}&omitidos=${skipped}&corregidos=${corregidos}&invalidos=${invalidos}${deOtro ? `&deotro=${deOtro}` : ""}`);
 }

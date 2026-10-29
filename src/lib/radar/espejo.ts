@@ -3,6 +3,7 @@ import { db } from "../db";
 import { datosContacto } from "./outreach";
 import { rubNom } from "./geo";
 import type { RadarData } from "./store";
+import { duenoRadar, senderPorNombre } from "../dueno";
 
 /**
  * Todo lo que entra al Radar (búsquedas de Claude, importaciones, altas a mano) queda también en Contactos, para
@@ -22,8 +23,15 @@ const etiquetas = (p: RadarData) => [...new Set(["radar", rubNom(String(p.rubro 
 
 type Fila = { id: string; data: RadarData };
 
+/** El vendedor dueño de la empresa del Radar: el de la búsqueda que la trajo, el asignado o el último que le escribió. */
+function duenoDe(p: RadarData, senders: { id: string; name: string }[]) {
+  if (typeof p.asignadoId === "string" && senders.some((x) => x.id === p.asignadoId)) return p.asignadoId;
+  return senderPorNombre(duenoRadar(p), senders)?.id ?? null;
+}
+
 async function espejar(filas: Fila[]) {
   if (!filas.length) return 0;
+  const senders = await db.sender.findMany({ select: { id: true, name: true } });
   const ids = filas.map((f) => f.id);
   const vinculados = await db.contact.findMany({ where: { radarId: { in: ids } } });
   const porRadar = new Map(vinculados.map((c) => [c.radarId!, c]));
@@ -54,8 +62,11 @@ async function espejar(filas: Fila[]) {
         ...(c.province ? {} : { province: base.province }),
         ...(c.website ? {} : { website: base.website }),
         ...(tags.join("|") !== c.tags.join("|") ? { tags } : {}),
+        ...(!c.seccion && s(p.seccion) ? { seccion: s(p.seccion) } : {}),
       };
-      const cambia = Object.entries(data).some(([k, v]) => v != null && (c as Record<string, unknown>)[k] !== v);
+      const dueno = c.ownerId ? null : duenoDe(p, senders);
+      if (dueno) Object.assign(data, { owner: { connect: { id: dueno } }, ownerAt: new Date() });
+      const cambia = !!dueno || Object.entries(data).some(([k, v]) => v != null && (c as Record<string, unknown>)[k] !== v);
       if (cambia) {
         await db.contact.update({ where: { id: c.id }, data });
         n++;
@@ -65,7 +76,8 @@ async function espejar(filas: Fila[]) {
     // dos empresas con el mismo email: la segunda entra sin email (con su teléfono)
     const libre = email && !porEmail.has(email) && !usados.has(email) ? email : null;
     if (libre) usados.add(libre);
-    nuevos.push({ ...base, email: libre, tags: etiquetas(p) });
+    const dueno = duenoDe(p, senders);
+    nuevos.push({ ...base, email: libre, tags: etiquetas(p), seccion: s(p.seccion) || null, ...(dueno ? { ownerId: dueno, ownerAt: new Date() } : {}) });
   }
   if (nuevos.length) n += (await db.contact.createMany({ data: nuevos, skipDuplicates: true })).count;
   return n;

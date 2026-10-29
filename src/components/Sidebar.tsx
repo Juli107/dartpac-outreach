@@ -21,6 +21,7 @@ const ICONS: Record<string, React.ReactNode> = {
   "/contactos": <path d="M9 11.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM3.5 19.5c.8-3.3 3-5.2 5.5-5.2s4.7 1.9 5.5 5.2M17.2 11.5a2.5 2.5 0 1 0 0-5M16.4 14.3c2.2.3 3.7 1.9 4.2 4.4" />,
   "/bandeja": <path d="M3.5 13.5l2.6-7.7A1.8 1.8 0 0 1 7.8 4.5h8.4a1.8 1.8 0 0 1 1.7 1.3l2.6 7.7M3.5 13.5V18a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-4.5h-5.2l-1.4 2.4h-3.8l-1.4-2.4z" />,
   "/whatsapp": <path d="M4.3 19.7l1.1-3.9A8.2 8.2 0 1 1 8.6 19zM9 8.6c.2 2.9 3.4 6.1 6.4 6.4l1.1-1.4-2-1-.9.8c-1-.4-2.1-1.5-2.5-2.5l.8-.9-1-2z" />,
+  "/equipo": <path d="M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM15.5 11a3 3 0 1 0 0-6M3 19.5c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M16.6 14.8c2.3.3 3.9 2 4.4 4.7" />,
   "/tareas": <path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2" />,
   "/analiticas": <path d="M5 20v-7M10 20V5M15 20v-9M20 20V8" />,
   "/radar": (
@@ -43,6 +44,7 @@ const GROUPS: { label: string; items: { href: string; label: string }[] }[] = [
       { href: "/", label: "Panel" },
       { href: "/secuencias", label: "Secuencias" },
       { href: "/contactos", label: "Contactos" },
+      { href: "/equipo", label: "Equipo" },
       { href: "/bandeja", label: "Bandeja" },
       { href: "/whatsapp", label: "WhatsApp" },
       { href: "/tareas", label: "Tareas" },
@@ -88,7 +90,7 @@ function Svg({ href, size = 19, strong = false }: { href: string; size?: number;
   );
 }
 
-export function Sidebar({ counts, live, health }: { counts: Record<string, number>; live: string[]; health: Level }) {
+export function Sidebar({ counts, live, health, usuario }: { counts: Record<string, number>; live: string[]; health: Level; usuario: { name: string; admin: boolean } }) {
   const path = usePathname();
   const enRadar = path === "/radar";
   const [healthText, healthDot] = HEALTH[health];
@@ -208,9 +210,17 @@ export function Sidebar({ counts, live, health }: { counts: Record<string, numbe
         })}
       </nav>
 
+      {/* quién está usando la app; «Salir» para que entre otro con su cuenta */}
+      <div className="hidden items-center gap-2.5 rounded-xl px-3 py-1 text-[13px] md:mt-auto md:flex">
+        <span className="min-w-0 flex-1 truncate">
+          <span className="font-medium text-white">{usuario.name}</span>
+          <span className="block text-[11px] text-faint">{usuario.admin ? "Administrador · ve todo" : "Vendedor · tus clientes"}</span>
+        </span>
+        <a href="/login/salir" className="shrink-0 text-xs font-medium text-muted transition hover:text-white">Salir</a>
+      </div>
       <Link
         href="/buzones#salud"
-        className="hidden items-center gap-2.5 rounded-xl bg-white/[.05] px-3 py-2.5 text-[13px] font-medium text-ink/90 ring-1 ring-white/[.08] transition hover:bg-white/[.09] md:mt-auto md:flex"
+        className="hidden items-center gap-2.5 rounded-xl bg-white/[.05] px-3 py-2.5 text-[13px] font-medium text-ink/90 ring-1 ring-white/[.08] transition hover:bg-white/[.09] md:flex"
       >
         <span className="relative inline-flex h-2.5 w-2.5">
           {(health === "ok" || health === "info") && <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-50 ${healthDot}`} />}

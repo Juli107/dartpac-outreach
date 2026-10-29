@@ -32,11 +32,19 @@ model Contact {
   emailReason     String?
   emailSuggestion String?
   emailCheckedAt  DateTime?
+  /// Vendedor dueño del cliente: el que lo buscó, lo cargó o le escribió primero. Los demás no le pueden escribir.
+  /// Vacío = libre (cualquiera lo puede tomar).
+  ownerId         String?
+  owner           Sender?      @relation("ClientesDe", fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerAt         DateTime?
+  /// Sección del vendedor donde quedó, con la zona de la búsqueda que lo trajo (ej. «Córdoba – Luis Mendieta»).
+  seccion         String?
   createdAt       DateTime     @default(now())
   enrollments     Enrollment[]
   replies         Reply[]
 
   @@index([radarId])
+  @@index([ownerId])
 }
 
 enum SequenceStatus {
@@ -268,6 +276,28 @@ model Sender {
   lastCheckError        String?
   createdAt             DateTime   @default(now())
   sequences             Sequence[]
+  /// Clientes de este vendedor.
+  clientes              Contact[]  @relation("ClientesDe")
+  actividades           Actividad[]
+}
+
+/// Registro de lo que hace cada usuario: entradas, búsquedas, mensajes, contactos sumados, importaciones y bloqueos.
+model Actividad {
+  id        String   @id @default(cuid())
+  senderId  String?
+  sender    Sender?  @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  /// Nombre de quien lo hizo (queda aunque se borre el remitente; «Administrador» si entró con la contraseña).
+  quien     String
+  /// entro, busqueda, mensaje, mail, whatsapp, secuencia, alta, importo, asigno o bloqueo.
+  tipo      String
+  texto     String
+  contactId String?
+  /// Evita registrar dos veces lo mismo (por ejemplo, el mismo mensaje del Radar guardado dos veces).
+  ref       String?  @unique
+  at        DateTime @default(now())
+
+  @@index([senderId, at])
+  @@index([at])
 }
 
 /// Base del Radar comercial: documentos JSON por colección (prospectos, busquedas, alertas, pedidos, config),

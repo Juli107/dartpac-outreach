@@ -12,7 +12,9 @@ import { waNum } from "@/lib/whatsapp";
 import { quienSoy } from "@/lib/yo";
 import { whereContactos, type BusquedaContactos } from "@/lib/contactos-filtros";
 import { NO_CONTACTAR } from "@/lib/radar/espejo";
-import { deOtroVendedor } from "@/lib/dueno";
+import { deOtroVendedor, tomarClientes } from "@/lib/dueno";
+import { alcanceContactos, usuarioActual } from "@/lib/usuario";
+import { registrar } from "@/lib/actividad";
 
 export type Resultado = { ok?: string; error?: string };
 export type ContactoHallado = { id: string; nombre: string; email: string | null; empresa: string | null; telefono: string | null; aviso: string | null };
@@ -28,11 +30,19 @@ function refresh(id: string) {
 
 /** La secuencia con su primer paso y cuándo saldría ese paso para alguien que se suma ahora. */
 async function inicio(sequenceId: string) {
-  const seq = await db.sequence.findUnique({ where: { id: sequenceId }, include: { steps: { orderBy: { order: "asc" }, select: { order: true, delayDays: true, type: true } } } });
+  const seq = await db.sequence.findUnique({
+    where: { id: sequenceId },
+    include: { steps: { orderBy: { order: "asc" }, select: { order: true, delayDays: true, type: true } }, sender: { select: { name: true } } },
+  });
   if (!seq || seq.status === "ARCHIVED") throw new Error("Esa secuencia ya no existe.");
+  // cada vendedor suma clientes solo a sus secuencias (las que salen de su buzón); el administrador, a cualquiera
+  const u = await usuarioActual();
+  if (!u.admin && seq.senderId && seq.senderId !== u.senderId) {
+    throw new Error(`«${seq.name}» sale del buzón de ${seq.sender?.name ?? "otro vendedor"}: sumá tus clientes a una secuencia tuya.`);
+  }
   const first = seq.steps[0];
   if (!first) throw new Error("La secuencia todavía no tiene pasos: agregale al menos uno en la pestaña Pasos.");
-  return { seq, first, runAt: nextSendTime(new Date(), first.delayDays, windowFor(seq)), soloEmail: seq.steps.every((s) => s.type === "EMAIL") };
+  return { seq, u, first, runAt: nextSendTime(new Date(), first.delayDays, windowFor(seq)), soloEmail: seq.steps.every((s) => s.type === "EMAIL") };
 }
 
 /**
@@ -54,7 +64,7 @@ export async function agregarPersona(sequenceId: string, _prev: Resultado | null
   }
   if (vfy?.estado === "invalido") return { error: `Ese email no sirve: ${vfy.motivos[0]?.t ?? "revisalo"}. Corregilo o dejalo vacío y cargá el teléfono.` };
   try {
-    const { first, runAt, soloEmail } = await inicio(sequenceId);
+    const { seq, u, first, runAt, soloEmail } = await inicio(sequenceId);
     const extra = vfy ? camposContacto(vfy) : {};
     const telefono = phone ? { phone, ...(waNum(phone) ? { whatsapp: phone } : {}) } : {};
     let contact = email
@@ -81,7 +91,14 @@ export async function agregarPersona(sequenceId: string, _prev: Resultado | null
     if (contact.bounced) return { error: `Los mails a ${quien} rebotaron: corregí su email en Contactos antes de sumarla.` };
     const ya = await db.enrollment.findUnique({ where: { sequenceId_contactId: { sequenceId, contactId: contact.id } }, select: { id: true } });
     if (ya) return { ok: `${quien} ya estaba en esta secuencia.${nota}` };
+    const otro = u.admin ? null : (await deOtroVendedor(sequenceId, [contact.id])).get(contact.id);
+    if (otro) {
+      await registrar(u, "bloqueo", `Quiso sumar a ${quien}, que es cliente de ${otro}`, { contactId: contact.id });
+      return { error: `No: a ${quien} ya lo contactó ${otro}. Es cliente de ${otro.split(/\s+/)[0]}.` };
+    }
     await db.enrollment.create({ data: { sequenceId, contactId: contact.id, nextStep: first.order, nextRunAt: runAt } });
+    await tomarClientes([contact.id], seq.senderId);
+    await registrar(u, "secuencia", `Sumó a ${quien} a «${seq.name}»`, { contactId: contact.id });
     refresh(sequenceId);
     const tieneWa = !!(waNum(contact.whatsapp ?? "") || waNum(contact.phone ?? ""));
     const sinMail = contact.email ? "" : !tieneWa ? " Ojo: no tiene email ni un WhatsApp válido, así que no le va a llegar nada." : soloEmail ? " Como no tiene email, los pasos de email le llegan por WhatsApp (quedan en Tareas para mandarlos con un clic)." : "";
@@ -127,15 +144,23 @@ export async function buscarContactos(sequenceId: string, q: string): Promise<Co
 /** Suma a la secuencia los contactos elegidos (menos las bajas y los rebotados). */
 export async function inscribirContactos(sequenceId: string, ids: string[]): Promise<Resultado> {
   try {
-    const { first, runAt } = await inicio(sequenceId);
-    const ok = await db.contact.findMany({
+    const { seq, u, first, runAt } = await inicio(sequenceId);
+    const libres = await db.contact.findMany({
       where: { id: { in: ids.slice(0, 1000) }, unsubscribed: false, bounced: false, enrollments: { none: { sequenceId } } },
       select: { id: true },
     });
+    // a los clientes de otro vendedor no se les escribe (el administrador puede)
+    const otros = u.admin ? new Map<string, string>() : await deOtroVendedor(sequenceId, libres.map((c) => c.id));
+    const ok = libres.filter((c) => !otros.has(c.id));
     await db.enrollment.createMany({ data: ok.map((c) => ({ sequenceId, contactId: c.id, nextStep: first.order, nextRunAt: runAt })), skipDuplicates: true });
+    await tomarClientes(ok.map((c) => c.id), seq.senderId);
+    if (ok.length) await registrar(u, "secuencia", `Sumó ${plural(ok.length, "contacto", "contactos")} a «${seq.name}»`);
     refresh(sequenceId);
-    const fuera = ids.length - ok.length;
-    return { ok: `${plural(ok.length, "persona sumada", "personas sumadas")} a la secuencia.${fuera ? ` ${plural(fuera, "quedó afuera", "quedaron afuera")} (bajas, rebotes o ya estaban).` : ""}` };
+    const fuera = ids.length - ok.length - otros.size;
+    const ajenos = [...new Set(otros.values())];
+    return {
+      ok: `${plural(ok.length, "persona sumada", "personas sumadas")} a la secuencia.${fuera ? ` ${plural(fuera, "quedó afuera", "quedaron afuera")} (bajas, rebotes o ya estaban).` : ""}${otros.size ? ` ${plural(otros.size, "no se sumó", "no se sumaron")} porque ya ${otros.size === 1 ? "lo contactó" : "los contactó"} ${ajenos.join(" y ")}.` : ""}`,
+    };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "No se pudo sumar." };
   }
@@ -224,6 +249,7 @@ export async function idsRadar(sequenceId: string, q: string, filtro: FiltroRada
 /** Suma a la secuencia las empresas elegidas del Radar (crea o vincula su contacto en Outreach). */
 export async function inscribirRadar(sequenceId: string, ids: string[]): Promise<Resultado> {
   try {
+    await inicio(sequenceId);
     const yo = await quienSoy().catch(() => null);
     const r = await enrolarProspectos(sequenceId, ids, yo?.name.split(/\s+/)[0] ?? "Outreach");
     refresh(sequenceId);
@@ -242,6 +268,7 @@ export async function inscribirRadar(sequenceId: string, ids: string[]): Promise
 /** Una tanda de la carga masiva del Radar: devuelve los números para que la pantalla los vaya sumando. */
 export async function inscribirRadarTanda(sequenceId: string, ids: string[]): Promise<ResultadoEnrolar | { error: string }> {
   try {
+    await inicio(sequenceId);
     const yo = await quienSoy().catch(() => null);
     const r = await enrolarProspectos(sequenceId, ids.slice(0, 50), yo?.name.split(/\s+/)[0] ?? "Outreach");
     refresh(sequenceId);
@@ -258,8 +285,9 @@ export type ResultadoContactos = { sumadas: number; yaEstaban: number; bajas: nu
  * sin baja, sin rebote, sin «no contactar» y que todavía no estén en ella.
  */
 export async function idsContactos(sequenceId: string, b: BusquedaContactos): Promise<string[]> {
+  const u = await usuarioActual();
   const rows = await db.contact.findMany({
-    where: { AND: [whereContactos(b), { unsubscribed: false, bounced: false, NOT: { tags: { has: NO_CONTACTAR } }, enrollments: { none: { sequenceId } } }] },
+    where: { AND: [whereContactos(b, u), { unsubscribed: false, bounced: false, NOT: { tags: { has: NO_CONTACTAR } }, enrollments: { none: { sequenceId } } }] },
     orderBy: { createdAt: "desc" },
     select: { id: true },
     take: 20_000,
@@ -273,7 +301,9 @@ export async function idsContactos(sequenceId: string, b: BusquedaContactos): Pr
  */
 export async function inscribirContactosTanda(sequenceId: string, ids: string[], igual = false): Promise<ResultadoContactos | { error: string }> {
   try {
-    const { seq, first, runAt } = await inicio(sequenceId);
+    const { seq, u, first, runAt } = await inicio(sequenceId);
+    // «sumar igual» a los de otro vendedor es solo para el administrador
+    igual = igual && u.admin;
     const r: ResultadoContactos = { sumadas: 0, yaEstaban: 0, bajas: 0, sinCanal: 0, corregidos: 0, deOtro: {} };
     // a una empresa que ya trabaja otro vendedor no se le escribe dos veces (salvo que se pida sumarla igual)
     const otros = igual ? new Map<string, string>() : await deOtroVendedor(sequenceId, ids.slice(0, 50));
@@ -305,7 +335,12 @@ export async function inscribirContactosTanda(sequenceId: string, ids: string[],
     }
     if (sumar.length) {
       r.sumadas = (await db.enrollment.createMany({ data: sumar.map((contactId) => ({ sequenceId, contactId, nextStep: first.order, nextRunAt: runAt })), skipDuplicates: true })).count;
+      // quedan como clientes del vendedor de la secuencia
+      await tomarClientes(sumar, seq.senderId);
+      await registrar(u, "secuencia", `Sumó ${plural(r.sumadas, "contacto", "contactos")} a «${seq.name}»`);
     }
+    const bloqueados = Object.entries(r.deOtro);
+    if (bloqueados.length && !u.admin) await registrar(u, "bloqueo", `Quiso sumar a «${seq.name}» ${bloqueados.map(([n, v]) => `${plural(v, "cliente", "clientes")} de ${n}`).join(" y ")}`);
     refresh(sequenceId);
     return r;
   } catch (e) {

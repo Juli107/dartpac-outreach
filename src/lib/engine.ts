@@ -12,6 +12,10 @@ import { contactWa } from "./whatsapp";
 import { eventoRadar } from "./radar/outreach";
 import { cargarVariables } from "./variables";
 import { sendWaTemplate, waApiReady, waParamList } from "./whatsapp-api";
+import { registrar } from "./actividad";
+
+const quienEs = (c: { company: string | null; firstName: string | null; lastName: string | null; email: string | null; phone: string | null }) =>
+  c.company || [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || c.phone || "un contacto";
 
 const BATCH = 50;
 
@@ -154,7 +158,10 @@ export async function runDueSteps(now = new Date()) {
         await eventoRadar(contact, { k: "rebote" });
         continue;
       }
-      if (!error) await eventoRadar(contact, { k: "mail", secuencia: sequence.name, paso: step.order, asunto: subject, por: sequence.sender?.name.split(/\s+/)[0] });
+      if (!error) {
+        await eventoRadar(contact, { k: "mail", secuencia: sequence.name, paso: step.order, asunto: subject, por: sequence.sender?.name.split(/\s+/)[0] });
+        await registrar(sequence.sender ? { name: sequence.sender.name, senderId: sequence.sender.id } : null, "mail", `«${sequence.name}» paso ${step.order} a ${quienEs(contact)}: ${subject}`, { contactId: contact.id, ref: `mail:${trackingId}` });
+      }
       if (error) {
         // Reintenta en una hora sin avanzar de paso.
         await db.enrollment.update({ where: { id: enr.id }, data: { nextRunAt: new Date(now.getTime() + 3600_000) } });
@@ -193,7 +200,10 @@ export async function runDueSteps(now = new Date()) {
           data: { enrollmentId: enr.id, kind: "WHATSAPP", title: `WhatsApp que no salió solo: ${contact.company || contact.firstName || to}`, notes: `${renderTemplate(step.body, contact, ctx)}\n\n(${error})` },
         });
         summary.tasks++;
-      } else await eventoRadar(contact, { k: "wa", secuencia: sequence.name, por: sender.name.split(/\s+/)[0] });
+      } else {
+        await eventoRadar(contact, { k: "wa", secuencia: sequence.name, por: sender.name.split(/\s+/)[0] });
+        await registrar({ name: sender.name, senderId: sender.id }, "whatsapp", `«${sequence.name}» paso ${step.order} a ${quienEs(contact)} por WhatsApp`, { contactId: contact.id, ref: `wa:${wamid}` });
+      }
     } else if (tipo === "WHATSAPP") {
       // Sin plantilla aprobada o sin número conectado a la API (o un email que pasó a WhatsApp porque no tiene
       // email válido): queda como tarea con el mensaje listo para abrir.

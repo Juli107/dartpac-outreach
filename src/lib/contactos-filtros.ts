@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { alcanceContactos, type Usuario } from "./usuario";
 
 /** Filtros de la página de Contactos (los usan la lista y «Sumar a una secuencia»). */
 export const FILTROS_CONTACTOS: [string, string, Prisma.ContactWhereInput][] = [
@@ -13,7 +14,11 @@ export const FILTROS_CONTACTOS: [string, string, Prisma.ContactWhereInput][] = [
   ["bajas", "Bajas", { unsubscribed: true }],
 ];
 
-export type BusquedaContactos = { q?: string; tag?: string; f?: string };
+/**
+ * `v`: de qué vendedor (su id, «mios», «libres» o vacío = todos los que puede ver). `sec`: una sección
+ * («Córdoba – Luis Mendieta»).
+ */
+export type BusquedaContactos = { q?: string; tag?: string; f?: string; v?: string; sec?: string };
 
 export function filtroContactos(f?: string) {
   return FILTROS_CONTACTOS.find(([k]) => k === f) ?? FILTROS_CONTACTOS[0];
@@ -25,9 +30,16 @@ export function busquedaContactos(b: BusquedaContactos): Prisma.ContactWhereInpu
   return {
     ...(q ? { OR: ["email", "firstName", "lastName", "company", "city", "province", "phone", "whatsapp"].map((f) => ({ [f]: { contains: q, mode: "insensitive" } })) } : {}),
     ...(b.tag ? { tags: { has: b.tag } } : {}),
+    ...(b.sec ? { seccion: b.sec } : {}),
   };
 }
 
-export function whereContactos(b: BusquedaContactos): Prisma.ContactWhereInput {
-  return { AND: [busquedaContactos(b), filtroContactos(b.f)[2]] };
+/** Lo que este usuario puede ver, más el vendedor elegido arriba. */
+export function delVendedor(b: BusquedaContactos, u: Usuario): Prisma.ContactWhereInput {
+  const v = b.v === "mios" ? u.senderId ?? "-" : b.v;
+  return { AND: [alcanceContactos(u), v === "libres" ? { ownerId: null } : v ? { ownerId: v } : {}] };
+}
+
+export function whereContactos(b: BusquedaContactos, u: Usuario): Prisma.ContactWhereInput {
+  return { AND: [delVendedor(b, u), busquedaContactos(b), filtroContactos(b.f)[2]] };
 }

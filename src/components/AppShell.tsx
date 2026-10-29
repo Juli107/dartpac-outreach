@@ -2,12 +2,14 @@ import { Sidebar } from "@/components/Sidebar";
 import { db } from "@/lib/db";
 import { overallHealth } from "@/lib/health";
 import { radarHoyCount } from "@/lib/radar/store";
+import { alcanceContactos, usuarioActual } from "@/lib/usuario";
 
 /** Estructura de la app: fondo azul marino, barra lateral de vidrio y área de trabajo. `full` deja el área sin márgenes (Radar). */
 export async function AppShell({ children, full = false }: { children: React.ReactNode; full?: boolean }) {
+  const u = await usuarioActual();
   const [sequences, contacts, unread, tasks, radar, health] = await Promise.all([
     db.sequence.count({ where: { status: { not: "ARCHIVED" } } }),
-    db.contact.count(),
+    db.contact.count({ where: alcanceContactos(u) }),
     db.reply.count({ where: { read: false } }),
     db.task.count({ where: { done: false } }),
     radarHoyCount().catch(() => 0),
@@ -24,6 +26,7 @@ export async function AppShell({ children, full = false }: { children: React.Rea
         counts={{ "/secuencias": sequences, "/contactos": contacts, "/bandeja": unread, "/tareas": tasks, "/radar": radar }}
         live={["/bandeja", "/radar"]}
         health={health?.level ?? "warn"}
+        usuario={{ name: u.name, admin: u.admin }}
       />
       {full ? (
         <main className="relative min-h-0 min-w-0 flex-1 pb-[env(safe-area-inset-bottom)] md:h-screen md:pb-0">{children}</main>

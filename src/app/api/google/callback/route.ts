@@ -5,6 +5,7 @@ import { hasSession, sessionCookie } from "@/lib/session";
 import { encryptSecret } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { yoCookie } from "@/lib/yo";
+import { registrar } from "@/lib/actividad";
 
 function sameState(a: string, b: string) {
   const x = Buffer.from(a);
@@ -42,6 +43,8 @@ export async function GET(req: NextRequest) {
     res.cookies.set(await sessionCookie());
     // Recuerda quién entró: el Radar elige de entrada su buzón y su firma.
     res.cookies.set(yoCookie(profile.email, profile.name));
+    const sender = await db.sender.findUnique({ where: { email: profile.email }, select: { id: true, name: true } });
+    await registrar({ name: sender?.name ?? profile.name, senderId: sender?.id ?? null }, "entro", `Entró con Google (${profile.email})`);
     return res;
   }
 
