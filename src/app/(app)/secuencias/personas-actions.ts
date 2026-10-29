@@ -12,6 +12,7 @@ import { waNum } from "@/lib/whatsapp";
 import { quienSoy } from "@/lib/yo";
 import { whereContactos, type BusquedaContactos } from "@/lib/contactos-filtros";
 import { NO_CONTACTAR } from "@/lib/radar/espejo";
+import { deOtroVendedor } from "@/lib/dueno";
 
 export type Resultado = { ok?: string; error?: string };
 export type ContactoHallado = { id: string; nombre: string; email: string | null; empresa: string | null; telefono: string | null; aviso: string | null };
@@ -82,7 +83,8 @@ export async function agregarPersona(sequenceId: string, _prev: Resultado | null
     if (ya) return { ok: `${quien} ya estaba en esta secuencia.${nota}` };
     await db.enrollment.create({ data: { sequenceId, contactId: contact.id, nextStep: first.order, nextRunAt: runAt } });
     refresh(sequenceId);
-    const sinMail = soloEmail && !contact.email ? " Ojo: no tiene email y esta secuencia es solo de emails, así que no le va a llegar nada." : "";
+    const tieneWa = !!(waNum(contact.whatsapp ?? "") || waNum(contact.phone ?? ""));
+    const sinMail = contact.email ? "" : !tieneWa ? " Ojo: no tiene email ni un WhatsApp válido, así que no le va a llegar nada." : soloEmail ? " Como no tiene email, los pasos de email le llegan por WhatsApp (quedan en Tareas para mandarlos con un clic)." : "";
     return { ok: `Listo: ${quien} quedó en la secuencia.${nota}${sinMail}` };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "No se pudo agregar." };
@@ -229,6 +231,7 @@ export async function inscribirRadar(sequenceId: string, ids: string[]): Promise
     if (r.yaEstaban) partes.push(plural(r.yaEstaban, "ya estaba", "ya estaban"));
     if (r.sinCanal) partes.push(`${plural(r.sinCanal, "sin email ni WhatsApp", "sin email ni WhatsApp")} (o descartadas)`);
     if (r.bajas) partes.push(`${plural(r.bajas, "omitida", "omitidas")} por baja o rebote`);
+    if (r.deOtro) partes.push(`${plural(r.deOtro, "la trabaja", "las trabaja")} otro vendedor`);
     if (r.corregidos) partes.push(plural(r.corregidos, "email corregido", "emails corregidos"));
     return { ok: partes.join(" · ") + "." };
   } catch (e) {
@@ -248,7 +251,7 @@ export async function inscribirRadarTanda(sequenceId: string, ids: string[]): Pr
   }
 }
 
-export type ResultadoContactos = { sumadas: number; yaEstaban: number; bajas: number; sinCanal: number; corregidos: number };
+export type ResultadoContactos = { sumadas: number; yaEstaban: number; bajas: number; sinCanal: number; corregidos: number; deOtro: Record<string, number> };
 
 /**
  * Contactos que cumplen la búsqueda y el filtro de la página de Contactos y que se pueden sumar a esta secuencia:
@@ -268,12 +271,12 @@ export async function idsContactos(sequenceId: string, b: BusquedaContactos): Pr
  * Una tanda de «Sumar a una secuencia» desde Contactos. Los emails sin revisar pasan por el verificador (los tipeos
  * evidentes se corrigen) y no se suma a quien no le llegaría ningún paso: sin email válido y sin WhatsApp.
  */
-export async function inscribirContactosTanda(sequenceId: string, ids: string[]): Promise<ResultadoContactos | { error: string }> {
+export async function inscribirContactosTanda(sequenceId: string, ids: string[], igual = false): Promise<ResultadoContactos | { error: string }> {
   try {
     const { seq, first, runAt } = await inicio(sequenceId);
-    const tieneMail = seq.steps.some((s) => s.type === "EMAIL");
-    const soloMail = seq.steps.every((s) => s.type === "EMAIL");
-    const r: ResultadoContactos = { sumadas: 0, yaEstaban: 0, bajas: 0, sinCanal: 0, corregidos: 0 };
+    const r: ResultadoContactos = { sumadas: 0, yaEstaban: 0, bajas: 0, sinCanal: 0, corregidos: 0, deOtro: {} };
+    // a una empresa que ya trabaja otro vendedor no se le escribe dos veces (salvo que se pida sumarla igual)
+    const otros = igual ? new Map<string, string>() : await deOtroVendedor(sequenceId, ids.slice(0, 50));
     const rows = await db.contact.findMany({
       where: { id: { in: ids.slice(0, 50) } },
       include: { enrollments: { where: { sequenceId }, select: { id: true } } },
@@ -282,7 +285,9 @@ export async function inscribirContactosTanda(sequenceId: string, ids: string[])
     for (let c of rows) {
       if (c.enrollments.length) { r.yaEstaban++; continue; }
       if (c.unsubscribed || c.bounced || c.tags.includes(NO_CONTACTAR)) { r.bajas++; continue; }
-      if (tieneMail && c.email && !c.emailCheckedAt) {
+      const otro = otros.get(c.id);
+      if (otro) { r.deOtro[otro] = (r.deOtro[otro] ?? 0) + 1; continue; }
+      if (c.email && !c.emailCheckedAt) {
         let v = await verificar(c.email);
         let email = c.email;
         if (v.estado === "corregible" && v.sugerencia && !(await db.contact.findUnique({ where: { email: v.sugerencia }, select: { id: true } }))) {
@@ -294,7 +299,8 @@ export async function inscribirContactosTanda(sequenceId: string, ids: string[])
       }
       const mail = !!c.email && c.emailStatus !== "invalido" && c.emailStatus !== "corregible";
       const wa = !!(waNum(c.whatsapp ?? "") || waNum(c.phone ?? ""));
-      if (soloMail ? !mail : !mail && !wa) { r.sinCanal++; continue; }
+      // sin email el paso de email sale por WhatsApp, y al revés: alcanza con uno de los dos
+      if (!mail && !wa) { r.sinCanal++; continue; }
       sumar.push(c.id);
     }
     if (sumar.length) {

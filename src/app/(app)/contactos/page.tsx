@@ -35,7 +35,7 @@ export default async function Contacts({
       where,
       orderBy: { createdAt: "desc" },
       take: 200,
-      include: { enrollments: { include: { sequence: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 1 } },
+      include: { enrollments: { include: { sequence: { select: { name: true, sender: { select: { name: true } } } } }, orderBy: { createdAt: "desc" }, take: 1 } },
     }),
     db.contact.count({ where }),
     db.contact.findMany({ select: { tags: true } }),
@@ -138,6 +138,7 @@ export default async function Contacts({
                         {last ? (
                           <span className="flex flex-col items-start gap-1">
                             <span className="block max-w-full truncate text-ink/90" title={last.sequence.name}>{last.sequence.name}</span>
+                            {last.sequence.sender && <span className="block text-[11.5px] text-faint">Lo trabaja {last.sequence.sender.name.split(/\s+/)[0]}</span>}
                             <StatusPill map={ENROLLMENT_STATUS} value={last.status} />
                           </span>
                         ) : (

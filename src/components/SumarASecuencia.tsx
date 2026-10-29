@@ -41,6 +41,7 @@ export function SumarASecuencia({ secuencias, busqueda, total }: { secuencias: {
   const [sel, setSel] = useState(0);
   const [avance, setAvance] = useState<{ hechas: number; total: number } | null>(null);
   const [res, setRes] = useState<{ ok?: string; error?: string } | null>(null);
+  const [igual, setIgual] = useState(false);
   useEffect(() => {
     const contar = () => setSel(marcadas().length);
     window.addEventListener("dp:sel", contar);
@@ -56,19 +57,23 @@ export function SumarASecuencia({ secuencias, busqueda, total }: { secuencias: {
     if (!ids.length) return setRes({ ok: "No queda nadie para sumar: ya están en esa secuencia, o tienen baja, rebote o «no contactar»." });
     if (!window.confirm(`¿Sumar ${fmt(ids.length)} ${ids.length === 1 ? "contacto" : "contactos"} a «${seq.name}»?\n\nNo se envía nada ahora: los mensajes salen solo cuando la secuencia está encendida.`)) return;
     const tot = { sumadas: 0, yaEstaban: 0, bajas: 0, sinCanal: 0, corregidos: 0 };
+    const deOtro: Record<string, number> = {};
     let error = "";
     setAvance({ hechas: 0, total: ids.length });
     for (let i = 0; i < ids.length; i += TANDA) {
-      const r = await inscribirContactosTanda(sid, ids.slice(i, i + TANDA)).catch(() => ({ error: "Se cortó la conexión." }));
+      const r = await inscribirContactosTanda(sid, ids.slice(i, i + TANDA), igual).catch(() => ({ error: "Se cortó la conexión." }));
       if ("error" in r) { error = r.error; break; }
       tot.sumadas += r.sumadas; tot.yaEstaban += r.yaEstaban; tot.bajas += r.bajas; tot.sinCanal += r.sinCanal; tot.corregidos += r.corregidos;
+      for (const [k, v] of Object.entries(r.deOtro)) deOtro[k] = (deOtro[k] ?? 0) + v;
       setAvance({ hechas: Math.min(i + TANDA, ids.length), total: ids.length });
     }
     setAvance(null);
     const partes = [`${fmt(tot.sumadas)} ${tot.sumadas === 1 ? "contacto sumado" : "contactos sumados"} a «${seq.name}»`];
     if (tot.yaEstaban) partes.push(`${fmt(tot.yaEstaban)} ya ${tot.yaEstaban === 1 ? "estaba" : "estaban"}`);
-    if (tot.sinCanal) partes.push(`${fmt(tot.sinCanal)} sin un canal que use esta secuencia (email válido o WhatsApp)`);
+    if (tot.sinCanal) partes.push(`${fmt(tot.sinCanal)} sin email válido ni WhatsApp`);
     if (tot.bajas) partes.push(`${fmt(tot.bajas)} con baja, rebote o «no contactar»`);
+    const otros = Object.entries(deOtro);
+    if (otros.length) partes.push(`${otros.map(([n, v]) => `${fmt(v)} ya ${v === 1 ? "lo" : "los"} está trabajando ${n}`).join(", ")} (no se sumaron para no escribirles dos veces)`);
     if (tot.corregidos) partes.push(`${fmt(tot.corregidos)} ${tot.corregidos === 1 ? "email corregido" : "emails corregidos"}`);
     setRes(error ? { error: `${error} Alcanzó a sumar: ${partes.join(" · ")}. Volvé a tocar el botón para seguir con los que faltan.` } : { ok: partes.join(" · ") + "." });
     document.querySelectorAll<HTMLInputElement>('input[name="sel-contacto"]').forEach((el) => (el.checked = false));
@@ -103,6 +108,10 @@ export function SumarASecuencia({ secuencias, busqueda, total }: { secuencias: {
           {avance ? `Sumando… ${fmt(avance.hechas)} de ${fmt(avance.total)}` : `Sumar los ${fmt(total)} de esta lista`}
         </button>
       </div>
+      <label className="flex items-center gap-2 text-xs text-muted">
+        <input type="checkbox" className="h-4 w-4 accent-[#3E7BFA]" checked={igual} onChange={(e) => setIgual(e.target.checked)} disabled={!!avance} />
+        Sumar también los que ya trabaja otro vendedor (por defecto se dejan afuera para no escribirles dos veces)
+      </label>
       {avance && (
         <div className="h-1.5 overflow-hidden rounded-full bg-white/[.08]" role="progressbar" aria-valuemin={0} aria-valuemax={avance.total} aria-valuenow={avance.hechas}>
           <div className="h-full rounded-full bg-brand-2 transition-all" style={{ width: `${(avance.hechas / avance.total) * 100}%` }} />

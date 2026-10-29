@@ -179,11 +179,11 @@ export function AiButton({ tipo, orden, total, secuencia, subjectId, bodyId }: {
 }
 
 const TIPOS: { k: "EMAIL" | "WHATSAPP" | "TASK"; t: string; d: string; icon: React.ReactNode }[] = [
-  { k: "EMAIL", t: "Email", d: "Sale solo desde el buzón de la secuencia", icon: <path d="M3.5 6.5h17v11h-17zM3.8 7l8.2 6.2L20.2 7" /> },
+  { k: "EMAIL", t: "Email", d: "Sale solo desde el buzón de la secuencia (sin email, va por WhatsApp)", icon: <path d="M3.5 6.5h17v11h-17zM3.8 7l8.2 6.2L20.2 7" /> },
   {
     k: "WHATSAPP",
     t: "WhatsApp",
-    d: "Queda en Tareas con el mensaje listo para abrir",
+    d: "Queda en Tareas con el mensaje listo para abrir (sin WhatsApp, va por email)",
     icon: <path d="M5 19l1.2-3.6A7.5 7.5 0 1 1 9 18.3zM9.3 9.2c.3 1.6 1.9 3.6 3.6 4.3l1-1 1.8.8c-.1 1.2-1 2-2.2 1.8-2.7-.4-5.3-3-5.7-5.7-.2-1.2.6-2.1 1.8-2.2l.8 1.8z" />,
   },
   { k: "TASK", t: "Llamada o tarea", d: "Llamar, visitar o mandar muestras", icon: <path d="M6.6 4h2.6l1.3 3.6-1.8 1.2a11 11 0 0 0 6.5 6.5l1.2-1.8L20 14.8v2.6a2 2 0 0 1-2.2 2A15.5 15.5 0 0 1 4.6 6.2 2 2 0 0 1 6.6 4z" /> },
