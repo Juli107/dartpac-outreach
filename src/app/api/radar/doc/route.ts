@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
+import { espejarProspectos } from "@/lib/radar/espejo";
 import { borraCampos, deleteDoc, deleteDocs, NotFound, setDoc, setDocs, updateDoc, updateDocs, validPath, VersionConflict } from "@/lib/radar/store";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,9 @@ export async function POST(req: Request) {
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid_argument" }, { status: 400 });
   const ops = "ops" in parsed.data ? parsed.data.ops : [parsed.data];
+  // lo que se carga o se cambia en el Radar queda también en Contactos (después de responder)
+  const aContactos = ops.filter((o) => o.c === "prospectos" && o.op !== "delete").map((o) => o.id);
+  if (aContactos.length) after(() => espejarProspectos(aContactos));
   const out: { id: string; v?: number }[] = [];
   for (const o of ops) if (!validPath(o.c, o.id)) return NextResponse.json({ error: "invalid_argument", detail: `${o.c}/${o.id}` }, { status: 400 });
   // En bloque, del mismo tipo y la misma colección (importar una base, eliminar o cambiar las marcadas):

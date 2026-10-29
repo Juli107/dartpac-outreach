@@ -3,6 +3,7 @@ import { conversar, ApiError, iaConfigurada, sumarUso, usoVacio, SIN_CREDITO, ty
 import { getDoc, hoyAR, listCol, setDoc, updateDoc, type RadarData } from "./store";
 import { FUENTES, norm, PROV, provNom, RUB, rubNom } from "./geo";
 import { verificarLocal } from "../verifier";
+import { espejarProspectos } from "./espejo";
 import { sumarUsoDia, topeDiario, topeDiarioSuperado } from "./uso";
 
 /**
@@ -174,6 +175,7 @@ function herramientaGuardar(ctx: { provincia: string; zona: string; idx: Indice;
         ctx.nuevas.push(id);
         guardadas.push(nombre);
       }
+      if (guardadas.length) await espejarProspectos(ctx.nuevas.slice(-guardadas.length));
       return { guardadas, repetidas, descartadas, total_guardadas_en_esta_zona: ctx.nuevas.length };
     },
   };

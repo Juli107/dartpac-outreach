@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { redactarConIA } from "@/app/(app)/secuencias/actions";
+import { redactarConIA, type SugerenciaIA } from "@/app/(app)/secuencias/actions";
 import { BotonGuardar } from "./BotonGuardar";
 
 export type VarChip = { clave: string; ayuda: string };
@@ -89,38 +89,92 @@ export function VarChips({ campos, lista }: { campos: string[]; lista: VarChip[]
 }
 
 /** "Redactar con IA": propone asunto y texto según el tipo de paso; si ya hay un borrador, lo mejora. */
+const PEDIDOS = ["Más corto", "Más formal", "Más cercano", "Que termine con una pregunta", "Que destaque stock y envíos"];
+
+/**
+ * Sugerencias con IA: tres versiones del mensaje para elegir (si ya hay texto, lo toma de base). Se le puede pedir
+ * algo en palabras o con un toque («Más corto»…). «Usar esta» la pone en el asunto y el mensaje; falta guardar.
+ */
 export function AiButton({ tipo, orden, total, secuencia, subjectId, bodyId }: { tipo: "EMAIL" | "WHATSAPP" | "TASK"; orden: number; total: number; secuencia: string; subjectId?: string; bodyId: string }) {
   const [pending, start] = useTransition();
+  const [abierto, setAbierto] = useState(false);
+  const [pedido, setPedido] = useState("");
   const [msg, setMsg] = useState("");
+  const [opciones, setOpciones] = useState<SugerenciaIA[]>([]);
+  const pedir = (extra?: string) =>
+    start(async () => {
+      setMsg("");
+      const body = document.getElementById(bodyId) as HTMLTextAreaElement | null;
+      const p = [extra, pedido.trim()].filter(Boolean).join(". ");
+      const r = await redactarConIA({ tipo, orden, total, secuencia, borrador: body?.value.trim() || undefined, pedido: p || undefined });
+      if ("error" in r) return setMsg(r.error);
+      setOpciones(r.opciones);
+    });
+  const usar = (o: SugerenciaIA) => {
+    const body = document.getElementById(bodyId) as HTMLTextAreaElement | null;
+    if (body) {
+      body.value = o.texto;
+      body.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    const sub = subjectId ? (document.getElementById(subjectId) as HTMLInputElement | null) : null;
+    if (sub && o.asunto && tipo !== "WHATSAPP") {
+      sub.value = o.asunto;
+      sub.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    setMsg("Listo: quedó en el mensaje. Revisalo y guardá.");
+    setOpciones([]);
+    setAbierto(false);
+  };
+  const icono = (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3l1.8 4.6L18.5 9l-4.7 1.5L12 15l-1.8-4.5L5.5 9l4.7-1.4zM18 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8zM5 15.5l.6 1.4 1.4.6-1.4.6L5 19.5l-.6-1.4-1.4-.6 1.4-.6z" />
+    </svg>
+  );
+  if (!abierto) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <button type="button" className="btn-ghost text-[13px]" onClick={() => setAbierto(true)}>{icono}Sugerencias con IA</button>
+        {msg && <span className="text-xs text-muted" aria-live="polite">{msg}</span>}
+      </span>
+    );
+  }
   return (
-    <span className="inline-flex items-center gap-2">
-      <button
-        type="button"
-        disabled={pending}
-        className="btn-ghost text-[13px]"
-        onClick={() =>
-          start(async () => {
-            setMsg("");
-            const body = document.getElementById(bodyId) as HTMLTextAreaElement | null;
-            const r = await redactarConIA({ tipo, orden, total, secuencia, borrador: body?.value.trim() || undefined });
-            if ("error" in r && r.error) return setMsg(r.error);
-            if (body && "texto" in r) {
-              body.value = r.texto ?? "";
-              body.dispatchEvent(new Event("input", { bubbles: true }));
-            }
-            const sub = subjectId ? (document.getElementById(subjectId) as HTMLInputElement | null) : null;
-            if (sub && "asunto" in r && r.asunto && tipo !== "WHATSAPP") sub.value = r.asunto;
-            setMsg("Listo: revisalo y guardá.");
-          })
-        }
-      >
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M12 3l1.8 4.6L18.5 9l-4.7 1.5L12 15l-1.8-4.5L5.5 9l4.7-1.4zM18 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8zM5 15.5l.6 1.4 1.4.6-1.4.6L5 19.5l-.6-1.4-1.4-.6 1.4-.6z" />
-        </svg>
-        {pending ? "Escribiendo…" : "Redactar con IA"}
-      </button>
-      {msg && <span className="text-xs text-muted" aria-live="polite">{msg}</span>}
-    </span>
+    <div className="well flex w-full basis-full flex-col gap-3 p-3" role="group" aria-label="Sugerencias con IA">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <b className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white">{icono}Sugerencias con IA</b>
+        <button type="button" className="btn-ghost px-2.5 text-[13px]" onClick={() => { setAbierto(false); setOpciones([]); }}>Cerrar</button>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {PEDIDOS.map((p) => (
+          <button key={p} type="button" className="chip transition hover:bg-brand/20 hover:text-white" disabled={pending} onClick={() => pedir(p)}>{p}</button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <input
+          className="input min-w-0 flex-1"
+          value={pedido}
+          onChange={(e) => setPedido(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); pedir(); } }}
+          placeholder="Pedile algo (opcional): «mencioná que fabricamos bolsas camiseta»"
+          aria-label="Qué le pedís a la IA"
+        />
+        <button type="button" className="btn" disabled={pending} onClick={() => pedir()}>{pending ? "Pensando…" : opciones.length ? "Otras 3" : "Pedir 3 sugerencias"}</button>
+      </div>
+      <p className="text-xs text-muted">Si ya escribiste algo, la IA lo toma de base. No cambia nada hasta que tocás «Usar esta».</p>
+      {msg && <p className="text-xs text-[#FF9A9A]" aria-live="polite">{msg}</p>}
+      {opciones.length > 0 && (
+        <ul className="grid gap-2 lg:grid-cols-3">
+          {opciones.map((o, i) => (
+            <li key={i} className="card flex flex-col gap-2 p-3">
+              {o.idea && <span className="text-[11.5px] font-semibold uppercase tracking-wide text-brand-2">{o.idea}</span>}
+              {o.asunto && tipo !== "WHATSAPP" && <b className="text-[13px] font-semibold text-white">{o.asunto}</b>}
+              <p className="whitespace-pre-line text-[13px] text-ink/90">{o.texto}</p>
+              <button type="button" className="btn-ghost mt-auto self-start text-[13px]" onClick={() => usar(o)}>Usar esta</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -203,10 +257,12 @@ export function StepComposer({ action, orden, total, secuencia, vars, abierto = 
             <textarea id="new-body" name="body" rows={tipo === "TASK" ? 3 : 7} required={tipo !== "TASK"} className="input leading-relaxed" placeholder={tipo === "WHATSAPP" ? "{{saludo}}, ¿cómo va? Soy {{vendedor}} de {{mi_empresa}}…" : "{{saludo}},\n\n"} />
             {tipo === "EMAIL" && <p className="mt-1 text-xs text-muted">No hace falta firmar: la firma del remitente va sola al final.</p>}
           </div>
+          <div className="sm:col-span-3">
+            <AiButton tipo={tipo} orden={orden} total={Math.max(total, orden)} secuencia={secuencia} subjectId="new-subject" bodyId="new-body" />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-3">
             <VarChips campos={["new-subject", "new-body"]} lista={vars} />
             <div className="flex flex-wrap items-center gap-2">
-              <AiButton tipo={tipo} orden={orden} total={Math.max(total, orden)} secuencia={secuencia} subjectId="new-subject" bodyId="new-body" />
               <BotonGuardar enviando="Agregando…" listo="Paso agregado" avisarCambios={false} onListo={() => setTipo(null)}>Agregar paso</BotonGuardar>
             </div>
           </div>

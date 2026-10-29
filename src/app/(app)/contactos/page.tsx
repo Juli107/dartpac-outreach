@@ -1,22 +1,13 @@
 import Link from "next/link";
-import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ENROLLMENT_STATUS, fullName, type Tone } from "@/lib/labels";
 import { PageHeader, StatusPill, Pill, Empty, Segmented, Flash, Avatar } from "@/components/ui";
+import { FILTROS_CONTACTOS as FILTERS, busquedaContactos, filtroContactos } from "@/lib/contactos-filtros";
+import { espejarPendientes } from "@/lib/radar/espejo";
+import { MarcarContacto, MarcarTodos, SumarASecuencia } from "@/components/SumarASecuencia";
 import { addContact, corregirEmail, deleteContact, verificarContactos } from "./actions";
 
 export const metadata = { title: "Contactos" };
-
-const FILTERS: [string, string, Prisma.ContactWhereInput][] = [
-  ["todos", "Todos", {}],
-  ["radar", "Del Radar", { radarId: { not: null } }],
-  ["abrieron", "Abrieron", { enrollments: { some: { messages: { some: { openedAt: { not: null } } } } } }],
-  ["respondieron", "Respondieron", { replies: { some: {} } }],
-  ["problemas", "Email con problemas", { emailStatus: { in: ["invalido", "corregible"] } }],
-  ["sinemail", "Sin email", { email: null }],
-  ["rebotados", "Rebotados", { bounced: true }],
-  ["bajas", "Bajas", { unsubscribed: true }],
-];
 
 const VFY: Record<string, [string, Tone]> = {
   valido: ["Verificado", "ok"],
@@ -32,14 +23,14 @@ export default async function Contacts({
 }) {
   const sp = await searchParams;
   const q = sp.q?.trim();
-  const filter = FILTERS.find(([k]) => k === sp.f) ?? FILTERS[0];
-  const search: Prisma.ContactWhereInput = {
-    ...(q ? { OR: ["email", "firstName", "lastName", "company", "city", "phone"].map((f) => ({ [f]: { contains: q, mode: "insensitive" } })) } : {}),
-    ...(sp.tag ? { tags: { has: sp.tag } } : {}),
-  };
-  const where: Prisma.ContactWhereInput = { AND: [search, filter[2]] };
+  // todo lo del Radar está también acá: si alguna empresa todavía no llegó, entra antes de mostrar la lista
+  await espejarPendientes();
+  const filter = filtroContactos(sp.f);
+  const busqueda = { q, tag: sp.tag, f: filter[0] };
+  const search = busquedaContactos(busqueda);
+  const where = { AND: [search, filter[2]] };
   const qs = (f: string) => `/contactos?${new URLSearchParams({ ...(q ? { q } : {}), ...(sp.tag ? { tag: sp.tag } : {}), f })}`;
-  const [contacts, total, allTags, counts, sinVerificar] = await Promise.all([
+  const [contacts, total, allTags, counts, sinVerificar, secuencias] = await Promise.all([
     db.contact.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -50,6 +41,7 @@ export default async function Contacts({
     db.contact.findMany({ select: { tags: true } }),
     Promise.all(FILTERS.map(([, , w]) => db.contact.count({ where: { AND: [search, w] } }))),
     db.contact.count({ where: { email: { not: null }, emailCheckedAt: null } }),
+    db.sequence.findMany({ where: { status: { not: "ARCHIVED" } }, orderBy: { createdAt: "desc" }, select: { id: true, name: true, sendingOn: true, _count: { select: { steps: true } } } }),
   ]);
   const tags = [...new Set(allTags.flatMap((c) => c.tags))].sort();
 
@@ -88,19 +80,26 @@ export default async function Contacts({
         <button className="btn-ghost">Filtrar</button>
       </form>
 
+      <SumarASecuencia
+        secuencias={secuencias.map((x) => ({ id: x.id, name: x.name, on: x.sendingOn, pasos: x._count.steps }))}
+        busqueda={busqueda}
+        total={total}
+      />
+
       <section className="card appear min-w-0 overflow-hidden">
         {contacts.length === 0 ? (
-          <Empty title="No hay contactos">Importá un CSV, cargá uno a mano abajo o sumá empresas desde el Radar.</Empty>
+          <Empty title="No hay contactos">Importá un CSV, cargá uno a mano abajo o buscá empresas en el Radar: todo lo que entra queda acá.</Empty>
         ) : (
           <div className="overflow-x-auto">
             <table className="table">
-              <thead><tr><th>Contacto</th><th className="hidden sm:table-cell">Email</th><th>Teléfono</th><th>Etiquetas</th><th>Última secuencia</th><th></th></tr></thead>
+              <thead><tr><th className="w-px"><MarcarTodos /></th><th>Contacto</th><th className="hidden sm:table-cell">Email</th><th>Teléfono</th><th>Etiquetas</th><th>Última secuencia</th><th></th></tr></thead>
               <tbody>
                 {contacts.map((c) => {
                   const last = c.enrollments[0];
                   const v = c.emailStatus ? VFY[c.emailStatus] : null;
                   return (
                     <tr key={c.id}>
+                      <td className="w-px"><MarcarContacto id={c.id} nombre={fullName(c)} /></td>
                       <td className="min-w-[220px] max-w-[240px] sm:min-w-0 sm:max-w-[260px]">
                         <span className="flex items-center gap-2.5">
                           <Avatar name={fullName(c)} size={30} />
@@ -130,9 +129,10 @@ export default async function Contacts({
                       <td className="whitespace-nowrap text-muted">{c.whatsapp || c.phone || <span className="text-faint">–</span>}</td>
                       <td className="max-w-[220px]"><span className="flex flex-wrap gap-1">
                         {c.radarId && <Pill tone="info">Radar</Pill>}
+                        {c.tags.includes("no contactar") && <Pill tone="warn">No contactar</Pill>}
                         {c.unsubscribed && <Pill tone="bad">Baja</Pill>}
                         {c.bounced && <Pill tone="bad">Rebotado</Pill>}
-                        {c.tags.filter((t) => t !== "radar").map((t) => <Pill key={t} tone="neutral">{t}</Pill>)}
+                        {c.tags.filter((t) => t !== "radar" && t !== "no contactar").map((t) => <Pill key={t} tone="neutral">{t}</Pill>)}
                       </span></td>
                       <td className="max-w-[200px]">
                         {last ? (

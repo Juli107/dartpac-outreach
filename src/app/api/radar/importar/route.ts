@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { espejarProspectos } from "@/lib/radar/espejo";
 import { setDoc, validPath, type RadarData } from "@/lib/radar/store";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,8 @@ export async function POST(req: Request) {
       actualizados++;
     } else iguales++;
   }
+  const aContactos = parsed.data.docs.filter((x) => x.c === "prospectos").map((x) => x.id);
+  if (aContactos.length) after(() => espejarProspectos(aContactos));
   return NextResponse.json({ ok: true, nuevos, actualizados, iguales });
 }
 
