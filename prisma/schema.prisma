@@ -281,6 +281,8 @@ model Sender {
   /// Última comprobación de la conexión SMTP (sin enviar nada).
   lastCheckAt           DateTime?
   lastCheckError        String?
+  /// Última vez que tuvo la app abierta (la pestaña avisa cada minuto mientras está a la vista). Página Equipo.
+  lastSeenAt            DateTime?
   createdAt             DateTime   @default(now())
   sequences             Sequence[]
   /// Clientes de este vendedor.
@@ -344,4 +346,6 @@ model Setting {
   /// Reparto diario de contactos a los remitentes (apagado hasta que el administrador lo encienda) y el último día que corrió.
   repartoOn         Boolean   @default(false)
   repartoUltimo     String    @default("")
+  /// Última vez que alguien tuvo la app abierta entrando con la contraseña común (no se sabe quién es).
+  adminSeenAt       DateTime?
 }

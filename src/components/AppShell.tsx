@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/Sidebar";
+import { Presencia } from "@/components/Presencia";
 import { db } from "@/lib/db";
 import { overallHealth } from "@/lib/health";
 import { radarHoyCount } from "@/lib/radar/store";
@@ -17,6 +18,7 @@ export async function AppShell({ children, full = false }: { children: React.Rea
   ]);
   return (
     <div className={`relative isolate md:grid md:grid-cols-[252px_minmax(0,1fr)] ${full ? "flex h-[100dvh] flex-col overflow-hidden md:h-screen" : "md:min-h-screen"}`}>
+      <Presencia />
       <div className="app-bg" aria-hidden>
         <i />
         <i />
