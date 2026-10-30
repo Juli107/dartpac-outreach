@@ -24,7 +24,7 @@ const VFY: Record<string, [string, Tone]> = {
 export default async function Contacts({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; tag?: string; f?: string; v?: string; sec?: string; importados?: string; actualizados?: string; omitidos?: string; corregidos?: string; invalidos?: string; deotro?: string; verificados?: string; error?: string }>;
+  searchParams: Promise<{ n?: string; q?: string; tag?: string; f?: string; v?: string; sec?: string; importados?: string; actualizados?: string; omitidos?: string; corregidos?: string; invalidos?: string; deotro?: string; verificados?: string; error?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q?.trim();
@@ -39,6 +39,9 @@ export default async function Contacts({
   const search = busquedaContactos(busqueda);
   const vendedor = delVendedor(busqueda, u);
   const where = { AND: [vendedor, search, filter[2]] };
+  // «Ver más» suma de a POR_TANDA; «Ver todos» muestra la lista completa
+  const POR_TANDA = 200;
+  const mostrar = sp.n === "todos" ? undefined : Math.max(POR_TANDA, Math.floor(Number(sp.n) || POR_TANDA));
   const qs = (cambio: Record<string, string>) => {
     const x: Record<string, string> = { ...(q ? { q } : {}), ...(sp.tag ? { tag: sp.tag } : {}), ...(filter[0] !== "todos" ? { f: filter[0] } : {}), ...(v ? { v } : {}), ...(sp.sec ? { sec: sp.sec } : {}), ...cambio };
     for (const k of Object.keys(x)) if (!x[k]) delete x[k];
@@ -48,7 +51,7 @@ export default async function Contacts({
     db.contact.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      take: 200,
+      take: mostrar,
       include: {
         owner: { select: { name: true } },
         enrollments: { include: { sequence: { select: { name: true, sender: { select: { name: true } } } } }, orderBy: { createdAt: "desc" }, take: 1 },
@@ -84,7 +87,7 @@ export default async function Contacts({
 
   return (
     <>
-      <PageHeader title="Contactos" sub={`${total.toLocaleString("es-AR")} contactos${total > 200 ? " · se muestran los 200 más recientes" : ""}`}>
+      <PageHeader title="Contactos" sub={`${total.toLocaleString("es-AR")} contactos${contacts.length < total ? ` · se muestran los ${contacts.length.toLocaleString("es-AR")} más recientes` : ""}`}>
         {sinVerificar > 0 && (
           <form action={verificarContactos}>
             <button className="btn-ghost" title="Revisa formato, tipeos y que el dominio reciba correo. No manda nada.">Verificar {sinVerificar.toLocaleString("es-AR")} sin revisar</button>
@@ -239,6 +242,21 @@ export default async function Contacts({
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+        {contacts.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/60 px-5 py-3 text-sm">
+            <span className="text-muted">
+              Mostrando {contacts.length.toLocaleString("es-AR")} de {total.toLocaleString("es-AR")}
+            </span>
+            {contacts.length < total && (
+              <span className="flex gap-2">
+                <Link href={`${qs({ n: String(contacts.length + POR_TANDA) })}`} scroll={false} className="btn-ghost">
+                  Ver {Math.min(POR_TANDA, total - contacts.length).toLocaleString("es-AR")} más
+                </Link>
+                <Link href={qs({ n: "todos" })} scroll={false} className="btn-ghost">Ver todos</Link>
+              </span>
+            )}
           </div>
         )}
       </section>
