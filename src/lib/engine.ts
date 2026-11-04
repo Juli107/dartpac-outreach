@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { isHardBounce } from "./bounce";
 import { sentToday as countSentToday, minGapMinutes, todayStart } from "./quota";
 import { sePuedeEnviar } from "./verifier";
-import { contactWa } from "./whatsapp";
+import { contactWaCelular } from "./whatsapp";
 import { eventoRadar } from "./radar/outreach";
 import { cargarVariables } from "./variables";
 import { sendWaTemplate, waApiReady, waParamList } from "./whatsapp-api";
@@ -103,8 +103,9 @@ export async function runDueSteps(now = new Date()) {
 
     const ctx = { sender: sequence.sender, now, timeZone: sequence.timeZone, vars };
     // Cambio de canal: si el contacto no tiene email válido, el paso de email sale por WhatsApp, y al revés.
+    // WhatsApp solo si el verificador dice que tiene (celular, número de WhatsApp o marcado a mano).
     // Si no tiene ninguno de los dos, el paso se saltea y sigue el próximo.
-    const mailOk = sePuedeEnviar(contact), waOk = !!contactWa(contact);
+    const mailOk = sePuedeEnviar(contact), waOk = !!contactWaCelular(contact);
     const cambio = (step.type === "EMAIL" && !mailOk && waOk) || (step.type === "WHATSAPP" && !waOk && mailOk);
     const tipo = cambio ? (step.type === "EMAIL" ? "WHATSAPP" : "EMAIL") : step.type;
     const skip = (tipo === "EMAIL" && !mailOk) || (tipo === "WHATSAPP" && !waOk);
@@ -180,7 +181,7 @@ export async function runDueSteps(now = new Date()) {
         await db.enrollment.update({ where: { id: enr.id }, data: { nextRunAt: nextSendTime(now, 1, window) } });
         continue;
       }
-      const to = contactWa(contact);
+      const to = contactWaCelular(contact);
       let wamid: string | null = null;
       let error: string | null = null;
       try {

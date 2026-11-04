@@ -16,7 +16,8 @@ let ultima = 0;
 
 /**
  * Pone al día la etapa de cada contacto. Los del Radar copian la de su empresa; los demás la sacan de lo que pasó:
- * si respondió, «Respondió»; si se le mandó algo, «Contactado»; si no, «Nuevo». Corre como mucho una vez cada 30 s.
+ * si respondió, «Respondió»; si se le mandó algo, «Contactado»; si no, «Nuevo». También copia la marca de WhatsApp del
+ * Radar. Corre como mucho una vez cada 30 s.
  */
 export async function sincronizarEtapas() {
   if (Date.now() - ultima < 30_000) return;
@@ -40,6 +41,14 @@ export async function sincronizarEtapas() {
         WHERE c2."radarId" IS NULL AND coalesce(c2.etapa, 'nuevo') NOT IN ('cotizado', 'cliente', 'descartado')
       ) x
       WHERE x.id = c.id AND c.etapa IS DISTINCT FROM x.etapa`;
+    // la marca de WhatsApp de las empresas del Radar («No tiene WhatsApp» / «Sí tiene») pasa a su contacto
+    await db.$executeRaw`
+      UPDATE "Contact" c SET "waMarca" = x.marca
+      FROM (
+        SELECT r.id, CASE WHEN r.data->>'sinWa' = 'true' THEN 'no' WHEN r.data->>'conWa' = 'true' THEN 'si' ELSE NULL END AS marca
+        FROM "RadarDoc" r WHERE r.col = 'prospectos'
+      ) x
+      WHERE x.id = c."radarId" AND c."waMarca" IS DISTINCT FROM x.marca`;
   } catch (e) {
     console.error("sincronizar etapas", e);
   }

@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { fullName, relativeTime } from "@/lib/labels";
-import { contactWa, waLink } from "@/lib/whatsapp";
+import { contactWaCelular as contactWa, waLink } from "@/lib/whatsapp";
 import { eventoRadar } from "@/lib/radar/outreach";
 import { PageHeader, Empty, Segmented, Pill } from "@/components/ui";
 

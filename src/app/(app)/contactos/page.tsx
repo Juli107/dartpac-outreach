@@ -9,7 +9,8 @@ import { primerNombre, usuarioActual } from "@/lib/usuario";
 import { MarcarContacto, MarcarTodos, SumarASecuencia } from "@/components/SumarASecuencia";
 import { AsignarVendedor } from "@/components/AsignarVendedor";
 import { WhatsappContacto } from "@/components/WhatsappContacto";
-import { contactWa } from "@/lib/whatsapp";
+import { estadoWa } from "@/lib/whatsapp";
+import { EstadoWa } from "@/components/EstadoWa";
 import { ETAPAS, etapaDe, sincronizarEtapas } from "@/lib/etapas";
 import { addContact, corregirEmail, deleteContact, verificarContactos } from "./actions";
 
@@ -204,7 +205,7 @@ export default async function Contacts({
                           <span className="text-faint">–</span>
                         )}
                       </td>
-                      <td className="whitespace-nowrap text-muted">{c.whatsapp || c.phone || <span className="text-faint">–</span>}</td>
+                      <td className="whitespace-nowrap"><EstadoWa c={c} /></td>
                       <td className="whitespace-nowrap">
                         {c.owner ? (
                           <span className="flex flex-col items-start gap-0.5">
@@ -236,7 +237,7 @@ export default async function Contacts({
                       <td className="w-px">
                         <span className="flex items-center">
                         {/* WhatsApp desde el número de quien escribe (no a los clientes de otro, ni a bajas o «no contactar») */}
-                        {contactWa(c) && !c.unsubscribed && !c.tags.includes("no contactar") && (u.admin || !c.ownerId || c.ownerId === u.senderId) && (
+                        {estadoWa(c).estado === "si" && !c.unsubscribed && !c.tags.includes("no contactar") && (u.admin || !c.ownerId || c.ownerId === u.senderId) && (
                           <WhatsappContacto id={c.id} nombre={fullName(c)} />
                         )}
                         {(u.admin || !c.ownerId || c.ownerId === u.senderId) && <form action={deleteContact.bind(null, c.id)}>
@@ -293,3 +294,4 @@ export default async function Contacts({
     </>
   );
 }
+

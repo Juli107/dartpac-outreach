@@ -211,6 +211,17 @@ test("esCelular: solo cuenta lo que se nota que es celular; un fijo no carga Wha
   assert.equal(contactWaCelular({ phone: "0261 4234567", whatsapp: "+54 9 261 555-1234" }), "5492615551234");
 });
 
+test("estadoWa: celular o WhatsApp cargado = tiene; fijo = no se ofrece; las marcas a mano mandan", async () => {
+  const { estadoWa, contactWaCelular } = await import("./whatsapp.ts");
+  assert.equal(estadoWa({ phone: "011 15-4444-5555" }).estado, "si");
+  assert.equal(estadoWa({ phone: "0261 4234567" }).estado, "fijo");
+  assert.equal(estadoWa({ phone: "0261 4234567", waMarca: "si" }).estado, "si");
+  assert.equal(contactWaCelular({ phone: "0261 4234567", waMarca: "si" }), "5492614234567");
+  assert.equal(estadoWa({ phone: "+54 9 11 4444-5555", waMarca: "no" }).estado, "no");
+  assert.equal(contactWaCelular({ phone: "+54 9 11 4444-5555", waMarca: "no" }), "");
+  assert.equal(estadoWa({}).estado, "sin");
+});
+
 test("verificador: tipeos, inválidos y riesgosos (sin red)", async () => {
   const { verificarLocal, sePuedeEnviar } = await import("./verifier/index.ts");
   assert.equal(verificarLocal("ventas@gmial.com").estado, "corregible");

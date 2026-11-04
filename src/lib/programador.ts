@@ -9,6 +9,7 @@ import { resumenSiHaceFalta } from "./resumen-diario";
 import { getDoc, hoyAR } from "./radar/store";
 import { espejarPendientes } from "./radar/espejo";
 import { repartoSiHaceFalta } from "./reparto";
+import { sincronizarEtapas } from "./etapas";
 
 /** Una pasada dura como mucho lo que la función de /api/cron (60 s) y un margen. */
 const TURNO_MS = 75_000;
@@ -27,6 +28,8 @@ export async function pasadaProgramador(opts: { bandeja?: boolean; fuente: RunRe
     const inbox = checkInbox ? await syncInbox().catch((e) => ({ error: String(e) })) : "omitida";
     // desde las 8 de cada día hábil, los contactos nuevos de cada remitente (si el reparto está encendido)
     const reparto = await repartoSiHaceFalta().catch((e) => ({ error: String(e) }));
+    // las marcas de WhatsApp y las etapas del Radar, al día antes de mandar
+    await sincronizarEtapas();
     const steps = await runDueSteps();
     await recordRun({ at: new Date().toISOString(), steps, inbox, source: opts.fuente }).catch(() => undefined);
     const radar = await pendientes()
