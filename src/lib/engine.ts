@@ -166,7 +166,7 @@ export async function runDueSteps(now = new Date()) {
       }
       if (!error) {
         await eventoRadar(contact, { k: "mail", secuencia: sequence.name, paso: step.order, asunto: subject, por: sequence.sender?.name.split(/\s+/)[0] });
-        await registrar(sequence.sender ? { name: sequence.sender.name, senderId: sequence.sender.id } : null, "mail", `«${sequence.name}» paso ${step.order} a ${quienEs(contact)}: ${subject}`, { contactId: contact.id, ref: `mail:${trackingId}` });
+        await registrar(sequence.sender ? { name: sequence.sender.name, senderId: sequence.sender.id } : null, "mail", `«${sequence.name}» paso ${step.order} a ${quienEs(contact)}: ${subject}`, { contactId: contact.id, ref: `mail:${trackingId}`, canal: "mail" });
       }
       if (error) {
         // Reintenta en una hora sin avanzar de paso.
@@ -211,15 +211,11 @@ export async function runDueSteps(now = new Date()) {
         summary.tasks++;
       } else {
         await eventoRadar(contact, { k: "wa", secuencia: sequence.name, por: sender.name.split(/\s+/)[0] });
-        await registrar({ name: sender.name, senderId: sender.id }, "whatsapp", `«${sequence.name}» paso ${step.order} a ${quienEs(contact)} por WhatsApp`, { contactId: contact.id, ref: `wa:${wamid}` });
+        await registrar({ name: sender.name, senderId: sender.id }, "whatsapp", `«${sequence.name}» paso ${step.order} a ${quienEs(contact)} por WhatsApp`, { contactId: contact.id, ref: `wa:${wamid}`, canal: "whatsapp" });
       }
     } else if (tipo === "WHATSAPP") {
       // Sin plantilla aprobada o sin número conectado a la API (o un email que pasó a WhatsApp porque no tiene
-      // email válido): queda como tarea con el mensaje listo para abrir. Con el tope de WhatsApp del día lleno, pasa a mañana.
-      if (waLleno(sequence.sender)) {
-        await db.enrollment.update({ where: { id: enr.id }, data: { nextRunAt: nextSendTime(now, 1, window) } });
-        continue;
-      }
+      // email válido): queda como tarea con el mensaje listo para abrir. Sin tope por día: se mandan a mano.
       const who = contact.company || [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.phone || "contacto";
       const variant = cambio ? pickVariant(`${enr.id}:${step.id}`, stepVariants(step)) : null;
       await db.task.create({

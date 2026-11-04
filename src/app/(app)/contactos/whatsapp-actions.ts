@@ -88,7 +88,7 @@ export async function abrirWhatsapp(contactId: string, texto: string, remitenteI
     return { error: `No le podés escribir: ${fullName(c)} ya lo contactó ${otro}. Es su cliente.` };
   }
   await tomarClientes([c.id], s.id);
-  await registrar(u.senderId ? u : { name: s.name, senderId: s.id }, "mensaje", `WhatsApp a ${fullName(c)} desde el número de ${s.name.split(/\s+/)[0]}`, { contactId: c.id });
+  await registrar(u.senderId ? u : { name: s.name, senderId: s.id }, "mensaje", `WhatsApp a ${fullName(c)} desde el número de ${s.name.split(/\s+/)[0]}`, { contactId: c.id, canal: "whatsapp" });
   if (c.radarId) {
     await touchProspect(c.radarId, { tipo: "envio", texto: "WhatsApp desde Contactos de Outreach", por: s.name.split(/\s+/)[0] }, (p) =>
       (p.etapa ?? "nuevo") === "nuevo" ? { etapa: "contactado" } : {},

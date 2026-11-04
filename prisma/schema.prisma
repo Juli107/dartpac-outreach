@@ -300,6 +300,8 @@ model Actividad {
   /// entro, busqueda, mensaje, mail, whatsapp, secuencia, alta, importo, asigno o bloqueo.
   tipo      String
   texto     String
+  /// Por dónde fue el envío: mail, whatsapp o llamada (vacío si no es un envío). Lo usa la página Envíos.
+  canal     String?
   contactId String?
   /// Evita registrar dos veces lo mismo (por ejemplo, el mismo mensaje del Radar guardado dos veces).
   ref       String?  @unique
@@ -307,6 +309,7 @@ model Actividad {
 
   @@index([senderId, at])
   @@index([at])
+  @@index([canal, at])
 }
 
 /// Base del Radar comercial: documentos JSON por colección (prospectos, busquedas, alertas, pedidos, config),
