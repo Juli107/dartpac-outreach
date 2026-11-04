@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { canalDe, type Canal } from "./actividad";
 import { primerNombre } from "./usuario";
+import { sincronizarEtapas } from "./etapas";
 
 export const CANALES: { key: Canal; label: string; uno: string; ic: string; tone: "ok" | "info" | "warn" }[] = [
   { key: "mail", label: "Mails", uno: "Mail", ic: "✉️", tone: "info" },
@@ -16,6 +17,7 @@ export type FilaEnvios = { id: string; name: string; mail: number; whatsapp: num
  * contraseña común, el que eligió en el Radar (por el nombre).
  */
 export async function enviosDesde(desde: Date | null, senders: { id: string; name: string }[], max = 20000): Promise<Envio[]> {
+  await sincronizarEtapas(); // trae del Radar las marcas «No tiene WhatsApp»
   const filas = await db.actividad.findMany({
     where: {
       ...(desde ? { at: { gte: desde } } : {}),
@@ -27,7 +29,11 @@ export async function enviosDesde(desde: Date | null, senders: { id: string; nam
   });
   const porNombre = new Map(senders.map((s) => [primerNombre(s.name).toLowerCase(), s.id]));
   const duenoDe = (a: { senderId: string | null; quien: string }) => a.senderId ?? porNombre.get(primerNombre(a.quien).toLowerCase()) ?? `n:${a.quien}`;
-  return filas.map((a) => ({ ...a, c: canalDe(a), dueno: duenoDe(a) })).filter((a): a is Envio => !!a.c);
+  const todos = filas.map((a) => ({ ...a, c: canalDe(a), dueno: duenoDe(a) })).filter((a): a is Envio => !!a.c);
+  // un WhatsApp a alguien que no tiene WhatsApp no llegó: no cuenta como enviado
+  const ids = [...new Set(todos.filter((a) => a.c === "whatsapp" && a.contactId).map((a) => a.contactId!))];
+  const sinWa = new Set(ids.length ? (await db.contact.findMany({ where: { id: { in: ids }, waMarca: "no" }, select: { id: true } })).map((c) => c.id) : []);
+  return sinWa.size ? todos.filter((a) => !(a.c === "whatsapp" && a.contactId && sinWa.has(a.contactId))) : todos;
 }
 
 /** Cuántos de cada canal y a cuántas empresas distintas, por persona (las de `senders` aparecen aunque estén en cero). */
