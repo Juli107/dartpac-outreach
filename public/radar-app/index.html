@@ -3271,7 +3271,7 @@ function vLista(){ const q=norm(S.q), LE=S.listaIds?"todos":(S.lEst||"pend"), nC
   L.sort(S.ordenL==="pot"?ordenP:S.ordenL==="rec"?((a,b)=>(b.creado||0)-(a.creado||0)):ordenPt); S.listaVis=L; const hayF=S.fProv||S.fRub||S.fEt||S.fPot||S.q||S.fAsig;
   const sel=(id,val,opts,todos)=>`<label class="fsel ${val?"on":""}"><select id="${id}" aria-label="${todos}"><option value="">${todos}</option>${opts.map(([v,t])=>`<option value="${v}" ${v===val?"selected":""}>${esc(t)}</option>`).join("")}</select></label>`;
   const conTel=S.P.filter(p=>p.telefono||p.whatsapp).length, alto=S.P.filter(p=>p.potencial==="alto").length;
-  return `<section class="view">${cabecera("Base de prospectos",`${S.P.length} empresas`,`${alto} de potencial alto · ${conTel} con teléfono · ${Object.keys(cuentaProv()).length} provincias`,`<button class="btn sm" data-act="importar" title="Subí un CSV o Excel, o pegá una lista">Importar</button><button class="btn sm primary" data-act="nuevo">${IC.plus}Agregar</button>`)}
+  return `<section class="view">${cabecera("Base de prospectos",`${S.P.length} empresas`,`${alto} de potencial alto · ${conTel} con teléfono · ${Object.keys(cuentaProv()).length} provincias`,`<button class="btn sm" data-act="irOut" data-href="/contactos?f=radar" title="La misma lista, junto con los contactos de las secuencias">Ver en Contactos</button><button class="btn sm" data-act="importar" title="Subí un CSV o Excel, o pegá una lista">Importar</button><button class="btn sm primary" data-act="nuevo">${IC.plus}Agregar</button>`)}
    ${S.P.length&&!S.listaIds?estSwitch("lEst","",LE,S.P.length-nC,nC):""}
    <div class="panel filt"><div class="search">${IC.search}<input id="q" type="search" placeholder="Buscar por nombre, ciudad o rubro" value="${esc(S.q)}" autocomplete="off"></div>
    <div class="fsel-row">${sel("f-prov",S.fProv,Object.entries(PROV).map(([k,p])=>[k,p.n]).sort((a,b)=>a[1].localeCompare(b[1])),"Todas las provincias")}${sel("f-rub",S.fRub,Object.entries(RUB).map(([k,r])=>[k,r.n]),"Todos los rubros")}${sel("f-et",S.fEt,[...ETAPAS,["descartado","Descartado"]],"Todas las etapas")}${sel("f-pot",S.fPot,[["alto","Potencial alto"],["medio","Potencial medio"],["bajo","Potencial bajo"]],"Cualquier potencial")}</div>
@@ -4097,7 +4097,43 @@ function imCompletar(b,r){ const d={}, notas=String(b.notas||""), bajo=notas.toL
   if(r.notas&&!bajo.includes(r.notas.toLowerCase())) extra.push(r.notas);
   if(extra.length) d.notas=[notas,...extra].filter(Boolean).join("\n");
   return d; }
-function importar(){
+/* Buscar en Google Maps (web): la API oficial de Google Places trae los comercios de un rubro en una zona. El resultado
+   se carga al Radar con el mismo importador de siempre (sin repetir los que ya están) o se baja en Excel. */
+function mapsBuscar(){
+  const PROVS=Object.entries(PROV).map(([k,x])=>[k,x.n]).sort((a,b)=>a[1].localeCompare(b[1]));
+  abrir("Buscar en Google Maps",`<label class="fld"><span>Qué buscás</span><input id="gm-q" placeholder="Ej.: distribuidora de descartables, papelera, rotisería" autocomplete="off"></label>
+   <div class="grid2"><label class="fld"><span>Provincia</span><select id="gm-p"><option value="">Todo el país</option>${PROVS.map(([k,n])=>`<option value="${k}">${esc(n)}</option>`).join("")}</select></label>
+   <label class="fld"><span>Ciudad o barrio (opcional)</span><input id="gm-c" placeholder="Ej.: Rosario, Palermo" autocomplete="off"></label></div>
+   <button class="btn primary block" id="gm-go">🗺️ Buscar</button>
+   <p class="hint" id="gm-r" aria-live="polite">Trae hasta 60 lugares con nombre, dirección, teléfono y web.</p>
+   <div id="gm-l"></div>`,root=>{
+    let R=[], Q="", P="";
+    const out=root.querySelector("#gm-r"), lst=root.querySelector("#gm-l"), go=root.querySelector("#gm-go");
+    const filas=()=>[["Empresa","Teléfono","Dirección","Ciudad","Provincia","Web","Rubro","Notas"],...R.map(l=>[l.nombre,l.telefono,l.direccion,l.ciudad,P?provNom(P):"",l.web,Q,l.maps?"Google Maps: "+l.maps:""])];
+    const pintar=()=>{ if(!R.length){ lst.innerHTML=""; return; }
+      lst.innerHTML=`<div class="row" style="gap:8px;flex-wrap:wrap;margin:6px 0 10px"><button class="btn primary sm" id="gm-cargar">Cargar ${R.length} al Radar</button><button class="btn sm" id="gm-xl">${IC.dl}Bajar Excel</button></div>
+        <div class="x-prev"><table><thead><tr><th>Empresa</th><th>Teléfono</th><th>Ciudad</th></tr></thead><tbody>${R.slice(0,60).map(l=>`<tr><td><b>${esc(l.nombre)}</b><small>${esc(l.direccion)}</small></td><td class="num">${esc(l.telefono||"—")}</td><td>${esc(l.ciudad||"")}</td></tr>`).join("")}</tbody></table></div>`;
+      lst.querySelector("#gm-cargar").onclick=()=>{ const f=filas(); cerrar(); importar({filas:f,origen:"Google Maps: "+Q+(P?" en "+provNom(P):"")}); };
+      lst.querySelector("#gm-xl").onclick=()=>{ try{ const ST=XL.ST, t=v=>({v:v||"",s:ST.txt}), F=filas();
+          const cols=[["Empresa",34],["Teléfono",17],["Dirección",40],["Ciudad",18],["Provincia",17],["Web",30],["Rubro",20],["Notas",50]];
+          const tit=`Google Maps · ${Q}${P?" en "+provNom(P):""}`;
+          const blob=XL.libro([{name:"Lugares",title:tit,sub:`${R.length} lugares · ${new Date().toLocaleDateString("es-AR")}`,cols,rows:F.slice(1).map(r=>r.map((x,i)=>i===0?{v:x,s:ST.bold}:t(x))),tab:"FF1D7A46"}],tit);
+          bajarDirecto(blob,`Google Maps - ${Q}${P?" - "+provNom(P):""} - ${hoy()}.xlsx`.normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[\\/:*?"<>|]/g," ")); }
+        catch(e){ console.error(e); toast("No se pudo armar el Excel"); } }; };
+    go.onclick=async()=>{ Q=root.querySelector("#gm-q").value.trim(); P=root.querySelector("#gm-p").value; const c=root.querySelector("#gm-c").value.trim();
+      if(!Q){ out.textContent="Escribí qué buscás."; return; }
+      go.disabled=true; go.textContent="Buscando en Google Maps…"; out.textContent=""; R=[]; pintar();
+      try{ const r=await fetch("/api/radar/maps",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:Q,zona:[c,P?provNom(P):""].filter(Boolean).join(", ")})});
+        const j=await r.json().catch(()=>({}));
+        if(j.error==="sin_clave") out.innerHTML="Falta activar Google Maps: hay que cargar la clave <b>GOOGLE_MAPS_API_KEY</b> en Vercel. Pedíselo a Claude y te guía paso a paso.";
+        else if(!r.ok) out.textContent="No se pudo buscar: "+(j.error||"probá de nuevo en un minuto.");
+        else { R=j.lugares||[]; out.textContent=R.length?`${R.length} lugares encontrados. Al cargarlos, los que ya están en el Radar no se repiten.`:"No apareció nada. Probá con otras palabras o sin la ciudad."; pintar(); } }
+      catch(e){ out.textContent="No se pudo conectar. Probá de nuevo."; }
+      finally{ go.disabled=false; go.textContent="🗺️ Buscar"; } };
+    root.querySelector("#gm-q").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); go.click(); } });
+    setTimeout(()=>root.querySelector("#gm-q").focus(),50);
+  }); }
+function importar(pre){
   const PROVS=Object.entries(PROV).map(([k,x])=>[k,x.n]).sort((a,b)=>a[1].localeCompare(b[1]));
   abrir("Importar empresas",`<div class="im-drop" id="im-drop"><span class="im-ic" aria-hidden="true">📄</span>
      <div><b>Subí tu base en CSV o Excel</b><span class="hint">Las columnas pueden estar en cualquier orden: se reconocen por el título (Empresa, Teléfono, Email, Ciudad, Provincia, Rubro, Web…). También podés arrastrar el archivo acá.</span></div>
@@ -4197,7 +4233,7 @@ function importar(){
       const t=Date.now(), por=S.yo||S.cfg.vendedor||"", pegada=ORIGEN==="Lista pegada", de=pegada?"una lista pegada":"«"+ORIGEN+"»", base=nuevoId();
       const docs=NUEVAS.map(f=>{ const h=[{t,tipo:"alta",texto:"Importado de "+de,por}];
         if(f._emailFix) h.push({t,tipo:"dato",texto:"Email corregido: "+f._emailFix,por:"Verificador"}); if(f._emailMalo) h.push({t,tipo:"dato",texto:"Email descartado por inválido: "+f._emailMalo,por:"Verificador"});
-        const {_emailFix,_emailMalo,...doc}=f; return Object.assign(doc,{etapa:"nuevo",potencial:"medio",creado:t,fuente:pegada?"Lista pegada":"Archivo «"+ORIGEN+"»",historial:h}); });
+        const {_emailFix,_emailMalo,...doc}=f; return Object.assign(doc,{etapa:"nuevo",potencial:"medio",creado:t,fuente:pegada?"Lista pegada":/^Google Maps/.test(ORIGEN)?ORIGEN:"Archivo «"+ORIGEN+"»",historial:h}); });
       const NOMB={telefono:"teléfono",whatsapp:"WhatsApp",email:"email",web:"web",direccion:"dirección",ciudad:"ciudad",provincia:"provincia",rubro:"rubro",notas:"contacto o notas"};
       const upd=[...CAMBIOS.entries()].map(([id,d])=>{ const p=pById(id)||{}, {_fix,...cambio}=d;
         cambio.historial=(p.historial||[]).concat([{t,tipo:"dato",texto:"Datos completados desde "+de+": "+Object.keys(cambio).filter(k=>k!=="emailCheck").map(k=>NOMB[k]||k).join(", "),por}]); cambio.actualizado=t; return [id,cambio]; });
@@ -4214,6 +4250,7 @@ function importar(){
       if(ok){ cerrar(); render(); return; }
       if(hechos) toast(`Se cargaron ${nf(hechos)} de ${nf(total)}. Tocá el botón de nuevo: lo que ya entró no se repite.`);
       setTimeout(calcular,600); };
+    if(pre&&pre.filas) cargar(pre.filas,pre.origen||"Google Maps","");
   }); }
 /* Marcar empresas en la Lista (web): con «Marcar», cada tarjeta se marca o desmarca al tocarla, y la barra de arriba
    permite eliminarlas, cambiarles etapa, rubro, provincia o potencial, o sumarlas a una secuencia, todas juntas. */
@@ -4400,7 +4437,7 @@ const ACT={
  cancelarBus:d=>cancelarBus(d.id), segVer:d=>seguimiento(d.gr), segMover:(d,el)=>segMover(d.id,d.et,el), rdEst:d=>{S.rf[d.red].est=d.est;render();}, lEst:d=>{S.lEst=d.est;render();}, lMas:d=>{ const y=scrollY; S.lN=d.todos?1e9:(S.lN||300)+300; render(); scrollTo(0,y); }, pEst:d=>{S.pEst=d.est;render();}, rdRub:d=>{const F=S.rf[d.red];F.rub=F.rub===d.rub?"":d.rub;render();}, rdProv:d=>{const F=S.rf[d.red];F.prov=F.prov===d.prov?"":d.prov;render();}, rdTel:d=>{const F=S.rf[d.red];F.tel=!F.tel;render();}, rdVista:d=>{S.rf[d.red].vista=d.v;render();}, rdLimpiar:d=>{Object.assign(S.rf[d.red],{rub:"",prov:"",tel:false,q:""});render();},
  rdExcel:async d=>{ const F=S.rf[d.red]; S.xLista=S.P.filter(d.red==="facebook"?esFB:d.red==="instagram"?esIG:esTT).filter(p=>(!F.rub||p.rubro===F.rub)&&(!F.prov||p.provincia===F.prov)&&(!F.tel||p.telefono||p.whatsapp)); try{ await exportarExcel(); } finally { S.xLista=null; } }, vfyFix:d=>vfyFix(d.id), vfyIr:()=>{ cerrar(); if(window.__dpShow) window.__dpShow("verificador"); },
  ver:d=>ver(d.id), etapa:d=>setEtapa(d.id,d.et), mensaje:d=>mensaje(d.id), mail:d=>mailSheet(d.id), mlF:d=>{S.mlF=d.f;render();}, reenv3:d=>{ const f=addDays(hoy(),3); reenvSet(d.id,f); toast("Listo: te lo recuerdo el "+fFecha(f)); }, reenvCancel:d=>{ reenvSet(d.id,null); toast("Reenvío cancelado"); }, tandaMail:()=>tandaMail(), contacto:d=>contacto(d.id),
- editar:d=>form(pById(d.id)), nuevo:d=>form(null,d.prov?{provincia:d.prov}:{}), importar:()=>importar(),
+ editar:d=>form(pById(d.id)), nuevo:d=>form(null,d.prov?{provincia:d.prov}:{}), importar:()=>importar(), mapsBuscar:()=>mapsBuscar(),
  pedirBusqueda:d=>pedirBusqueda(d.prov,{dep:d.dep!=null&&d.dep!==""?+d.dep:null,loc:d.loc!=null&&d.loc!==""?+d.loc:null,reg:d.reg||null,vacios:!!d.vacios}), buscarRed:d=>buscarRed(d.red), elegirProv:()=>elegirProv(), cerrar:()=>cerrar(), copiar:d=>copiar(d.txt),
  spRub:d=>{LS.set("spRub",d.rub);render();}, copiarSpeech:()=>copiar($("#sp-text").textContent),
  limpiarF:()=>{S.q="";S.fProv="";S.fRub="";S.fEt="";S.fPot="";S.fAsig="";S.listaIds=null;render();},
@@ -4783,16 +4820,16 @@ function vTablero(){ const per=S.tbP||30, desde=per?Date.now()-per*864e5:0, P=S.
 
 /* ---------- menú «Más» ---------- */
 /* en la web: accesos a las secciones de Outreach desde «Más» */
-const OUT_IR=[["/","Panel",'<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>'],
+const OUT_IR=[["/","Tablero",'<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>'],
  ["/secuencias","Secuencias",'<path d="M20.5 3.5L10.2 13.8M20.5 3.5l-6.4 17-3.9-6.7-6.7-3.9z"/>'],
  ["/contactos","Contactos",'<path d="M9 11.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM3.5 19.5c.8-3.3 3-5.2 5.5-5.2s4.7 1.9 5.5 5.2M17.2 11.5a2.5 2.5 0 1 0 0-5M16.4 14.3c2.2.3 3.7 1.9 4.2 4.4"/>'],
  ["/bandeja","Bandeja",'<path d="M3.5 13.5l2.6-7.7A1.8 1.8 0 0 1 7.8 4.5h8.4a1.8 1.8 0 0 1 1.7 1.3l2.6 7.7M3.5 13.5V18a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-4.5h-5.2l-1.4 2.4h-3.8l-1.4-2.4z"/>'],
  ["/tareas","Tareas",'<path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>'],
- ["/buzones","Buzones",'<path d="M3.5 6.5h17v11h-17zM3.8 7l8.2 6.2L20.2 7"/>']];
+ ["/remitentes","Remitentes y buzones",'<path d="M3.5 6.5h17v11h-17zM3.8 7l8.2 6.2L20.2 7"/>']];
 const outLinks=()=>`<p class="eyebrow mas-out-h">Outreach</p><div class="mas-out">${OUT_IR.map(([h,t,d])=>`<button class="mas-o" data-act="irOut" data-href="${h}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>${t}</button>`).join("")}</div>`;
 function mas(){ const ml=mlVencen().length;
   const it=(act,ic,t,d,extra)=>`<button class="mas-it" data-act="${act}" ${extra||""}><span class="mas-ic" aria-hidden="true">${ic}</span><span><b>${t}</b><small>${d}</small></span><span class="resp-go" aria-hidden="true">›</span></button>`;
-  abrir("Más",`<div class="mas">${it("tab","✉️","Mails enviados"+(ml?` <span class="pill pot-alto">${ml} para reenviar</span>`:""),"Agenda de correos y reenvíos",'data-tab="mails"')}${it("tab","🗣️","Speech de venta","Guion por rubro y respuestas a objeciones",'data-tab="speech"')}${it("tab","📊","Embudo","Conversión por etapa y tablero por etapa",'data-tab="embudo"')}${it("tab","📥","Exportar a Excel","Tus empresas con todos sus datos",'data-tab="exportar"')}${it("verBusq","🔎","Búsquedas pedidas","Estado de las búsquedas de Claude")}${it("verAjustes","⚙️","Ajustes","Empresa, firma, límites y oferta")}</div>${outLinks()}`); }
+  abrir("Más",`<div class="mas">${ml?it("tab","✉️",`Mails para reenviar <span class="pill pot-alto">${ml}</span>`,"Ya pasaron los 3 días: mandales el seguimiento",'data-tab="mails"'):""}${it("tab","📊","Embudo","Conversión por etapa y tablero por etapa",'data-tab="embudo"')}${it("tab","📥","Exportar a Excel","Tus empresas con todos sus datos",'data-tab="exportar"')}${it("mapsBuscar","🗺️","Buscar en Google Maps","Comercios de un rubro en una zona, para cargar al Radar o bajar en Excel")}${it("verBusq","🔎","Búsquedas pedidas","Estado de las búsquedas de Claude")}${it("verAjustes","⚙️","Ajustes","Empresa, firma, límites y oferta")}</div>${outLinks()}`); }
 
 /* ---------- ficha: bloque de automatización ---------- */
 function fichaAuto(p){ const {n,partes}=puntaje(p), [t,c]=temp(n), s=seqPaso(p), Q=calidad(p), V=S.cfg.vendedores||[];

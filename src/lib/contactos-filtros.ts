@@ -18,7 +18,7 @@ export const FILTROS_CONTACTOS: [string, string, Prisma.ContactWhereInput][] = [
  * `v`: de qué vendedor (su id, «mios», «libres» o vacío = todos los que puede ver). `sec`: una sección
  * («Córdoba – Luis Mendieta»).
  */
-export type BusquedaContactos = { q?: string; tag?: string; f?: string; v?: string; sec?: string };
+export type BusquedaContactos = { q?: string; tag?: string; f?: string; v?: string; sec?: string; etapa?: string };
 
 export function filtroContactos(f?: string) {
   return FILTROS_CONTACTOS.find(([k]) => k === f) ?? FILTROS_CONTACTOS[0];
@@ -28,9 +28,12 @@ export function filtroContactos(f?: string) {
 export function busquedaContactos(b: BusquedaContactos): Prisma.ContactWhereInput {
   const q = b.q?.trim();
   return {
-    ...(q ? { OR: ["email", "firstName", "lastName", "company", "city", "province", "phone", "whatsapp"].map((f) => ({ [f]: { contains: q, mode: "insensitive" } })) } : {}),
-    ...(b.tag ? { tags: { has: b.tag } } : {}),
-    ...(b.sec ? { seccion: b.sec } : {}),
+    AND: [
+      q ? { OR: ["email", "firstName", "lastName", "company", "city", "province", "phone", "whatsapp"].map((f) => ({ [f]: { contains: q, mode: "insensitive" } })) } : {},
+      b.tag ? { tags: { has: b.tag } } : {},
+      b.sec ? { seccion: b.sec } : {},
+      b.etapa ? (b.etapa === "nuevo" ? { OR: [{ etapa: "nuevo" }, { etapa: null }] } : { etapa: b.etapa }) : {},
+    ],
   };
 }
 

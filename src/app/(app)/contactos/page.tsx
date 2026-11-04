@@ -10,6 +10,7 @@ import { MarcarContacto, MarcarTodos, SumarASecuencia } from "@/components/Sumar
 import { AsignarVendedor } from "@/components/AsignarVendedor";
 import { WhatsappContacto } from "@/components/WhatsappContacto";
 import { contactWa } from "@/lib/whatsapp";
+import { ETAPAS, etapaDe, sincronizarEtapas } from "@/lib/etapas";
 import { addContact, corregirEmail, deleteContact, verificarContactos } from "./actions";
 
 export const metadata = { title: "Contactos" };
@@ -24,7 +25,7 @@ const VFY: Record<string, [string, Tone]> = {
 export default async function Contacts({
   searchParams,
 }: {
-  searchParams: Promise<{ n?: string; q?: string; tag?: string; f?: string; v?: string; sec?: string; importados?: string; actualizados?: string; omitidos?: string; corregidos?: string; invalidos?: string; deotro?: string; verificados?: string; error?: string }>;
+  searchParams: Promise<{ n?: string; q?: string; tag?: string; f?: string; v?: string; sec?: string; etapa?: string; importados?: string; actualizados?: string; omitidos?: string; corregidos?: string; invalidos?: string; deotro?: string; verificados?: string; error?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q?.trim();
@@ -32,10 +33,13 @@ export default async function Contacts({
   await espejarPendientes();
   // cada cliente con su vendedor: los que todavía no tienen dueño lo toman de su secuencia o del Radar
   await asignarDuenosPendientes();
+  // la misma etapa que en el Radar (los que no vienen del Radar la sacan de sus envíos y respuestas)
+  await sincronizarEtapas();
   const u = await usuarioActual();
   const filter = filtroContactos(sp.f);
   const v = sp.v ?? "";
-  const busqueda = { q, tag: sp.tag, f: filter[0], v, sec: sp.sec };
+  const etapa = ETAPAS.some(([k]) => k === sp.etapa) ? sp.etapa : undefined;
+  const busqueda = { q, tag: sp.tag, f: filter[0], v, sec: sp.sec, etapa };
   const search = busquedaContactos(busqueda);
   const vendedor = delVendedor(busqueda, u);
   const where = { AND: [vendedor, search, filter[2]] };
@@ -43,7 +47,7 @@ export default async function Contacts({
   const POR_TANDA = 200;
   const mostrar = sp.n === "todos" ? undefined : Math.max(POR_TANDA, Math.floor(Number(sp.n) || POR_TANDA));
   const qs = (cambio: Record<string, string>) => {
-    const x: Record<string, string> = { ...(q ? { q } : {}), ...(sp.tag ? { tag: sp.tag } : {}), ...(filter[0] !== "todos" ? { f: filter[0] } : {}), ...(v ? { v } : {}), ...(sp.sec ? { sec: sp.sec } : {}), ...cambio };
+    const x: Record<string, string> = { ...(q ? { q } : {}), ...(sp.tag ? { tag: sp.tag } : {}), ...(filter[0] !== "todos" ? { f: filter[0] } : {}), ...(v ? { v } : {}), ...(sp.sec ? { sec: sp.sec } : {}), ...(etapa ? { etapa } : {}), ...cambio };
     for (const k of Object.keys(x)) if (!x[k]) delete x[k];
     return `/contactos?${new URLSearchParams(x)}`;
   };
@@ -139,6 +143,10 @@ export default async function Contacts({
         {filter[0] !== "todos" && <input type="hidden" name="f" value={filter[0]} />}
         {v && <input type="hidden" name="v" value={v} />}
         {sp.sec && <input type="hidden" name="sec" value={sp.sec} />}
+        <select name="etapa" defaultValue={etapa ?? ""} className="input min-w-0 flex-1 sm:max-w-[170px] sm:flex-none" aria-label="Etapa">
+          <option value="">Todas las etapas</option>
+          {ETAPAS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
         <input name="q" defaultValue={q} placeholder="Buscar por nombre, empresa, email, ciudad o teléfono" className="input sm:max-w-sm" aria-label="Buscar" />
         <select name="tag" defaultValue={sp.tag ?? ""} className="input min-w-0 flex-1 sm:max-w-[200px] sm:flex-none" aria-label="Etiqueta">
           <option value="">Todas las etiquetas</option>
@@ -208,7 +216,8 @@ export default async function Contacts({
                         )}
                       </td>
                       <td className="max-w-[220px]"><span className="flex flex-wrap gap-1">
-                        {c.radarId && <Pill tone="info">Radar</Pill>}
+                        <Pill tone={etapaDe(c.etapa)[2]}>{etapaDe(c.etapa)[1]}</Pill>
+                        {c.radarId && <Link href={`/radar?ir=${encodeURIComponent(JSON.stringify({ ver: c.radarId }))}`} title="Abrir su ficha en el Radar"><Pill tone="info">Radar ›</Pill></Link>}
                         {c.tags.includes("no contactar") && <Pill tone="warn">No contactar</Pill>}
                         {c.unsubscribed && <Pill tone="bad">Baja</Pill>}
                         {c.bounced && <Pill tone="bad">Rebotado</Pill>}

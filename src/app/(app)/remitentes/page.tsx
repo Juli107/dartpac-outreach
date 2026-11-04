@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { sentToday } from "@/lib/quota";
 import { renderSignature, soloImagen, type SignatureSender } from "@/lib/signature";
 import { PageHeader, Pill, Avatar, Flash, ProgressBar, Dot } from "@/components/ui";
+import { Pestanas } from "@/components/Pestanas";
 import { relativeTime } from "@/lib/labels";
 import { googleConfigured } from "@/lib/google";
 import { BotonGuardar } from "@/components/BotonGuardar";
@@ -150,6 +151,7 @@ export default async function Senders({
       <PageHeader title="Remitentes" sub="Las personas que envían: cada una desde su Gmail y con su firma.">
         {google && <GoogleButton>Agregar con Google</GoogleButton>}
       </PageHeader>
+      <Pestanas grupo="correo" activa="/remitentes" />
 
       {error === "google-sin-configurar" ? (
         <Flash tone="warn">Falta configurar Google: añade GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en Vercel.</Flash>

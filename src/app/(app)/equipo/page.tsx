@@ -7,6 +7,7 @@ import { asignarDuenosPendientes } from "@/lib/dueno";
 import { primerNombre, usuarioActual } from "@/lib/usuario";
 import { TIPOS_ACTIVIDAD } from "@/lib/actividad";
 import { PageHeader, Empty, Segmented, Pill, Avatar } from "@/components/ui";
+import { Pestanas } from "@/components/Pestanas";
 
 export const metadata = { title: "Equipo" };
 
@@ -83,6 +84,7 @@ export default async function Equipo({ searchParams }: { searchParams: Promise<{
         <Link href="/contactos" className="btn-ghost">Ver contactos</Link>
         <a href="/login/salir" className="btn-ghost">Salir ({primerNombre(u.name)})</a>
       </PageHeader>
+      <Pestanas grupo="tablero" activa="/equipo" />
 
       <section className="card appear flex flex-col gap-3 p-5">
         <div className="flex items-baseline justify-between gap-3">

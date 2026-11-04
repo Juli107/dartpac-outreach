@@ -39,12 +39,16 @@ model Contact {
   ownerAt         DateTime?
   /// Sección del vendedor donde quedó, con la zona de la búsqueda que lo trajo (ej. «Córdoba – Luis Mendieta»).
   seccion         String?
+  /// Etapa, con los mismos nombres que el Radar: nuevo, contactado, respondio, cotizado, cliente o descartado.
+  /// La copia sola lib/etapas.ts (del Radar, o de los envíos y respuestas si no vino del Radar).
+  etapa           String?
   createdAt       DateTime     @default(now())
   enrollments     Enrollment[]
   replies         Reply[]
 
   @@index([radarId])
   @@index([ownerId])
+  @@index([etapa])
 }
 
 enum SequenceStatus {
@@ -349,6 +353,9 @@ model Setting {
   /// Reparto diario de contactos a los remitentes (apagado hasta que el administrador lo encienda) y el último día que corrió.
   repartoOn         Boolean   @default(false)
   repartoUltimo     String    @default("")
+  /// Resumen diario por mail a las 19 h (días hábiles) para el administrador: apagado hasta que lo encienda, y el último día que salió.
+  resumenOn         Boolean   @default(false)
+  resumenUltimo     String    @default("")
   /// Última vez que alguien tuvo la app abierta entrando con la contraseña común (no se sabe quién es).
   adminSeenAt       DateTime?
 }

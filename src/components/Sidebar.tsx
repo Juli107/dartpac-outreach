@@ -43,11 +43,9 @@ const GROUPS: { label: string; items: { href: string; label: string }[] }[] = [
   {
     label: "Outreach",
     items: [
-      { href: "/", label: "Panel" },
+      { href: "/", label: "Tablero" },
       { href: "/secuencias", label: "Secuencias" },
       { href: "/contactos", label: "Contactos" },
-      { href: "/equipo", label: "Equipo" },
-      { href: "/envios", label: "Envíos" },
       { href: "/reparto", label: "Reparto diario" },
       { href: "/bandeja", label: "Bandeja" },
       { href: "/whatsapp", label: "WhatsApp" },
@@ -65,16 +63,15 @@ const GROUPS: { label: string; items: { href: string; label: string }[] }[] = [
   {
     label: "Correo",
     items: [
-      { href: "/buzones", label: "Buzones" },
-      { href: "/remitentes", label: "Remitentes" },
+      { href: "/remitentes", label: "Remitentes y buzones" },
     ],
   },
 ];
 const NAV = GROUPS.flatMap((g) => g.items);
 
 /** Secciones de la barra inferior en el móvil. */
-const TAB_BAR = ["/", "/radar", "/secuencias", "/bandeja", "/buzones"];
-const SHORT: Record<string, string> = { "/radar": "Radar" };
+const TAB_BAR = ["/", "/radar", "/secuencias", "/bandeja", "/remitentes"];
+const SHORT: Record<string, string> = { "/radar": "Radar", "/remitentes": "Correo" };
 
 const HEALTH: Record<Level, [string, string]> = {
   ok: ["Todo listo para enviar", "bg-ok"],
@@ -84,7 +81,10 @@ const HEALTH: Record<Level, [string, string]> = {
   bad: ["Hay envíos frenados", "bg-bad"],
 };
 
-const isActive = (href: string, path: string) => (href === "/" ? path === "/" : path === href || path.startsWith(href + "/"));
+/** Secciones que viven como pestañas de otra: Equipo y Envíos dentro del Tablero, Buzones dentro de Remitentes. */
+const DENTRO: Record<string, string[]> = { "/": ["/equipo", "/envios"], "/remitentes": ["/buzones"] };
+const isActive = (href: string, path: string) =>
+  [href, ...(DENTRO[href] ?? [])].some((h) => (h === "/" ? path === "/" : path === h || path.startsWith(h + "/")));
 
 function Svg({ href, size = 19, strong = false }: { href: string; size?: number; strong?: boolean }) {
   return (

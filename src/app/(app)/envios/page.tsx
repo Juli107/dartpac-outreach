@@ -1,26 +1,25 @@
 import Link from "next/link";
-import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { formatDate } from "@/lib/labels";
 import { todayStart } from "@/lib/quota";
 import { primerNombre, usuarioActual } from "@/lib/usuario";
-import { canalDe, type Canal } from "@/lib/actividad";
+import type { Canal } from "@/lib/actividad";
+import { CANALES, contarPorPersona, enviosDesde } from "@/lib/envios";
+import { Switch } from "@/components/Switch";
+import { ProbarResumen } from "@/components/ProbarResumen";
+import { armarResumen } from "@/lib/resumen-diario";
+import { probarResumen, toggleResumen } from "./actions";
 import { PageHeader, Empty, Segmented, Pill, Avatar } from "@/components/ui";
+import { Pestanas } from "@/components/Pestanas";
 
 export const metadata = { title: "Envíos" };
 
-const CANALES: { key: Canal; label: string; ic: string; tone: "ok" | "info" | "warn" }[] = [
-  { key: "mail", label: "Mails", ic: "✉️", tone: "info" },
-  { key: "whatsapp", label: "WhatsApp", ic: "💬", tone: "ok" },
-  { key: "llamada", label: "Llamadas", ic: "📞", tone: "warn" },
-];
 const PERIODOS: Record<string, { label: string; dias: number | null }> = {
   hoy: { label: "Hoy", dias: 0 },
   "7": { label: "7 días", dias: 7 },
   "30": { label: "30 días", dias: 30 },
   todo: { label: "Todo", dias: null },
 };
-const MAX = 20000;
 
 /**
  * Cuántos mails, WhatsApp y llamadas mandó cada remitente y a quién: lo del Radar, lo de Contactos y lo que salió solo
@@ -36,36 +35,14 @@ export default async function Envios({ searchParams }: { searchParams: Promise<{
 
   const dias = PERIODOS[periodo].dias;
   const desde = dias === null ? null : dias === 0 ? todayStart() : new Date(todayStart().getTime() - (dias - 1) * 86400_000);
-  const where: Prisma.ActividadWhereInput = {
-    ...(desde ? { at: { gte: desde } } : {}),
-    OR: [{ canal: { not: null } }, { canal: null, tipo: { in: ["mail", "whatsapp", "mensaje"] } }],
-  };
-  const filas = await db.actividad.findMany({
-    where,
-    orderBy: { at: "desc" },
-    take: MAX,
-    select: { id: true, at: true, quien: true, senderId: true, tipo: true, texto: true, canal: true, contactId: true },
-  });
-
-  // De quién es cada envío: el remitente con el que entró o, con la contraseña común, el que eligió en el Radar.
-  const porNombre = new Map(senders.map((s) => [primerNombre(s.name).toLowerCase(), s.id]));
-  const duenoDe = (a: { senderId: string | null; quien: string }) => a.senderId ?? porNombre.get(primerNombre(a.quien).toLowerCase()) ?? `n:${a.quien}`;
-  const envios = filas
-    .map((a) => ({ ...a, c: canalDe(a), dueno: duenoDe(a) }))
-    .filter((a): a is typeof a & { c: Canal } => !!a.c);
+  const [envios, setting, resumen] = await Promise.all([
+    enviosDesde(desde, senders),
+    u.admin ? db.setting.findUnique({ where: { id: "app" }, select: { resumenOn: true, resumenUltimo: true } }) : null,
+    u.admin ? armarResumen() : null,
+  ]);
   const visibles = u.admin ? envios : envios.filter((a) => a.dueno === u.senderId);
 
-  // contadores por persona
-  type Fila = { id: string; name: string; mail: number; whatsapp: number; llamada: number; personas: Set<string> };
-  const tabla = new Map<string, Fila>();
-  for (const s of senders) if (u.admin || s.id === u.senderId) tabla.set(s.id, { id: s.id, name: s.name, mail: 0, whatsapp: 0, llamada: 0, personas: new Set() });
-  for (const a of visibles) {
-    let f = tabla.get(a.dueno);
-    if (!f) tabla.set(a.dueno, (f = { id: a.dueno, name: a.quien || "Sin nombre", mail: 0, whatsapp: 0, llamada: 0, personas: new Set() }));
-    f[a.c]++;
-    f.personas.add(a.contactId ?? a.texto.split(":")[0]);
-  }
-  const personas = [...tabla.values()].sort((a, b) => b.mail + b.whatsapp + b.llamada - (a.mail + a.whatsapp + a.llamada));
+  const personas = contarPorPersona(visibles, senders.filter((s) => u.admin || s.id === u.senderId));
   const tot = (c: Canal) => personas.reduce((s, f) => s + f[c], 0);
 
   const lista = visibles.filter((a) => (!quien || a.dueno === quien) && (!canal || a.c === canal)).slice(0, 300);
@@ -95,8 +72,8 @@ export default async function Envios({ searchParams }: { searchParams: Promise<{
         title="Envíos"
         sub={u.admin ? "Cuántos mails, WhatsApp y llamadas hizo cada remitente, y a quién." : "Cuántos mails, WhatsApp y llamadas hiciste, y a quién."}
       >
-        <Link href="/equipo" className="btn-ghost">Ver equipo</Link>
       </PageHeader>
+      <Pestanas grupo="tablero" activa="/envios" />
 
       <Segmented label="Período" active={periodo} items={["hoy", "7", "30", "todo"].map((k) => [k, PERIODOS[k]] as const).map(([k, v]) => ({ key: k, label: v.label, href: qs({ p: k }) }))} />
 
@@ -165,7 +142,7 @@ export default async function Envios({ searchParams }: { searchParams: Promise<{
                     {a.at.toLocaleDateString("es-AR", { day: "numeric", month: "short", timeZone: tz })} {formatDate(a.at).split(", ").pop()}
                   </span>
                   <span className="w-20 shrink-0 font-medium text-white">{primerNombre(a.quien)}</span>
-                  <Pill tone={cn.tone}>{cn.ic} {cn.label === "Mails" ? "Mail" : cn.label === "Llamadas" ? "Llamada" : "WhatsApp"}</Pill>
+                  <Pill tone={cn.tone}>{cn.ic} {cn.uno}</Pill>
                   <Link href={`/contactos?q=${encodeURIComponent(q.nombre)}`} className="min-w-0 font-medium text-ink hover:text-white">
                     {q.nombre}
                     {q.dato && <span className="ml-1.5 text-xs font-normal text-faint">{q.dato}</span>}
@@ -178,6 +155,28 @@ export default async function Envios({ searchParams }: { searchParams: Promise<{
         )}
         {lista.length === 300 && <p className="px-5 pb-4 text-xs text-faint">Se muestran los últimos 300. Elegí un remitente o un canal para ver otros.</p>}
       </section>
+      {u.admin && resumen && (
+        <section className="card appear flex flex-col gap-3 p-5">
+          <div className="flex items-center gap-3">
+            <span className="flex-1">
+              <span className="block font-semibold text-white">Resumen diario por mail</span>
+              <span className="block text-xs text-muted">
+                De lunes a viernes a las 19 h te llega a tu Gmail lo que hizo cada uno en el día. {setting?.resumenOn ? "Está encendido." : "Está apagado: no sale nada hasta que lo enciendas."}
+                {setting?.resumenUltimo ? ` El último salió el ${setting.resumenUltimo.split("-").reverse().join("/")}.` : ""}
+              </span>
+            </span>
+            <Switch on={!!setting?.resumenOn} action={toggleResumen.bind(null, !setting?.resumenOn)} label={setting?.resumenOn ? "Apagar el resumen diario" : "Encender el resumen diario"} confirmOn="Desde hoy te llega un mail a las 19 h, de lunes a viernes, con el resumen del equipo. ¿Lo encendemos?" />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <ProbarResumen action={probarResumen} />
+          </div>
+          <details>
+            <summary className="cursor-pointer text-xs text-brand-2">Ver cómo llega hoy</summary>
+            <p className="mt-2 text-xs text-muted">Asunto: {resumen.subject}</p>
+            <div className="mt-2 overflow-x-auto rounded-xl bg-white p-4" dangerouslySetInnerHTML={{ __html: resumen.html }} />
+          </details>
+        </section>
+      )}
     </>
   );
 }
