@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { contactWa, waLink, waNum } from "@/lib/whatsapp";
+import { contactWaCelular as contactWa, waLink, waNum } from "@/lib/whatsapp";
 import { renderTemplate } from "@/lib/template";
 import { cargarVariables } from "@/lib/variables";
 import { usuarioActual, type Usuario } from "@/lib/usuario";

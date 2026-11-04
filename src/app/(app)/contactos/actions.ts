@@ -8,6 +8,7 @@ import { parseContactsCsv } from "@/lib/csv";
 import { camposContacto, verificar, verificarLista } from "@/lib/verifier";
 import { usuarioActual } from "@/lib/usuario";
 import { registrar } from "@/lib/actividad";
+import { touchProspect } from "@/lib/radar/store";
 
 function parseTags(raw: FormDataEntryValue | null) {
   return String(raw ?? "").split(",").map((t) => t.trim()).filter(Boolean);
@@ -87,7 +88,9 @@ export async function corregirEmail(id: string) {
   if (taken) return;
   const r = await verificar(c.emailSuggestion);
   await db.contact.update({ where: { id }, data: { email: c.emailSuggestion, ...camposContacto(r) } });
+  if (c.radarId) await touchProspect(c.radarId, { tipo: "dato", texto: `Email corregido: ${c.email} → ${c.emailSuggestion}`, por: "Verificador" }, { email: c.emailSuggestion });
   revalidatePath("/contactos");
+  revalidatePath("/verificador");
 }
 
 /** Verifica los contactos sin verificar (o todos con ?todos), de a tandas, con el DNS de cada dominio. */

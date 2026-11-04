@@ -32,6 +32,9 @@ model Contact {
   emailReason     String?
   emailSuggestion String?
   emailCheckedAt  DateTime?
+  /// Verificador de WhatsApp: lo que marcó una persona («si» tiene, «no» no tiene). Vacío = lo deduce del número.
+  /// En las empresas del Radar se copia de su ficha (conWa / sinWa).
+  waMarca         String?
   /// Vendedor dueño del cliente: el que lo buscó, lo cargó o le escribió primero. Los demás no le pueden escribir.
   /// Vacío = libre (cualquiera lo puede tomar).
   ownerId         String?

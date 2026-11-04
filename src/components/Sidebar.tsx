@@ -57,7 +57,7 @@ const GROUPS: { label: string; items: { href: string; label: string }[] }[] = [
     label: "Clientes",
     items: [
       { href: "/radar", label: "Radar comercial" },
-      { href: "/verificador", label: "Verificar correos" },
+      { href: "/verificador", label: "Verificar contactos" },
     ],
   },
   {

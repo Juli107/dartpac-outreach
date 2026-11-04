@@ -39,7 +39,30 @@ export function contactWa(c: { whatsapp?: string | null; phone?: string | null }
   return waNum(c.whatsapp) || waNum(c.phone);
 }
 
-/** Lo mismo, pero el teléfono solo cuenta si es celular: a un fijo no se le carga WhatsApp. */
-export function contactWaCelular(c: { whatsapp?: string | null; phone?: string | null }) {
-  return waNum(c.whatsapp) || (esCelular(c.phone) ? waNum(c.phone) : "");
+/**
+ * Verificador de WhatsApp de un contacto. «si»: tiene WhatsApp (número de WhatsApp cargado, celular, o alguien lo marcó);
+ * «fijo»: el teléfono parece fijo; «no»: alguien marcó que no tiene; «sin»: no hay número que sirva.
+ * Solo con «si» se ofrece mandarle WhatsApp. No se le escribe a nadie para comprobarlo.
+ */
+export type WaEstado = "si" | "fijo" | "no" | "sin";
+export const WA_ESTADOS: Record<WaEstado, [string, "ok" | "warn" | "bad" | "neutral"]> = {
+  si: ["Tiene WhatsApp", "ok"],
+  fijo: ["Parece fijo", "warn"],
+  no: ["Sin WhatsApp", "bad"],
+  sin: ["Sin número", "neutral"],
+};
+export function estadoWa(c: { whatsapp?: string | null; phone?: string | null; waMarca?: string | null }): { estado: WaEstado; num: string; motivo: string } {
+  const tel = waNum(c.phone);
+  if (c.waMarca === "no") return { estado: "no", num: "", motivo: "Marcaron que no tiene WhatsApp" };
+  const wa = waNum(c.whatsapp);
+  if (wa) return { estado: "si", num: wa, motivo: "Tiene un número de WhatsApp cargado" };
+  if (tel && esCelular(c.phone)) return { estado: "si", num: tel, motivo: "Es un celular (con 9 o 15)" };
+  if (tel && c.waMarca === "si") return { estado: "si", num: tel, motivo: "Marcaron que tiene WhatsApp" };
+  if (tel) return { estado: "fijo", num: "", motivo: "Parece un teléfono fijo: no tiene 9 ni 15. Si sabés que es celular, marcá «Tiene WhatsApp»." };
+  return { estado: "sin", num: "", motivo: c.phone ? "El número está incompleto" : "No tiene teléfono" };
+}
+
+/** El WhatsApp al que se le puede escribir, o "" si el verificador dice que no tiene. */
+export function contactWaCelular(c: { whatsapp?: string | null; phone?: string | null; waMarca?: string | null }) {
+  return estadoWa(c).num;
 }
