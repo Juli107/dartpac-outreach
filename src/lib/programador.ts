@@ -5,6 +5,7 @@ import { cronShouldRun } from "./health";
 import { tomarTurno } from "./turno";
 import { despertar, pendientes } from "./radar/worker";
 import { armarSemanal, esHoraSemanal } from "./radar/semanal";
+import { resumenSiHaceFalta } from "./resumen-diario";
 import { getDoc, hoyAR } from "./radar/store";
 import { espejarPendientes } from "./radar/espejo";
 import { repartoSiHaceFalta } from "./reparto";
@@ -36,7 +37,9 @@ export async function pasadaProgramador(opts: { bandeja?: boolean; fuente: RunRe
       .catch(() => 0);
     // red de seguridad: si alguna empresa del Radar no llegó a Contactos, entra ahora
     const contactos = await espejarPendientes(1000);
-    return { inbox, steps, radar, ...(contactos ? { contactos } : {}), ...(reparto ? { reparto } : {}) };
+    // a las 19 de cada día hábil, el resumen del equipo al administrador (si lo encendió)
+    const resumen = await resumenSiHaceFalta().catch((e) => ({ ok: false, error: String(e) }));
+    return { inbox, steps, radar, ...(contactos ? { contactos } : {}), ...(reparto ? { reparto } : {}), ...(resumen ? { resumen } : {}) };
   } finally {
     await soltar();
   }

@@ -183,7 +183,7 @@ function herramientaGuardar(ctx: { provincia: string; zona: string; idx: Indice;
         const canal = redes.instagram ? "instagram" : redes.facebook ? "facebook" : redes.tiktok ? "tiktok" : undefined;
         const t = Date.now();
         const d = ctx.dueno;
-        const delDueno: RadarData = d ? { asignado: d.nombre.split(/\s+/)[0], asignadoId: d.id, seccion: d.seccion, ...(ctx.grupo ? { busqueda: ctx.grupo } : {}) } : {};
+        const delDueno: RadarData = { ...(d ? { asignado: d.nombre.split(/\s+/)[0], asignadoId: d.id, seccion: d.seccion } : {}), ...(ctx.grupo ? { busqueda: ctx.grupo } : {}) };
         const texto = `Encontrado por Claude${d ? ` para ${d.nombre.split(/\s+/)[0]}` : ""} · ${ctx.zona}`;
         const doc: RadarData = { ...p, ...redes, ...(canal ? { canal } : {}), ...delDueno, etapa: "nuevo", creado: t, historial: [{ t, tipo: "alta", texto, por: ctx.por }] };
         const id = nuevoId();

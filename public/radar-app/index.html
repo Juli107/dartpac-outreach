@@ -2299,7 +2299,6 @@ function notifCalc(){ const L=[], H=hoy(), ahora=Date.now(), pl=(n,s,p)=>n===1?s
     const sq=seqHoy().length; if(sq) L.push({id:"seq-"+H,g:"hoy",ic:"⚡",n:sq,t:`${sq} ${pl(sq,"paso","pasos")} de la secuencia para hoy`,d:"Mails que salen solos y WhatsApp listos para abrir.",ir:{ax:"seq"}});
     const ml=mlVencen().length; if(ml) L.push({id:"ml-"+H,g:"hoy",ic:"✉️",n:ml,t:`${ml} ${pl(ml,"mail","mails")} para reenviar`,d:"Ya pasaron los 3 días: mandales el seguimiento.",ir:{tab:"mails",mlF:"reenviar"}});
     alertasCalc().forEach(c=>{ if(c.k==="ven") return; L.push({id:"al-"+c.k+"-"+H,g:"hoy",ic:c.ic,tono:c.cls==="hot"?"hot":c.k==="cli"?"info":"warn",n:(c.ids&&c.ids.length)||1,t:c.t,d:c.d,ir:{k:c.k}}); });
-    const tope=topeWA(), env=contactosHoy(); if(env>=tope) L.push({id:"wa-"+H,g:"hoy",ic:"🛑",tono:"warn",n:1,t:"Llegaste al límite de WhatsApp de hoy",d:`${env} de ${tope} mensajes. Mañana se libera de nuevo.`,ir:{tab:"hoy"}});
     (S.AL||[]).filter(a=>a.estado==="nueva").sort((a,b)=>(b.t||0)-(a.t||0)).slice(0,12).forEach(a=>L.push({id:"ala-"+a.id,g:"nov",ic:"🔔",tono:"info",n:1,t:a.titulo||"Oportunidad nueva",d:a.detalle||"",cuando:a.t||0,ir:{ax:"alertas"}}));
     const vistos=new Set(); S.B.filter(b=>b.estado==="hecha"&&(b.fin||b.t||0)>ahora-36*3600e3).sort((a,b)=>(b.fin||b.t||0)-(a.fin||a.t||0)).forEach(b=>{ const G=grupoDe(b), k=b.grupo||b.id; if(vistos.has(k)||G.some(busViva)) return; vistos.add(k);
       const tot=G.reduce((s,x)=>s+(+x.encontrados||0),0); L.push({id:"bus-"+k,g:"nov",ic:"📡",tono:"ok",n:1,t:G.length===1&&b.resultado?b.resultado:`${tot} ${pl(tot,"empresa nueva","empresas nuevas")} en ${provNom(b.provincia)}`,d:"Búsqueda terminada. Ya están en el mapa y en «Hoy».",cuando:Math.max(...G.map(x=>x.fin||x.t||0)),ir:{prov:b.provincia}}); });
@@ -2973,20 +2972,21 @@ function estSwitch(act,extra,est,nP,nC){ return `<div class="est-tabs" role="tab
 function bandaContacto(p){ if(!yaContactado(p)) return ""; const u=ultimoC(p); const n=contactosDe(p).length;
   return `<div class="cont-band"><span>✓ Contactado${u?" el "+esc(fCorta(u)):""}${n>1?` · ${n} mensajes`:""}</span>${p.proximo&&!["cliente","descartado"].includes(p.etapa)?`<span>Seguimiento: ${esc(fFecha(p.proximo))}</span>`:""}</div>`; }
 const ESPERA_WA=10; // segundos mínimos entre un mensaje y otro
-const topeWA=()=>Math.max(5,+S.cfg.limite||20);
+/* WhatsApp sin tope: nadie se queda sin poder mandar. Solo se espera ESPERA_WA segundos entre uno y otro. */
+const topeWA=()=>Infinity;
 /* cada persona tiene su línea: el tope y la espera cuentan solo los WhatsApp de quien escribe */
 const waMio=x=>{ const r=(typeof MAIL_REM!=="undefined"&&MAIL_REM)||remYo(); return !r||!x.porId||x.porId===r.id; };
 const ultimoEnvioHoy=()=>{const h=hoy();let m=0;S.P.forEach(p=>(p.historial||[]).forEach(x=>{if(x.tipo==="envio"&&x.t&&iso(new Date(x.t))===h&&x.t>m&&waMio(x))m=x.t;}));return m;};
 const enviadoHoyA=p=>(p.historial||[]).some(x=>x.tipo==="envio"&&x.t&&iso(new Date(x.t))===hoy());
-function pintarContadorWA(){ const b=$("#wa-cnt"); if(!b) return; const n=contactosHoy(), t=topeWA(), r=n/t;
-  b.querySelector("b").textContent=n+"/"+t; b.dataset.nivel=n>=t?"tope":r>=.75?"alto":"ok";
-  b.setAttribute("aria-label",`WhatsApp: ${n} de ${t} mensajes hoy`); b.title=n>=t?"Llegaste al límite de hoy":`Te quedan ${t-n} mensajes hoy`; }
+function pintarContadorWA(){ const b=$("#wa-cnt"); if(!b) return; const n=contactosHoy();
+  b.querySelector("b").textContent=n; b.dataset.nivel="ok";
+  b.setAttribute("aria-label",`WhatsApp: ${n} mensajes hoy`); b.title=`Mandaste ${n} WhatsApp hoy (sin límite)`; }
 const contactosHoy=()=>{const h=hoy();let n=0;S.P.forEach(p=>(p.historial||[]).forEach(x=>{if(x.tipo==="envio"&&x.t&&iso(new Date(x.t))===h&&waMio(x))n++;}));return n;};
 const vence=p=>p.proximo&&p.proximo<=hoy()&&!["cliente","descartado"].includes(p.etapa);
 const potOrd={alto:0,medio:1,bajo:2};
 function paraHoy(){ const venc=activos().filter(p=>vence(p)&&!p.noContactar&&!seqActiva(p)).sort((a,b)=>(a.proximo||"").localeCompare(b.proximo||"")||(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1));
   const nuevos=activos().filter(p=>(p.etapa||"nuevo")==="nuevo"&&!p.proximo&&!p.noContactar&&!seqActiva(p)&&!esCliente(p)).sort(ordenPt);
-  const lim=Math.max(0,(+S.cfg.limite||20)-contactosHoy());
+  const lim=Math.max(5,+S.cfg.limite||20);
   return {venc,nuevos:nuevos.slice(0,Math.max(0,lim-venc.length)),lim};}
 function cuentaProv(){ const m={}; S.P.forEach(p=>{if(p.provincia)m[p.provincia]=(m[p.provincia]||0)+1;}); return m; }
 
@@ -3197,19 +3197,19 @@ function tarjeta(p){ const et=p.etapa||"nuevo", loc=[p.ciudad,(PROV[p.provincia]
    <span class="pc-r">${ptBadge(p)}<span class="pill et ${et}">${ETN[et]||et}</span>${vence(p)?`<span class="pill pot-alto">Seguir hoy</span>`:p.potencial?`<span class="pot-dot pot-${p.potencial}" title="${POT[p.potencial]}"><i></i>${{alto:"Alto",medio:"Medio",bajo:"Bajo"}[p.potencial]}</span>`:""}</span></button>`; }
 const pct=(a,b)=>b?Math.round(a/b*100):0;
 function cabecera(eyebrow,titulo,sub,acc){ return `<header class="vh"><div class="vh-t"><p class="eyebrow">${eyebrow}</p><h1 class="h1">${titulo}</h1>${sub?`<p class="vh-sub">${sub}</p>`:""}</div>${acc?`<div class="vh-acc">${acc}</div>`:""}</header>`; }
-function vHoy(){ const {venc,nuevos,lim}=paraHoy(), env=contactosHoy(), tope=+S.cfg.limite||20, rest=Math.max(0,tope-env), p=Math.min(100,pct(env,tope));
+function vHoy(){ const {venc,nuevos,lim}=paraHoy(), env=contactosHoy(), p=env?100:0;
   const fecha=new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"});
   const ring=`<svg class="ring" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52" class="ring-bg"/>${p?"":"<!--"}<circle cx="60" cy="60" r="52" class="ring-fg" stroke-dasharray="${(326.7*p/100).toFixed(1)} 326.7"/>${p?"":"-->"}</svg>`;
   return `<section class="view">${cabecera(esc(fecha),"Plan de contacto del día",`${venc.length+nuevos.length} empresas para hoy · ${venc.length} seguimientos y ${nuevos.length} primeros contactos`)}
    <div class="hoy-top">
-    <div class="panel hoy-meter"><div class="ring-w">${ring}<span class="ring-n"><b class="num">${env}</b><small>de ${tope}</small></span></div><div class="stack" style="gap:6px"><b class="h2">Mensajes enviados hoy</b><span class="hint">Te quedan <b class="num" style="color:var(--accent)">${rest}</b>. Escribir de a ${tope} por día cuida tu WhatsApp de bloqueos.</span></div></div>
+    <div class="panel hoy-meter"><div class="ring-w">${ring}<span class="ring-n"><b class="num">${env}</b><small>hoy</small></span></div><div class="stack" style="gap:6px"><b class="h2">Mensajes enviados hoy</b><span class="hint">Sin límite por día. La app solo espera ${ESPERA_WA} segundos entre un WhatsApp y otro.</span></div></div>
     <div class="stat-grid"><div class="stat"><span>Seguimientos</span><b class="num">${venc.length}</b><small>vencen hoy</small></div><div class="stat"><span>Primer contacto</span><b class="num">${nuevos.length}</b><small>sugeridos</small></div></div>
    </div>
    ${(()=>{ const n=S.P.filter(SEG_GR.espera.f).length, r=S.P.filter(SEG_GR.conv.f).length;  return (n||r?`<button class="panel resp-card" data-act="segVer" data-gr="espera"><span class="resp-ic" aria-hidden="true">💬</span><span><b>¿Quién te respondió?</b><small>${n} esperando respuesta · ${r} en conversación. Tocá acá y marcá los que te contestaron.</small></span><span class="resp-go" aria-hidden="true">›</span></button>`:""); })()}
    ${venc.length?`<div class="sec-h"><h2>Seguimientos que vencen hoy</h2><span class="num">${venc.length}</span></div><div class="list grid-l">${venc.map(tarjeta).join("")}</div>`:""}
    ${nuevos.length?`<div class="sec-h"><h2>Primer contacto</h2><span class="num">${nuevos.length}</span></div><p class="hint" style="margin-top:-6px">Ordenados por puntaje: empezá por los de arriba.</p><div class="list grid-l">${nuevos.map(tarjeta).join("")}</div>`:""}
    ${(()=>{ const sq=seqHoy().length, al=(S.AL||[]).filter(a=>a.estado==="nueva").length+alertasCalc().filter(c=>c.k==="resp"||c.k==="cot").length; return (sq?`<button class="panel resp-card" data-act="axTab" data-t="seq"><span class="resp-ic" aria-hidden="true">⚡</span><span><b>${sq} paso${sq===1?"":"s"} de la secuencia para hoy</b><small>Mails que salen solos y WhatsApp listos para abrir.</small></span><span class="resp-go" aria-hidden="true">›</span></button>`:"")+(al?`<button class="panel resp-card" data-act="axTab" data-t="alertas"><span class="resp-ic" aria-hidden="true">🔔</span><span><b>${al} alerta${al===1?"":"s"} de oportunidad</b><small>Respuestas sin contestar, cotizaciones frenadas y oportunidades nuevas.</small></span><span class="resp-go" aria-hidden="true">›</span></button>`:""); })()}
-   ${!venc.length&&!nuevos.length?(S.P.length&&lim<=0?`<div class="empty"><b>Llegaste al límite de hoy</b><span class="hint">Mañana la app te arma la lista de nuevo. Podés cambiar el límite en Ajustes.</span></div>`:`<div class="empty"><b>${S.P.length?"Estás al día":"Todavía no hay prospectos"}</b><span class="hint">${S.P.length?"No hay seguimientos pendientes ni prospectos nuevos sin contactar.":"Elegí una provincia en el mapa y tocá «Buscar clientes», o agregá uno a mano."}</span><button class="btn primary" data-act="tab" data-tab="mapa">Ir al mapa</button></div>`):""}
+   ${!venc.length&&!nuevos.length?(`<div class="empty"><b>${S.P.length?"Estás al día":"Todavía no hay prospectos"}</b><span class="hint">${S.P.length?"No hay seguimientos pendientes ni prospectos nuevos sin contactar.":"Elegí una provincia en el mapa y tocá «Buscar clientes», o agregá uno a mano."}</span><button class="btn primary" data-act="tab" data-tab="mapa">Ir al mapa</button></div>`):""}
   </section>`; }
 
 const esFB=p=>p.canal==="facebook";
@@ -3271,7 +3271,7 @@ function vLista(){ const q=norm(S.q), LE=S.listaIds?"todos":(S.lEst||"pend"), nC
   L.sort(S.ordenL==="pot"?ordenP:S.ordenL==="rec"?((a,b)=>(b.creado||0)-(a.creado||0)):ordenPt); S.listaVis=L; const hayF=S.fProv||S.fRub||S.fEt||S.fPot||S.q||S.fAsig;
   const sel=(id,val,opts,todos)=>`<label class="fsel ${val?"on":""}"><select id="${id}" aria-label="${todos}"><option value="">${todos}</option>${opts.map(([v,t])=>`<option value="${v}" ${v===val?"selected":""}>${esc(t)}</option>`).join("")}</select></label>`;
   const conTel=S.P.filter(p=>p.telefono||p.whatsapp).length, alto=S.P.filter(p=>p.potencial==="alto").length;
-  return `<section class="view">${cabecera("Base de prospectos",`${S.P.length} empresas`,`${alto} de potencial alto · ${conTel} con teléfono · ${Object.keys(cuentaProv()).length} provincias`,`<button class="btn sm" data-act="importar" title="Subí un CSV o Excel, o pegá una lista">Importar</button><button class="btn sm primary" data-act="nuevo">${IC.plus}Agregar</button>`)}
+  return `<section class="view">${cabecera("Base de prospectos",`${S.P.length} empresas`,`${alto} de potencial alto · ${conTel} con teléfono · ${Object.keys(cuentaProv()).length} provincias`,`<button class="btn sm" data-act="irOut" data-href="/contactos?f=radar" title="La misma lista, junto con los contactos de las secuencias">Ver en Contactos</button><button class="btn sm" data-act="importar" title="Subí un CSV o Excel, o pegá una lista">Importar</button><button class="btn sm primary" data-act="nuevo">${IC.plus}Agregar</button>`)}
    ${S.P.length&&!S.listaIds?estSwitch("lEst","",LE,S.P.length-nC,nC):""}
    <div class="panel filt"><div class="search">${IC.search}<input id="q" type="search" placeholder="Buscar por nombre, ciudad o rubro" value="${esc(S.q)}" autocomplete="off"></div>
    <div class="fsel-row">${sel("f-prov",S.fProv,Object.entries(PROV).map(([k,p])=>[k,p.n]).sort((a,b)=>a[1].localeCompare(b[1])),"Todas las provincias")}${sel("f-rub",S.fRub,Object.entries(RUB).map(([k,r])=>[k,r.n]),"Todos los rubros")}${sel("f-et",S.fEt,[...ETAPAS,["descartado","Descartado"]],"Todas las etapas")}${sel("f-pot",S.fPot,[["alto","Potencial alto"],["medio","Potencial medio"],["bajo","Potencial bajo"]],"Cualquier potencial")}</div>
@@ -3610,7 +3610,17 @@ ${merges.length?`<mergeCells count="${merges.length}">${merges.map(m=>`<mergeCel
 
 /* =================== vista Exportar =================== */
 const XL_IC='<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="9" y="5" width="32" height="38" rx="5" fill="#E8F5EC"/><path d="M15 15h20M15 22h20M15 29h20M15 36h20M25 10v31" stroke="#9BCCAE" stroke-width="1.6"/><rect x="4" y="13" width="22" height="22" rx="4.5" fill="#1D7A46"/><path d="M10 19l10 10M20 19L10 29" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>';
+/* Cada búsqueda de «Buscar clientes» (todas sus partes juntas), de la más nueva a la más vieja. */
+function busGrupos(){ const vistos=new Set(), out=[];
+  S.B.slice().sort((a,b)=>(b.t||0)-(a.t||0)).forEach(b=>{ const k=b.grupo||b.id; if(vistos.has(k)) return; vistos.add(k); const G=grupoDe(b);
+    out.push({k,prov:b.provincia,por:b.por||"",t:Math.min(...G.map(x=>x.t||0)),fin:Math.max(...G.map(x=>x.fin||x.latido||x.t||0)),tot:G.reduce((n,x)=>n+(+x.encontrados||0),0),nom:(b.zona&&b.zona.nombre)||provNom(b.provincia)}); });
+  return out; }
+/* Las empresas que trajo esa búsqueda. Las viejas no tienen la marca: se reconocen por provincia y por la hora en que entraron. */
+const deBusqueda=(p,g)=>p.busqueda?p.busqueda===g.k:(p.provincia===g.prov&&(p.creado||0)>=g.t-60e3&&(p.creado||0)<=g.fin+600e3&&/^Encontrado por Claude/.test(String(((p.historial||[])[0]||{}).texto||"")));
+const busSel=()=>{ const G=busGrupos(); return G.find(g=>g.k===S.xBus)||G[0]||null; };
+const busNom=g=>`${g.nom} · ${new Date(g.t).toLocaleDateString("es-AR",{day:"numeric",month:"short"})}${g.por?" · "+g.por:""}`;
 function expLista(){ if(S.xLista) return S.xLista; const m=S.xMode||"hablados", pv=S.xProv||"";
+  if(m==="busqueda"){ const g=busSel(); return g?S.P.filter(p=>deBusqueda(p,g)).sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre))):[]; }
   let L=S.P.filter(p=>!pv||p.provincia===pv);
   if(m==="hablados") L=L.filter(p=>(p.etapa||"nuevo")!=="nuevo"||(p.historial||[]).some(h=>h.tipo==="envio"||h.tipo==="contacto"));
   if(m==="clientes") L=L.filter(p=>p.etapa==="cliente");
@@ -3618,7 +3628,7 @@ function expLista(){ if(S.xLista) return S.xLista; const m=S.xMode||"hablados", 
 const contactosDe=p=>(p.historial||[]).filter(h=>h.tipo==="envio"||h.tipo==="contacto"||h.tipo==="mail");
 const ultimoC=p=>{ const L=contactosDe(p); return L.length?Math.max(...L.map(h=>h.t||0)):0; };
 const primerC=p=>{ const L=contactosDe(p); return L.length?Math.min(...L.map(h=>h.t||0)):0; };
-function vExportar(){ const m=S.xMode||"hablados", L=expLista(), cnt=k=>S.P.filter(p=>k==="hablados"?((p.etapa||"nuevo")!=="nuevo"||contactosDe(p).length):k==="clientes"?p.etapa==="cliente":true).length;
+function vExportar(){ const m=S.xMode||"hablados", L=expLista(), cnt=k=>k==="busqueda"?(m==="busqueda"?L.length:(()=>{ const g=busSel(); return g?S.P.filter(p=>deBusqueda(p,g)).length:0; })()):S.P.filter(p=>k==="hablados"?((p.etapa||"nuevo")!=="nuevo"||contactosDe(p).length):k==="clientes"?p.etapa==="cliente":true).length;
   const op=(k,t,d)=>`<button class="xop" data-act="xMode" data-m="${k}" aria-pressed="${m===k}"><span class="xop-r" aria-hidden="true"></span><span class="xop-t"><b>${t}</b><small>${d}</small></span><span class="num xop-n">${cnt(k)}</span></button>`;
   const conTel=L.filter(p=>p.telefono||p.whatsapp).length, conMail=L.filter(p=>p.email).length;
   return `<section class="view">${cabecera("Exportar","Exportar a Excel","Descargá tus empresas con todos sus datos de contacto, listas para abrir en Excel o Google Sheets.")}
@@ -3626,8 +3636,8 @@ function vExportar(){ const m=S.xMode||"hablados", L=expLista(), cnt=k=>S.P.filt
     <div class="panel x-main">
      <div class="x-head"><span class="x-logo">${XL_IC}</span><div><b class="h2">Planilla de clientes</b><p class="hint">Archivo .xlsx con formato profesional: encabezados, filtros, colores por etapa y links directos a WhatsApp, email y web.</p></div></div>
      <p class="eyebrow">Qué querés exportar</p>
-     <div class="xops">${op("hablados","Empresas con las que hablaste","Todas las que ya contactaste: con respuesta, cotizadas o clientes")}${op("todos","Toda la base","Todos los prospectos, también los que todavía no contactaste")}${op("clientes","Solo clientes nuevos","Las que ya te compraron")}</div>
-     <label class="fsel ${S.xProv?"on":""}" style="max-width:340px"><select id="x-prov" aria-label="Provincia"><option value="">Todas las provincias</option>${Object.entries(PROV).sort((a,b)=>a[1].n.localeCompare(b[1].n)).map(([k,p])=>`<option value="${k}" ${k===S.xProv?"selected":""}>${esc(p.n)}</option>`).join("")}</select></label>
+     <div class="xops">${op("hablados","Empresas con las que hablaste","Todas las que ya contactaste: con respuesta, cotizadas o clientes")}${op("todos","Toda la base","Todos los prospectos, también los que todavía no contactaste")}${op("clientes","Solo clientes nuevos","Las que ya te compraron")}${S.B.length?op("busqueda","Una búsqueda","Las empresas que trajo una búsqueda de «Buscar clientes», para cargarlas en una lista"):""}</div>
+     ${m==="busqueda"?`<label class="fsel on" style="max-width:420px"><select id="x-bus" aria-label="Búsqueda">${busGrupos().map(g=>`<option value="${esc(g.k)}" ${g.k===(busSel()||{}).k?"selected":""}>${esc(busNom(g))} (${g.tot} encontradas)</option>`).join("")}</select></label>`:`<label class="fsel ${S.xProv?"on":""}" style="max-width:340px"><select id="x-prov" aria-label="Provincia"><option value="">Todas las provincias</option>${Object.entries(PROV).sort((a,b)=>a[1].n.localeCompare(b[1].n)).map(([k,p])=>`<option value="${k}" ${k===S.xProv?"selected":""}>${esc(p.n)}</option>`).join("")}</select></label>`}
      <div class="x-sum"><div><b class="num">${L.length}</b><span>empresas</span></div><div><b class="num">${conTel}</b><span>con teléfono</span></div><div><b class="num">${conMail}</b><span>con email</span></div></div>
      <button class="btn x-btn block" id="x-go" data-act="xBajar" ${L.length?"":"disabled"}>${IC.dl}Descargar Excel${L.length?` · ${L.length} empresas`:""}</button>
      ${!L.length?`<p class="hint">${m==="hablados"?"Todavía no contactaste a ninguna empresa. Cuando mandes mensajes desde «Hoy» o desde una ficha, van a aparecer acá.":"No hay empresas para exportar con esa selección."}</p>`:""}
@@ -3660,8 +3670,8 @@ async function exportarExcel(){ const L=expLista(); if(!L.length) return; const 
     hist.sort((a,b)=>(b[0].v||0)-(a[0].v||0));
     const porP={}; L.forEach(p=>{ const k=provDe(p), o=porP[k]=porP[k]||{t:0,c:0,r:0,cl:0}; o.t++; if((p.etapa||"nuevo")!=="nuevo") o.c++; if(["respondio","cotizado","cliente"].includes(p.etapa)) o.r++; if(p.etapa==="cliente") o.cl++; });
     const etC=k=>L.filter(p=>(p.etapa||"nuevo")===k).length;
-    const modo={hablados:"Empresas contactadas",todos:"Base completa",clientes:"Clientes nuevos"}[S.xMode||"hablados"], hoyTxt=new Date().toLocaleDateString("es-AR",{day:"numeric",month:"long",year:"numeric"});
-    const tit=`${S.cfg.empresa||"DARTPAC"} · ${modo}`, sub=`Exportado el ${hoyTxt}${S.xProv?" · "+provNom(S.xProv):""} · ${L.length} empresas · ${S.cfg.firmaNombre||S.cfg.vendedor||""}`;
+    const bg=S.xMode==="busqueda"?busSel():null, modo=bg?"Búsqueda "+busNom(bg).replace(/ · /g," - "):{hablados:"Empresas contactadas",todos:"Base completa",clientes:"Clientes nuevos"}[S.xMode||"hablados"], hoyTxt=new Date().toLocaleDateString("es-AR",{day:"numeric",month:"long",year:"numeric"});
+    const tit=`${S.cfg.empresa||"DARTPAC"} · ${modo}`, sub=`Exportado el ${hoyTxt}${S.xProv&&!bg?" · "+provNom(S.xProv):""} · ${L.length} empresas · ${S.cfg.firmaNombre||S.cfg.vendedor||""}`;
     const blob=XL.libro([
       {name:"Todas",title:tit,sub:sub+" · ordenadas por provincia",cols,rows:filas,tab:"FFFF7A33"},
       ...(ordenP.length>1?ordenP.map(k=>({name:nomP[k],title:`${k} · ${grupos[k].length} ${grupos[k].length===1?"empresa":"empresas"}`,sub,cols,rows:grupos[k].map(fila),tab:"FFFFB088"})):[]),
@@ -3670,7 +3680,7 @@ async function exportarExcel(){ const L=expLista(); if(!L.length) return; const 
         top:[[],[{v:"Empresas",s:ST.kpiL},{v:L.length,t:"n",s:ST.kpiN}],...ETAPAS.map(([k,tt])=>[{v:tt,s:ST.kpiL},{v:etC(k),t:"n",s:ST.kpiN}]),[{v:"Descartadas",s:ST.kpiL},{v:etC("descartado"),t:"n",s:ST.kpiN}],[]],
         cols:[["Provincia",26],["Empresas",14],["Contactadas",14],["Respondieron",14],["Clientes",14]],
         rows:Object.entries(porP).sort((a,b)=>b[1].t-a[1].t).map(([k,o])=>[ordenP.length>1&&nomP[k]?{v:k,t:"link",href:`#'${nomP[k]}'!A1`}:t(k,ST.bold),n(o.t),n(o.c),n(o.r),n(o.cl)])}],tit);
-    const nom=`${S.cfg.empresa||"Radar"} - ${modo}${S.xProv?" - "+provNom(S.xProv):""} - ${hoy()}.xlsx`;
+    const nom=`${S.cfg.empresa||"Radar"} - ${modo.replace(/[\\/:*?"<>|]/g," ")}${S.xProv&&!bg?" - "+provNom(S.xProv):""} - ${hoy()}.xlsx`.normalize("NFD").replace(/[\u0300-\u036f]/g,"");
     let dl=null; try{ dl=window.claude&&window.claude.use?await window.claude.use("downloads"):null; }catch(e){}
     if(dl){ try{ const r=await dl.save({filename:nom,data:blob}); if(r&&r.status==="saved") toast("Excel descargado"); }catch(e){ if(e&&e.code==="unavailable") bajarDirecto(blob,nom); else if(e&&e.code!=="cancelled"&&e.code!=="declined") toast("No se pudo guardar el archivo"); } }
     else bajarDirecto(blob,nom);
@@ -3845,9 +3855,9 @@ const candWa=()=>activos().filter(p=>tieneWa(p)&&waNum(p.whatsapp||p.telefono)&&
 const candTel=()=>activos().filter(p=>!tieneWa(p)&&telNum(p.telefono||p.whatsapp)&&!deOtro(p)&&!["cliente","descartado"].includes(p.etapa||"nuevo")&&!p.noContactar&&!contactosDe(p).length).sort((a,b)=>(potOrd[a.potencial]??1)-(potOrd[b.potencial]??1)||(a.creado||0)-(b.creado||0));
 /* quien le escribe se queda con la empresa: así no la contacta otra cuenta */
 function tomarP(p,upd,r){ r=r||remYo(); if(!r||p.asignadoId) return; upd.asignado=nom1(r.nombre); upd.asignadoId=r.id; p.asignado=upd.asignado; p.asignadoId=r.id; }
-function waLimTanda(p){ const n=contactosHoy(), t=topeWA(), r=Math.min(1,n/t), falta=Math.ceil(ESPERA_WA-(Date.now()-ultimoEnvioHoy())/1000), ya=p&&enviadoHoyA(p), esp=!ya&&falta>0&&!!ultimoEnvioHoy()?falta:0;
-  const msg=ya?"A esta empresa ya le escribiste hoy: no suma al contador.":n>=t?`<b style="color:#D9483B">Llegaste al límite de WhatsApp de hoy.</b> Para cuidar el número, seguí mañana.`:esp?`Esperá <b class="num">${esp} s</b> antes del próximo: mandar muy seguido hace saltar los bloqueos.`:`Te quedan <b class="num">${t-n}</b> mensajes hoy.`;
-  return {html:`<div class="wa-lim" data-nivel="${n>=t?"tope":r>=.75?"alto":"ok"}"><div class="wa-lim-r"><span>WhatsApp hoy</span><b class="num">${n} de ${t}</b></div><div class="wa-bar"><i style="width:${(r*100).toFixed(1)}%"></i></div><p class="hint">${msg}</p></div>`, bloq:!ya&&(n>=t||esp>0), tope:!ya&&n>=t, espera:esp}; }
+function waLimTanda(p){ const n=contactosHoy(), falta=Math.ceil(ESPERA_WA-(Date.now()-ultimoEnvioHoy())/1000), ya=p&&enviadoHoyA(p), esp=!ya&&falta>0&&!!ultimoEnvioHoy()?falta:0;
+  const msg=ya?"A esta empresa ya le escribiste hoy.":esp?`Esperá <b class="num">${esp} s</b> antes del próximo: mandar muy seguido hace saltar los bloqueos.`:"Listo para mandar. Sin límite por día.";
+  return {html:`<div class="wa-lim" data-nivel="ok"><div class="wa-lim-r"><span>WhatsApp hoy</span><b class="num">${n} enviados</b></div><p class="hint">${msg}</p></div>`, bloq:!ya&&esp>0, tope:false, espera:esp}; }
 function tandaMail(){ let canal=LS.get("tmCanal","mail"), L=[], i=0, hechos=0, salt=0, auto=false, gm=false, err="";
   const lista=()=>canal==="wa"?candWa():canal==="tel"?candTel():candMail();
   if(!lista().length) canal=canal==="mail"?"wa":"mail";
@@ -3986,14 +3996,14 @@ function mensaje(id){ const p=pById(id); if(!p) return; if(bloqDueno(p)) return;
     const lim=root.querySelector("#m-lim");
     const estado=()=>{ const n=contactosHoy(), t=topeWA(), falta=Math.ceil(ESPERA_WA-(Date.now()-ultimoEnvioHoy())/1000);
       return {n,t,tope:n>=t&&!registrado&&!igual, espera:!registrado&&falta>0&&ultimoEnvioHoy()?falta:0}; };
-    const pintLim=()=>{ if(!lim||!aw) return; const e=estado(), r=Math.min(1,e.n/e.t);
-      lim.dataset.nivel=e.n>=e.t?"tope":r>=.75?"alto":"ok";
+    const pintLim=()=>{ if(!lim||!aw) return; const e=estado();
+      lim.dataset.nivel="ok";
       let msg;
       if(e.tope) msg=`<b style="color:#D9483B">Llegaste al límite de hoy.</b> Para cuidar tu WhatsApp, seguí mañana. <button class="lnk-igual" id="m-igual">Mandar igual (no recomendado)</button>`;
       else if(e.espera) msg=`Esperá <b class="num">${e.espera} s</b> antes del próximo mensaje: mandar muy seguido es lo que más hace saltar los bloqueos.`;
       else if(registrado) msg="A esta empresa ya le escribiste hoy: no suma al contador.";
-      else msg=`${contactosDe(p).length?`<b style="color:#17733F">Ya le escribiste el ${esc(fCorta(ultimoC(p)))}.</b> `:""}Te quedan <b class="num">${Math.max(0,e.t-e.n)}</b> mensajes hoy. Dejá al menos 1 minuto entre uno y otro.`;
-      lim.innerHTML=`<div class="wa-lim-r"><span>WhatsApp hoy</span><b class="num">${e.n} de ${e.t}</b></div><div class="wa-bar"><i style="width:${(r*100).toFixed(1)}%"></i></div><p class="hint">${msg}</p>`;
+      else msg=`${contactosDe(p).length?`<b style="color:#17733F">Ya le escribiste el ${esc(fCorta(ultimoC(p)))}.</b> `:""}Listo para mandar.`;
+      lim.innerHTML=`<div class="wa-lim-r"><span>WhatsApp hoy</span><b class="num">${e.n} enviados</b></div><p class="hint">${msg}</p>`;
       const bloq=e.tope||e.espera>0; aw.setAttribute("aria-disabled",bloq?"true":"false");
       const ig=root.querySelector("#m-igual"); if(ig) ig.onclick=()=>{ igual=true; pintLim(); };
       clearTimeout(tic); if(e.espera>0&&document.body.contains(lim)) tic=setTimeout(pintLim,1000); };
@@ -4087,7 +4097,43 @@ function imCompletar(b,r){ const d={}, notas=String(b.notas||""), bajo=notas.toL
   if(r.notas&&!bajo.includes(r.notas.toLowerCase())) extra.push(r.notas);
   if(extra.length) d.notas=[notas,...extra].filter(Boolean).join("\n");
   return d; }
-function importar(){
+/* Buscar en Google Maps (web): la API oficial de Google Places trae los comercios de un rubro en una zona. El resultado
+   se carga al Radar con el mismo importador de siempre (sin repetir los que ya están) o se baja en Excel. */
+function mapsBuscar(){
+  const PROVS=Object.entries(PROV).map(([k,x])=>[k,x.n]).sort((a,b)=>a[1].localeCompare(b[1]));
+  abrir("Buscar en Google Maps",`<label class="fld"><span>Qué buscás</span><input id="gm-q" placeholder="Ej.: distribuidora de descartables, papelera, rotisería" autocomplete="off"></label>
+   <div class="grid2"><label class="fld"><span>Provincia</span><select id="gm-p"><option value="">Todo el país</option>${PROVS.map(([k,n])=>`<option value="${k}">${esc(n)}</option>`).join("")}</select></label>
+   <label class="fld"><span>Ciudad o barrio (opcional)</span><input id="gm-c" placeholder="Ej.: Rosario, Palermo" autocomplete="off"></label></div>
+   <button class="btn primary block" id="gm-go">🗺️ Buscar</button>
+   <p class="hint" id="gm-r" aria-live="polite">Trae hasta 60 lugares con nombre, dirección, teléfono y web.</p>
+   <div id="gm-l"></div>`,root=>{
+    let R=[], Q="", P="";
+    const out=root.querySelector("#gm-r"), lst=root.querySelector("#gm-l"), go=root.querySelector("#gm-go");
+    const filas=()=>[["Empresa","Teléfono","Dirección","Ciudad","Provincia","Web","Rubro","Notas"],...R.map(l=>[l.nombre,l.telefono,l.direccion,l.ciudad,P?provNom(P):"",l.web,Q,l.maps?"Google Maps: "+l.maps:""])];
+    const pintar=()=>{ if(!R.length){ lst.innerHTML=""; return; }
+      lst.innerHTML=`<div class="row" style="gap:8px;flex-wrap:wrap;margin:6px 0 10px"><button class="btn primary sm" id="gm-cargar">Cargar ${R.length} al Radar</button><button class="btn sm" id="gm-xl">${IC.dl}Bajar Excel</button></div>
+        <div class="x-prev"><table><thead><tr><th>Empresa</th><th>Teléfono</th><th>Ciudad</th></tr></thead><tbody>${R.slice(0,60).map(l=>`<tr><td><b>${esc(l.nombre)}</b><small>${esc(l.direccion)}</small></td><td class="num">${esc(l.telefono||"—")}</td><td>${esc(l.ciudad||"")}</td></tr>`).join("")}</tbody></table></div>`;
+      lst.querySelector("#gm-cargar").onclick=()=>{ const f=filas(); cerrar(); importar({filas:f,origen:"Google Maps: "+Q+(P?" en "+provNom(P):"")}); };
+      lst.querySelector("#gm-xl").onclick=()=>{ try{ const ST=XL.ST, t=v=>({v:v||"",s:ST.txt}), F=filas();
+          const cols=[["Empresa",34],["Teléfono",17],["Dirección",40],["Ciudad",18],["Provincia",17],["Web",30],["Rubro",20],["Notas",50]];
+          const tit=`Google Maps · ${Q}${P?" en "+provNom(P):""}`;
+          const blob=XL.libro([{name:"Lugares",title:tit,sub:`${R.length} lugares · ${new Date().toLocaleDateString("es-AR")}`,cols,rows:F.slice(1).map(r=>r.map((x,i)=>i===0?{v:x,s:ST.bold}:t(x))),tab:"FF1D7A46"}],tit);
+          bajarDirecto(blob,`Google Maps - ${Q}${P?" - "+provNom(P):""} - ${hoy()}.xlsx`.normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[\\/:*?"<>|]/g," ")); }
+        catch(e){ console.error(e); toast("No se pudo armar el Excel"); } }; };
+    go.onclick=async()=>{ Q=root.querySelector("#gm-q").value.trim(); P=root.querySelector("#gm-p").value; const c=root.querySelector("#gm-c").value.trim();
+      if(!Q){ out.textContent="Escribí qué buscás."; return; }
+      go.disabled=true; go.textContent="Buscando en Google Maps…"; out.textContent=""; R=[]; pintar();
+      try{ const r=await fetch("/api/radar/maps",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:Q,zona:[c,P?provNom(P):""].filter(Boolean).join(", ")})});
+        const j=await r.json().catch(()=>({}));
+        if(j.error==="sin_clave") out.innerHTML="Falta activar Google Maps: hay que cargar la clave <b>GOOGLE_MAPS_API_KEY</b> en Vercel. Pedíselo a Claude y te guía paso a paso.";
+        else if(!r.ok) out.textContent="No se pudo buscar: "+(j.error||"probá de nuevo en un minuto.");
+        else { R=j.lugares||[]; out.textContent=R.length?`${R.length} lugares encontrados. Al cargarlos, los que ya están en el Radar no se repiten.`:"No apareció nada. Probá con otras palabras o sin la ciudad."; pintar(); } }
+      catch(e){ out.textContent="No se pudo conectar. Probá de nuevo."; }
+      finally{ go.disabled=false; go.textContent="🗺️ Buscar"; } };
+    root.querySelector("#gm-q").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); go.click(); } });
+    setTimeout(()=>root.querySelector("#gm-q").focus(),50);
+  }); }
+function importar(pre){
   const PROVS=Object.entries(PROV).map(([k,x])=>[k,x.n]).sort((a,b)=>a[1].localeCompare(b[1]));
   abrir("Importar empresas",`<div class="im-drop" id="im-drop"><span class="im-ic" aria-hidden="true">📄</span>
      <div><b>Subí tu base en CSV o Excel</b><span class="hint">Las columnas pueden estar en cualquier orden: se reconocen por el título (Empresa, Teléfono, Email, Ciudad, Provincia, Rubro, Web…). También podés arrastrar el archivo acá.</span></div>
@@ -4187,7 +4233,7 @@ function importar(){
       const t=Date.now(), por=S.yo||S.cfg.vendedor||"", pegada=ORIGEN==="Lista pegada", de=pegada?"una lista pegada":"«"+ORIGEN+"»", base=nuevoId();
       const docs=NUEVAS.map(f=>{ const h=[{t,tipo:"alta",texto:"Importado de "+de,por}];
         if(f._emailFix) h.push({t,tipo:"dato",texto:"Email corregido: "+f._emailFix,por:"Verificador"}); if(f._emailMalo) h.push({t,tipo:"dato",texto:"Email descartado por inválido: "+f._emailMalo,por:"Verificador"});
-        const {_emailFix,_emailMalo,...doc}=f; return Object.assign(doc,{etapa:"nuevo",potencial:"medio",creado:t,fuente:pegada?"Lista pegada":"Archivo «"+ORIGEN+"»",historial:h}); });
+        const {_emailFix,_emailMalo,...doc}=f; return Object.assign(doc,{etapa:"nuevo",potencial:"medio",creado:t,fuente:pegada?"Lista pegada":/^Google Maps/.test(ORIGEN)?ORIGEN:"Archivo «"+ORIGEN+"»",historial:h}); });
       const NOMB={telefono:"teléfono",whatsapp:"WhatsApp",email:"email",web:"web",direccion:"dirección",ciudad:"ciudad",provincia:"provincia",rubro:"rubro",notas:"contacto o notas"};
       const upd=[...CAMBIOS.entries()].map(([id,d])=>{ const p=pById(id)||{}, {_fix,...cambio}=d;
         cambio.historial=(p.historial||[]).concat([{t,tipo:"dato",texto:"Datos completados desde "+de+": "+Object.keys(cambio).filter(k=>k!=="emailCheck").map(k=>NOMB[k]||k).join(", "),por}]); cambio.actualizado=t; return [id,cambio]; });
@@ -4204,6 +4250,7 @@ function importar(){
       if(ok){ cerrar(); render(); return; }
       if(hechos) toast(`Se cargaron ${nf(hechos)} de ${nf(total)}. Tocá el botón de nuevo: lo que ya entró no se repite.`);
       setTimeout(calcular,600); };
+    if(pre&&pre.filas) cargar(pre.filas,pre.origen||"Google Maps","");
   }); }
 /* Marcar empresas en la Lista (web): con «Marcar», cada tarjeta se marca o desmarca al tocarla, y la barra de arriba
    permite eliminarlas, cambiarles etapa, rubro, provincia o potencial, o sumarlas a una secuencia, todas juntas. */
@@ -4357,7 +4404,7 @@ function ajustes(){ const c=S.cfg;
    <label class="fld"><span>Link del catálogo</span><input id="a-c" value="${esc(c.catalogo)}" placeholder="https://…"></label>
    <label class="fld"><span>Marcas que distribuís</span><input id="a-m" value="${esc(c.marcas)}"></label>
    <label class="fld"><span>Lo que te diferencia (lo usa la IA en cada mensaje)</span><textarea id="a-d" rows="4">${esc(c.diferenciales)}</textarea></label>
-   <div class="grid2"><label class="fld"><span>Límite de WhatsApp por día</span><input id="a-l" type="number" min="5" max="60" value="${esc(c.limite)}"></label><label class="fld"><span>Seguimiento a los (días)</span><input id="a-s" type="number" min="1" max="30" value="${esc(c.seguir)}"></label></div>
+   <div class="grid2"><label class="fld"><span>Empresas sugeridas por día en «Hoy»</span><input id="a-l" type="number" min="5" max="200" value="${esc(c.limite)}"></label><label class="fld"><span>Seguimiento a los (días)</span><input id="a-s" type="number" min="1" max="30" value="${esc(c.seguir)}"></label></div>
    <div class="grid2"><label class="fld"><span>Mandás los mails desde</span><select id="a-me" class="fx-sel"><option value="">Cargando buzones…</option></select></label><label class="fld"><span>Límite de mails por día</span><input id="a-ml" type="number" min="5" max="150" value="${esc(topeMail())}"></label></div>
    <p class="hint">Tu nombre y tu buzón se guardan en este navegador: cada vendedor elige el suyo. Los buzones se conectan en Remitentes.</p>
    <button class="btn primary block" type="submit">Guardar ajustes</button></form>`,root=>{
@@ -4365,7 +4412,7 @@ function ajustes(){ const c=S.cfg;
       selB.innerHTML=`<option value="">Elegí tu buzón</option>`+R.map(r=>`<option value="${esc(r.id)}" ${r.id===y.senderId?"selected":""} ${r.conectado?"":"disabled"}>${esc(r.nombre)} · ${esc(r.email)}${r.conectado?"":" (sin conectar)"}</option>`).join("");
       const pn=x=>x.nombre.split(/\s+/)[0]; selB.onchange=()=>{ const r=R.find(x=>x.id===selB.value), v=root.querySelector("#a-v"); if(r&&v&&(!v.value.trim()||R.some(x=>x.nombre===v.value.trim()||pn(x)===v.value.trim()))) v.value=pn(r); }; });
     root.querySelector("#af").addEventListener("submit",async ev=>{ ev.preventDefault(); const g=s=>root.querySelector(s).value.trim();
-      const d={empresa:g("#a-e"),vendedor:g("#a-v"),catalogo:g("#a-c"),marcas:g("#a-m"),diferenciales:g("#a-d"),limite:Math.max(5,Math.min(60,+g("#a-l")||20)),seguir:Math.max(1,Math.min(30,+g("#a-s")||4)),mailDe:g("#a-me"),limiteMail:Math.max(5,Math.min(150,+g("#a-ml")||40))};
+      const d={empresa:g("#a-e"),vendedor:g("#a-v"),catalogo:g("#a-c"),marcas:g("#a-m"),diferenciales:g("#a-d"),limite:Math.max(5,Math.min(200,+g("#a-l")||20)),seguir:Math.max(1,Math.min(30,+g("#a-s")||4)),mailDe:g("#a-me"),limiteMail:Math.max(5,Math.min(150,+g("#a-ml")||40))};
       const eq=window.__dpEquipo?await window.__dpEquipo():{remitentes:[]}, rb=((eq&&eq.remitentes)||[]).find(x=>x.id===d.mailDe);
       if(window.__dpYo) window.__dpYo({senderId:rb?rb.id:"",email:rb?rb.email:"",name:d.vendedor||(rb?rb.nombre.split(/\s+/)[0]:"")});
       const {vendedor,mailDe,...comp}=d; Object.assign(S.cfg,yoCfg()); S.yo=d.vendedor||S.yo;
@@ -4390,7 +4437,7 @@ const ACT={
  cancelarBus:d=>cancelarBus(d.id), segVer:d=>seguimiento(d.gr), segMover:(d,el)=>segMover(d.id,d.et,el), rdEst:d=>{S.rf[d.red].est=d.est;render();}, lEst:d=>{S.lEst=d.est;render();}, lMas:d=>{ const y=scrollY; S.lN=d.todos?1e9:(S.lN||300)+300; render(); scrollTo(0,y); }, pEst:d=>{S.pEst=d.est;render();}, rdRub:d=>{const F=S.rf[d.red];F.rub=F.rub===d.rub?"":d.rub;render();}, rdProv:d=>{const F=S.rf[d.red];F.prov=F.prov===d.prov?"":d.prov;render();}, rdTel:d=>{const F=S.rf[d.red];F.tel=!F.tel;render();}, rdVista:d=>{S.rf[d.red].vista=d.v;render();}, rdLimpiar:d=>{Object.assign(S.rf[d.red],{rub:"",prov:"",tel:false,q:""});render();},
  rdExcel:async d=>{ const F=S.rf[d.red]; S.xLista=S.P.filter(d.red==="facebook"?esFB:d.red==="instagram"?esIG:esTT).filter(p=>(!F.rub||p.rubro===F.rub)&&(!F.prov||p.provincia===F.prov)&&(!F.tel||p.telefono||p.whatsapp)); try{ await exportarExcel(); } finally { S.xLista=null; } }, vfyFix:d=>vfyFix(d.id), vfyIr:()=>{ cerrar(); if(window.__dpShow) window.__dpShow("verificador"); },
  ver:d=>ver(d.id), etapa:d=>setEtapa(d.id,d.et), mensaje:d=>mensaje(d.id), mail:d=>mailSheet(d.id), mlF:d=>{S.mlF=d.f;render();}, reenv3:d=>{ const f=addDays(hoy(),3); reenvSet(d.id,f); toast("Listo: te lo recuerdo el "+fFecha(f)); }, reenvCancel:d=>{ reenvSet(d.id,null); toast("Reenvío cancelado"); }, tandaMail:()=>tandaMail(), contacto:d=>contacto(d.id),
- editar:d=>form(pById(d.id)), nuevo:d=>form(null,d.prov?{provincia:d.prov}:{}), importar:()=>importar(),
+ editar:d=>form(pById(d.id)), nuevo:d=>form(null,d.prov?{provincia:d.prov}:{}), importar:()=>importar(), mapsBuscar:()=>mapsBuscar(),
  pedirBusqueda:d=>pedirBusqueda(d.prov,{dep:d.dep!=null&&d.dep!==""?+d.dep:null,loc:d.loc!=null&&d.loc!==""?+d.loc:null,reg:d.reg||null,vacios:!!d.vacios}), buscarRed:d=>buscarRed(d.red), elegirProv:()=>elegirProv(), cerrar:()=>cerrar(), copiar:d=>copiar(d.txt),
  spRub:d=>{LS.set("spRub",d.rub);render();}, copiarSpeech:()=>copiar($("#sp-text").textContent),
  limpiarF:()=>{S.q="";S.fProv="";S.fRub="";S.fEt="";S.fPot="";S.fAsig="";S.listaIds=null;render();},
@@ -4409,7 +4456,7 @@ document.addEventListener("click",e=>{ if(!RROOT.contains(e.target)) return; con
   const b=e.target.closest("[data-act]"); if(b&&ACT[b.dataset.act]){ if(b.tagName==="A") return; e.preventDefault(); ACT[b.dataset.act](b.dataset,b); } });
 document.addEventListener("keydown",e=>{ if((e.key==="Enter"||e.key===" ")&&e.target.matches&&e.target.matches(".prov,.caba-btn")&&RROOT.contains(e.target)){ e.preventDefault(); ACT.prov({prov:e.target.dataset.prov}); } });
 document.addEventListener("input",e=>{ if(e.target.id==="q"){ S.q=e.target.value; render(); } if(e.target.classList&&e.target.classList.contains("rd-q")){ S.rf[e.target.dataset.red].q=e.target.value; render(); } });
-document.addEventListener("change",e=>{ if(e.target.classList&&e.target.classList.contains("rd-sel")){ S.rf[e.target.dataset.red][e.target.dataset.k]=e.target.value; render(); return; } if(e.target.id==="x-prov"){ S.xProv=e.target.value; render(); return; } const m={"f-prov":"fProv","f-rub":"fRub","f-et":"fEt","f-pot":"fPot"}[e.target.id]; if(m){ S[m]=e.target.value; render(); } });
+document.addEventListener("change",e=>{ if(e.target.classList&&e.target.classList.contains("rd-sel")){ S.rf[e.target.dataset.red][e.target.dataset.k]=e.target.value; render(); return; } if(e.target.id==="x-bus"){ S.xBus=e.target.value; render(); return; } if(e.target.id==="x-prov"){ S.xProv=e.target.value; render(); return; } const m={"f-prov":"fProv","f-rub":"fRub","f-et":"fEt","f-pot":"fPot"}[e.target.id]; if(m){ S[m]=e.target.value; render(); } });
 const FUENTES=[["web","Web y Google","Webs oficiales y buscadores"],["maps","Google Maps","Fichas de comercios en Google Maps"],["mercadolibre","Mercado Libre","Vendedores de film, bolsas y descartables"],["redes","TikTok · Instagram · Facebook","Cuentas comerciales que venden por redes"],["guias","Guías y cámaras","Cámaras empresarias, parques industriales y ferias"],["cuit","Verificar CUIT","Razón social y CUIT en el padrón público"]];
 const FUENTES_DEF=["web","maps","mercadolibre","redes","guias"];
 /* =====================================================================
@@ -4726,7 +4773,7 @@ function zonasCsv(){ const per=S.zPer==null?30:S.zPer, T=registroZonas(per?Date.
   bajarDirecto(new Blob(["\ufeff"+filas.map(f=>f.map(q).join(";")).join("\r\n")],{type:"text/csv;charset=utf-8"}),"registro-zonas-"+hoy()+".csv"); }
 function axSeguro(){ const c=S.cfg, n=mailsHoy(), sem=Math.max(1,Math.ceil((Date.now()-(+c.mailInicio||Date.now()))/(7*864e5))), rec=[20,35,50,80][Math.min(3,sem-1)], nc=S.P.filter(p=>p.noContactar);
   const chk=(k,t,d)=>`<label class="ax-chk"><input type="checkbox" data-chk="${k}" ${(c.checks||{})[k]?"checked":""}><span><b>${t}</b><small>${d}</small></span></label>`;
-  return `<div class="stat-grid four"><div class="stat"><span>Mails hoy</span><b class="num">${n}/${topeMail()}</b><small>límite diario</small></div><div class="stat"><span>WhatsApp hoy</span><b class="num">${contactosHoy()}/${topeWA()}</b><small>límite diario</small></div><div class="stat"><span>Recomendado esta semana</span><b class="num">${rec}</b><small>mails por día</small></div><div class="stat"><span>No contactar</span><b class="num">${nc.length}</b><small>pidieron la baja</small></div></div>
+  return `<div class="stat-grid four"><div class="stat"><span>Mails hoy</span><b class="num">${n}/${topeMail()}</b><small>límite diario</small></div><div class="stat"><span>WhatsApp hoy</span><b class="num">${contactosHoy()}</b><small>sin límite</small></div><div class="stat"><span>Recomendado esta semana</span><b class="num">${rec}</b><small>mails por día</small></div><div class="stat"><span>No contactar</span><b class="num">${nc.length}</b><small>pidieron la baja</small></div></div>
    <div class="panel stack"><h2 class="h2">Para que tus mails no caigan en spam</h2>
     ${chk("spf","Dominio plupackembalajes.com con SPF, DKIM y DMARC","Se configura una sola vez en el panel donde está el dominio (Google Workspace → Autenticar correo). Sin esto, muchos mails van a spam.")}
     ${chk("calent","Subir el volumen de a poco","Primera semana 20 por día, después 35, 50 y recién al mes 80. Hoy te recomiendo "+rec+".")}
@@ -4735,7 +4782,7 @@ function axSeguro(){ const c=S.cfg, n=mailsHoy(), sem=Math.max(1,Math.ceil((Date
    <div class="panel stack"><h2 class="h2">Para cuidar tu WhatsApp</h2>
     ${chk("wab","Usar WhatsApp Business","Te da perfil de empresa, catálogo y respuestas rápidas.")}
     ${chk("wapi","Para envíos masivos: API oficial de WhatsApp Business","Mandar muchos mensajes seguidos desde un número común termina en bloqueo. La API oficial (por Meta o un proveedor) permite plantillas aprobadas.")}
-    <p class="hint">La app ya te frena en ${topeWA()} mensajes por día y 1 minuto entre uno y otro. Lo cambiás en Ajustes.</p></div>
+    <p class="hint">WhatsApp no tiene límite por día: la app solo espera ${ESPERA_WA} segundos entre uno y otro.</p></div>
    <div class="panel stack"><div class="sec-h" style="margin:0"><h2>No contactar</h2><span class="num">${nc.length}</span></div>${nc.length?`<div class="ax-list">${nc.map(p=>`<div class="ax-row"><button class="rd-lnk ax-n" data-act="ver" data-id="${esc(p.id)}"><b>${esc(p.nombre)}</b><small>${esc((p.noContactar||{}).motivo||"")} · ${esc(fCorta((p.noContactar||{}).t))}</small></button><button class="btn sm ghost" data-act="ncQuitar" data-id="${esc(p.id)}">Quitar de la lista</button></div>`).join("")}</div>`:`<p class="hint">Nadie pidió la baja. Si alguien lo pide, quedá tranquilo: la app no le vuelve a escribir.</p>`}</div>`; }
 
 /* ---------- vista Redes (TikTok · Instagram · Facebook juntas) ---------- */
@@ -4773,16 +4820,16 @@ function vTablero(){ const per=S.tbP||30, desde=per?Date.now()-per*864e5:0, P=S.
 
 /* ---------- menú «Más» ---------- */
 /* en la web: accesos a las secciones de Outreach desde «Más» */
-const OUT_IR=[["/","Panel",'<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>'],
+const OUT_IR=[["/","Tablero",'<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>'],
  ["/secuencias","Secuencias",'<path d="M20.5 3.5L10.2 13.8M20.5 3.5l-6.4 17-3.9-6.7-6.7-3.9z"/>'],
  ["/contactos","Contactos",'<path d="M9 11.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM3.5 19.5c.8-3.3 3-5.2 5.5-5.2s4.7 1.9 5.5 5.2M17.2 11.5a2.5 2.5 0 1 0 0-5M16.4 14.3c2.2.3 3.7 1.9 4.2 4.4"/>'],
  ["/bandeja","Bandeja",'<path d="M3.5 13.5l2.6-7.7A1.8 1.8 0 0 1 7.8 4.5h8.4a1.8 1.8 0 0 1 1.7 1.3l2.6 7.7M3.5 13.5V18a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-4.5h-5.2l-1.4 2.4h-3.8l-1.4-2.4z"/>'],
  ["/tareas","Tareas",'<path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>'],
- ["/buzones","Buzones",'<path d="M3.5 6.5h17v11h-17zM3.8 7l8.2 6.2L20.2 7"/>']];
+ ["/remitentes","Remitentes y buzones",'<path d="M3.5 6.5h17v11h-17zM3.8 7l8.2 6.2L20.2 7"/>']];
 const outLinks=()=>`<p class="eyebrow mas-out-h">Outreach</p><div class="mas-out">${OUT_IR.map(([h,t,d])=>`<button class="mas-o" data-act="irOut" data-href="${h}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>${t}</button>`).join("")}</div>`;
 function mas(){ const ml=mlVencen().length;
   const it=(act,ic,t,d,extra)=>`<button class="mas-it" data-act="${act}" ${extra||""}><span class="mas-ic" aria-hidden="true">${ic}</span><span><b>${t}</b><small>${d}</small></span><span class="resp-go" aria-hidden="true">›</span></button>`;
-  abrir("Más",`<div class="mas">${it("tab","✉️","Mails enviados"+(ml?` <span class="pill pot-alto">${ml} para reenviar</span>`:""),"Agenda de correos y reenvíos",'data-tab="mails"')}${it("tab","🗣️","Speech de venta","Guion por rubro y respuestas a objeciones",'data-tab="speech"')}${it("tab","📊","Embudo","Conversión por etapa y tablero por etapa",'data-tab="embudo"')}${it("tab","📥","Exportar a Excel","Tus empresas con todos sus datos",'data-tab="exportar"')}${it("verBusq","🔎","Búsquedas pedidas","Estado de las búsquedas de Claude")}${it("verAjustes","⚙️","Ajustes","Empresa, firma, límites y oferta")}</div>${outLinks()}`); }
+  abrir("Más",`<div class="mas">${ml?it("tab","✉️",`Mails para reenviar <span class="pill pot-alto">${ml}</span>`,"Ya pasaron los 3 días: mandales el seguimiento",'data-tab="mails"'):""}${it("tab","📊","Embudo","Conversión por etapa y tablero por etapa",'data-tab="embudo"')}${it("tab","📥","Exportar a Excel","Tus empresas con todos sus datos",'data-tab="exportar"')}${it("mapsBuscar","🗺️","Buscar en Google Maps","Comercios de un rubro en una zona, para cargar al Radar o bajar en Excel")}${it("verBusq","🔎","Búsquedas pedidas","Estado de las búsquedas de Claude")}${it("verAjustes","⚙️","Ajustes","Empresa, firma, límites y oferta")}</div>${outLinks()}`); }
 
 /* ---------- ficha: bloque de automatización ---------- */
 function fichaAuto(p){ const {n,partes}=puntaje(p), [t,c]=temp(n), s=seqPaso(p), Q=calidad(p), V=S.cfg.vendedores||[];
@@ -4801,7 +4848,7 @@ function seqWaSheet(id){ const p=pById(id), s=seqPaso(p); if(!p||!s) return; con
     const ta=root.querySelector("#sw-t"), go=root.querySelector("#sw-go"), lim=root.querySelector("#sw-lim"); let hecho=false, tic=null;
     const link=()=>{ go.href=waLink(wa,ta.value); }; link(); ta.oninput=link; let rem=remElegido(); remBind(root,r=>{ rem=r; ta.value=conRem(r,()=>pasoWa(p,s.st)); link(); });
     const pint=()=>{ const n=contactosHoy(), t=topeWA(), f=Math.ceil(ESPERA_WA-(Date.now()-ultimoEnvioHoy())/1000), esp=f>0&&ultimoEnvioHoy()&&!enviadoHoyA(p)?f:0, tope=n>=t&&!enviadoHoyA(p);
-      lim.innerHTML=`<div class="wa-lim-r"><span>WhatsApp hoy</span><b class="num">${n} de ${t}</b></div><div class="wa-bar"><i style="width:${Math.min(100,n/t*100).toFixed(1)}%"></i></div><p class="hint">${tope?"Llegaste al límite de hoy: seguí mañana.":esp?`Esperá <b class="num">${esp} s</b> antes del próximo.`:"Listo para mandar."}</p>`; go.setAttribute("aria-disabled",tope||esp?"true":"false"); clearTimeout(tic); if(esp&&document.body.contains(lim)) tic=setTimeout(pint,1000); return {tope,esp}; };
+      lim.innerHTML=`<div class="wa-lim-r"><span>WhatsApp hoy</span><b class="num">${n} enviados</b></div><p class="hint">${tope?"":esp?`Esperá <b class="num">${esp} s</b> antes del próximo.`:"Listo para mandar."}</p>`; go.setAttribute("aria-disabled",tope||esp?"true":"false"); clearTimeout(tic); if(esp&&document.body.contains(lim)) tic=setTimeout(pint,1000); return {tope,esp}; };
     pint();
     root.querySelector("#sw-ia").onclick=async e=>{ e.currentTarget.disabled=true; ta.value=await personalizarIA(p,ta.value,"wa"); link(); e.currentTarget.disabled=false; };
     go.addEventListener("click",async e=>{ const x=pint(); if(x.tope||x.esp){ e.preventDefault(); toast(x.tope?"Llegaste al límite de hoy":"Esperá "+x.esp+" s"); return; } if(hecho) return; hecho=true;

@@ -18,12 +18,26 @@ export const TIPOS_ACTIVIDAD: Record<string, string> = {
 };
 
 type Quien = Pick<Usuario, "name" | "senderId"> | null;
+export type Canal = "mail" | "whatsapp" | "llamada";
+type Extra = { contactId?: string | null; ref?: string; canal?: Canal | null };
+
+/** El canal de una actividad anotada antes de que existiera la columna (por el tipo y el texto). */
+export function canalDe(a: { canal: string | null; tipo: string; texto: string }): Canal | null {
+  if (a.canal) return a.canal as Canal;
+  if (a.tipo === "mail") return "mail";
+  if (a.tipo === "whatsapp") return "whatsapp";
+  if (a.tipo !== "mensaje") return null;
+  if (/: Mail enviado/.test(a.texto)) return "mail";
+  if (/: (WhatsApp|Mensaje enviado)/.test(a.texto) || /^WhatsApp a /.test(a.texto)) return "whatsapp";
+  if (/: Llamada/.test(a.texto)) return "llamada";
+  return null;
+}
 
 /** Anota algo que hizo un usuario. Con `ref`, lo mismo no se anota dos veces. Nunca falla. */
-export async function registrar(u: Quien, tipo: string, texto: string, extra: { contactId?: string | null; ref?: string } = {}) {
+export async function registrar(u: Quien, tipo: string, texto: string, extra: Extra = {}) {
   try {
     await db.actividad.create({
-      data: { senderId: u?.senderId ?? null, quien: u?.name || "Sistema", tipo, texto: texto.slice(0, 500), contactId: extra.contactId ?? null, ref: extra.ref ?? null },
+      data: { senderId: u?.senderId ?? null, quien: u?.name || "Sistema", tipo, texto: texto.slice(0, 500), contactId: extra.contactId ?? null, ref: extra.ref ?? null, canal: extra.canal ?? null },
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return;
@@ -32,6 +46,6 @@ export async function registrar(u: Quien, tipo: string, texto: string, extra: { 
 }
 
 /** Lo mismo, para quien está usando la app ahora. */
-export async function registrarYo(tipo: string, texto: string, extra: { contactId?: string | null; ref?: string } = {}) {
+export async function registrarYo(tipo: string, texto: string, extra: Extra = {}) {
   await registrar(await usuarioActual(), tipo, texto, extra);
 }

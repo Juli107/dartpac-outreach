@@ -4,6 +4,7 @@ import { overallStats, formatPct, pct } from "@/lib/stats";
 import { domainChecks, overallHealth, sequenceVerdict, worst, type Level } from "@/lib/health";
 import { CONFIRM_ON, REPLY_LABEL, fullName, relativeTime } from "@/lib/labels";
 import { Kpi, PageHeader, StatusPill, Empty, Dot, Avatar, CheckList } from "@/components/ui";
+import { Pestanas } from "@/components/Pestanas";
 import { Switch } from "@/components/Switch";
 import { CountUp } from "@/components/CountUp";
 import { radarResumen } from "@/lib/radar/resumen";
@@ -70,6 +71,7 @@ export default async function Dashboard() {
         <form action={runNow}><button className="btn-ghost" title="Lee los buzones y procesa lo pendiente de las secuencias encendidas.">Procesar ahora</button></form>
         <Link href="/radar" className="btn">Buscar clientes</Link>
       </PageHeader>
+      <Pestanas grupo="tablero" activa="/" />
 
       <section id="estado" className="card appear relative scroll-mt-6 overflow-hidden">
         <span aria-hidden className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-brand/20 blur-3xl" />

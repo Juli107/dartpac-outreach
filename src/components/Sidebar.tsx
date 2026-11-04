@@ -22,6 +22,7 @@ const ICONS: Record<string, React.ReactNode> = {
   "/bandeja": <path d="M3.5 13.5l2.6-7.7A1.8 1.8 0 0 1 7.8 4.5h8.4a1.8 1.8 0 0 1 1.7 1.3l2.6 7.7M3.5 13.5V18a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-4.5h-5.2l-1.4 2.4h-3.8l-1.4-2.4z" />,
   "/whatsapp": <path d="M4.3 19.7l1.1-3.9A8.2 8.2 0 1 1 8.6 19zM9 8.6c.2 2.9 3.4 6.1 6.4 6.4l1.1-1.4-2-1-.9.8c-1-.4-2.1-1.5-2.5-2.5l.8-.9-1-2z" />,
   "/equipo": <path d="M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM15.5 11a3 3 0 1 0 0-6M3 19.5c.6-3 2.8-4.8 5.5-4.8s4.9 1.8 5.5 4.8M16.6 14.8c2.3.3 3.9 2 4.4 4.7" />,
+  "/envios": <path d="M4 19.5h16M7 16V11M12 16V6M17 16v-3M3.5 5.5l3 2.5 3-3" />,
   "/reparto": <path d="M12 3v6M12 9l-6 5M12 9l6 5M12 9v6M4 17h4v4H4zM10 17h4v4h-4zM16 17h4v4h-4z" />,
   "/tareas": <path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2" />,
   "/analiticas": <path d="M5 20v-7M10 20V5M15 20v-9M20 20V8" />,
@@ -42,10 +43,9 @@ const GROUPS: { label: string; items: { href: string; label: string }[] }[] = [
   {
     label: "Outreach",
     items: [
-      { href: "/", label: "Panel" },
+      { href: "/", label: "Tablero" },
       { href: "/secuencias", label: "Secuencias" },
       { href: "/contactos", label: "Contactos" },
-      { href: "/equipo", label: "Equipo" },
       { href: "/reparto", label: "Reparto diario" },
       { href: "/bandeja", label: "Bandeja" },
       { href: "/whatsapp", label: "WhatsApp" },
@@ -63,16 +63,15 @@ const GROUPS: { label: string; items: { href: string; label: string }[] }[] = [
   {
     label: "Correo",
     items: [
-      { href: "/buzones", label: "Buzones" },
-      { href: "/remitentes", label: "Remitentes" },
+      { href: "/remitentes", label: "Remitentes y buzones" },
     ],
   },
 ];
 const NAV = GROUPS.flatMap((g) => g.items);
 
 /** Secciones de la barra inferior en el móvil. */
-const TAB_BAR = ["/", "/radar", "/secuencias", "/bandeja", "/buzones"];
-const SHORT: Record<string, string> = { "/radar": "Radar" };
+const TAB_BAR = ["/", "/radar", "/secuencias", "/bandeja", "/remitentes"];
+const SHORT: Record<string, string> = { "/radar": "Radar", "/remitentes": "Correo" };
 
 const HEALTH: Record<Level, [string, string]> = {
   ok: ["Todo listo para enviar", "bg-ok"],
@@ -82,7 +81,10 @@ const HEALTH: Record<Level, [string, string]> = {
   bad: ["Hay envíos frenados", "bg-bad"],
 };
 
-const isActive = (href: string, path: string) => (href === "/" ? path === "/" : path === href || path.startsWith(href + "/"));
+/** Secciones que viven como pestañas de otra: Equipo y Envíos dentro del Tablero, Buzones dentro de Remitentes. */
+const DENTRO: Record<string, string[]> = { "/": ["/equipo", "/envios"], "/remitentes": ["/buzones"] };
+const isActive = (href: string, path: string) =>
+  [href, ...(DENTRO[href] ?? [])].some((h) => (h === "/" ? path === "/" : path === h || path.startsWith(h + "/")));
 
 function Svg({ href, size = 19, strong = false }: { href: string; size?: number; strong?: boolean }) {
   return (

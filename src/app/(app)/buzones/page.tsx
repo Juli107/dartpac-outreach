@@ -4,6 +4,7 @@ import { cronShouldRun, domainChecks, mailboxHealth, schedulerChecks, worst, typ
 import { RefrescarEn } from "@/components/RefrescarEn";
 import { formatPct, pct } from "@/lib/stats";
 import { PageHeader, Dot, Avatar, ProgressBar, Pill, Empty, CheckList } from "@/components/ui";
+import { Pestanas } from "@/components/Pestanas";
 import { checkConnections } from "../actions";
 
 export const metadata = { title: "Buzones" };
@@ -82,6 +83,7 @@ export default async function Mailboxes() {
         <form action={checkConnections}><button className="btn-ghost" title="No envía nada">Comprobar conexiones</button></form>
         <Link href="/remitentes" className="btn">Gestionar remitentes</Link>
       </PageHeader>
+      <Pestanas grupo="correo" activa="/buzones" />
 
       {/* Salud del correo: todo lo que decide si los correos llegan a la bandeja principal */}
       <section id="salud" className="card appear relative scroll-mt-6 overflow-hidden">

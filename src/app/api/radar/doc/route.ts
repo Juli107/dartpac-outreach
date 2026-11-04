@@ -23,7 +23,9 @@ const Op = z.object({
 const Body = z.union([Op, z.object({ ops: z.array(Op).min(1).max(500) })]);
 
 type OpT = z.infer<typeof Op>;
-const CONTACTO = ["envio", "mail", "contacto", "etapa"];
+const CONTACTO = ["envio", "mail", "contacto", "etapa", "llamada"];
+/** Por dónde fue cada anotación del Radar: los «envio» son WhatsApp, los «mail» son mails y las de canal tel, llamadas. */
+const canalRadar = (h: RadarData) => (h.canal === "tel" ? "llamada" : h.tipo === "mail" ? "mail" : h.tipo === "envio" || h.canal === "wa" ? "whatsapp" : null);
 const txt = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
 /** Entradas nuevas del historial (de los últimos minutos) que son un mensaje o un cambio de etapa hecho por una persona. */
@@ -70,7 +72,7 @@ async function anotar(u: Usuario, ops: OpT[]) {
       const doc = await db.radarDoc.findUnique({ where: { col_id: { col: "prospectos", id: o.id } }, select: { data: true } });
       const nombre = txt((doc?.data as RadarData | undefined)?.nombre) || "una empresa";
       const contacto = await db.contact.findFirst({ where: { radarId: o.id }, select: { id: true } });
-      await registrar(quienDe(u, h), "mensaje", `${nombre}: ${txt(h.texto) || String(h.tipo)}`, { contactId: contacto?.id, ref: `radar:${o.id}:${h.t}` });
+      await registrar(quienDe(u, h), "mensaje", `${nombre}: ${txt(h.texto) || String(h.tipo)}`, { contactId: contacto?.id, ref: `radar:${o.id}:${h.t}`, canal: canalRadar(h) });
     }
   }
 }

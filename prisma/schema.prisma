@@ -39,12 +39,16 @@ model Contact {
   ownerAt         DateTime?
   /// Sección del vendedor donde quedó, con la zona de la búsqueda que lo trajo (ej. «Córdoba – Luis Mendieta»).
   seccion         String?
+  /// Etapa, con los mismos nombres que el Radar: nuevo, contactado, respondio, cotizado, cliente o descartado.
+  /// La copia sola lib/etapas.ts (del Radar, o de los envíos y respuestas si no vino del Radar).
+  etapa           String?
   createdAt       DateTime     @default(now())
   enrollments     Enrollment[]
   replies         Reply[]
 
   @@index([radarId])
   @@index([ownerId])
+  @@index([etapa])
 }
 
 enum SequenceStatus {
@@ -300,6 +304,8 @@ model Actividad {
   /// entro, busqueda, mensaje, mail, whatsapp, secuencia, alta, importo, asigno o bloqueo.
   tipo      String
   texto     String
+  /// Por dónde fue el envío: mail, whatsapp o llamada (vacío si no es un envío). Lo usa la página Envíos.
+  canal     String?
   contactId String?
   /// Evita registrar dos veces lo mismo (por ejemplo, el mismo mensaje del Radar guardado dos veces).
   ref       String?  @unique
@@ -307,6 +313,7 @@ model Actividad {
 
   @@index([senderId, at])
   @@index([at])
+  @@index([canal, at])
 }
 
 /// Base del Radar comercial: documentos JSON por colección (prospectos, busquedas, alertas, pedidos, config),
@@ -346,6 +353,9 @@ model Setting {
   /// Reparto diario de contactos a los remitentes (apagado hasta que el administrador lo encienda) y el último día que corrió.
   repartoOn         Boolean   @default(false)
   repartoUltimo     String    @default("")
+  /// Resumen diario por mail a las 19 h (días hábiles) para el administrador: apagado hasta que lo encienda, y el último día que salió.
+  resumenOn         Boolean   @default(false)
+  resumenUltimo     String    @default("")
   /// Última vez que alguien tuvo la app abierta entrando con la contraseña común (no se sabe quién es).
   adminSeenAt       DateTime?
 }

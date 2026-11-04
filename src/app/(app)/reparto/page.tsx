@@ -102,7 +102,7 @@ export default async function Reparto() {
                   <div className="flex flex-wrap gap-1.5 text-xs">
                     <Pill tone="neutral">Hoy recibió {cargados.get(s.id) ?? 0} de {s.repartoDia}</Pill>
                     <Pill tone="neutral">{mailsHoy} de {s.dailyLimit} mails</Pill>
-                    <Pill tone="neutral">{waHoy(s.id)} de {s.waDailyLimit} WhatsApp</Pill>
+                    <Pill tone="neutral">{waApiReady(s) ? `${waHoy(s.id)} de ${s.waDailyLimit} WhatsApp automáticos` : `${waHoy(s.id)} WhatsApp hoy · sin límite`}</Pill>
                     {!senderConnected(s) && <Pill tone="bad">Gmail sin conectar</Pill>}
                     {!waApiReady(s) && <Pill tone="warn">WhatsApp a mano (Tareas)</Pill>}
                   </div>
@@ -133,7 +133,7 @@ export default async function Reparto() {
                       <input name="dailyLimit" type="number" min={1} max={500} defaultValue={s.dailyLimit} className="input" />
                     </label>
                     <label className="flex flex-col gap-1">
-                      <span className="label">WhatsApp por día</span>
+                      <span className="label">WhatsApp automáticos por día</span>
                       <input name="waDailyLimit" type="number" min={0} max={500} defaultValue={s.waDailyLimit} className="input" />
                     </label>
                     <div className="col-span-3">
