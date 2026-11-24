@@ -67,6 +67,10 @@ export async function programadorSiHaceFalta(now = new Date()) {
  * y la búsqueda de los lunes. Llamarlo de más no adelanta nada: como mucho una pasada cada 9 minutos, con turno.
  */
 export async function latido(now = new Date()) {
+  // Fuera del horario de trabajo no se toca la base: así Neon se apaga de noche y los fines de semana
+  // (la base es compartida con DARTPAC Sistema y se paga por hora encendida). Las respuestas que lleguen
+  // de noche se leen en la primera pasada de la mañana.
+  if (!enHorarioLatido(now)) return { pasada: false, fueraDeHorario: true };
   const { at } = await lastRun();
   const pasada = !at || now.getTime() - at.getTime() >= CADA_MS;
   const r = pasada ? await pasadaProgramador({ bandeja: true, fuente: "latido" }) : null;
@@ -85,4 +89,14 @@ export async function semanalSiHaceFalta(now = new Date()) {
   const { jobs, ...r } = await armarSemanal();
   for (const job of jobs) await despertar({ job });
   return r;
+}
+
+/**
+ * Horario en que el latido trabaja: lunes a viernes de 7:30 a 20:00 de Buenos Aires (sin horario de verano),
+ * para cubrir los envíos (8 a 19), la búsqueda de los lunes (8:47) y el resumen de las 19.
+ */
+export function enHorarioLatido(now = new Date()) {
+  const ar = new Date(now.getTime() - 3 * 3600_000);
+  const d = ar.getUTCDay(), m = ar.getUTCHours() * 60 + ar.getUTCMinutes();
+  return d >= 1 && d <= 5 && m >= 7 * 60 + 30 && m < 20 * 60;
 }
