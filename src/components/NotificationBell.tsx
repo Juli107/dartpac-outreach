@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { sinUso, alVolver } from "./usoReciente";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -82,7 +83,7 @@ export function NotificationBell() {
   }, []);
 
   const traer = useCallback(async () => {
-    if (document.visibilityState !== "visible") return;
+    if (document.visibilityState !== "visible" || sinUso()) return;
     try {
       const r = await fetch("/api/notificaciones", { cache: "no-store" });
       if (!r.ok) return;
@@ -102,7 +103,9 @@ export function NotificationBell() {
     const t = setInterval(traer, 60_000);
     const vis = () => document.visibilityState === "visible" && traer();
     document.addEventListener("visibilitychange", vis);
+    const dejar = alVolver(traer);
     return () => {
+      dejar();
       clearInterval(t);
       document.removeEventListener("visibilitychange", vis);
     };

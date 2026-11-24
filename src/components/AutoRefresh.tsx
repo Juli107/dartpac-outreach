@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { sinUso, alVolver } from "./usoReciente";
 
 /** Mientras la página está abierta y visible, llama a `action` cada `seconds` y refresca los datos. */
 export function AutoRefresh({ action, seconds = 60 }: { action: () => Promise<unknown>; seconds?: number }) {
@@ -13,7 +14,7 @@ export function AutoRefresh({ action, seconds = 60 }: { action: () => Promise<un
   useEffect(() => {
     let busy = false;
     const tick = async () => {
-      if (busy || document.visibilityState !== "visible") return;
+      if (busy || document.visibilityState !== "visible" || sinUso()) return;
       busy = true;
       try {
         await accion.current();
@@ -26,7 +27,9 @@ export function AutoRefresh({ action, seconds = 60 }: { action: () => Promise<un
     tick();
     const id = setInterval(tick, seconds * 1000);
     document.addEventListener("visibilitychange", tick);
+    const dejar = alVolver(tick);
     return () => {
+      dejar();
       clearInterval(id);
       document.removeEventListener("visibilitychange", tick);
     };
