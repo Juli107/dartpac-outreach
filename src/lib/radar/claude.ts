@@ -11,7 +11,12 @@ export type ClientTool = { name: string; description: string; input_schema: Reco
 const API = () => (process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").replace(/\/$/, "") + "/v1/messages";
 export const modelo = () => process.env.RADAR_MODEL || "claude-sonnet-5-5";
 export const modeloRapido = () => process.env.RADAR_MODEL_QUICK || "claude-haiku-5-5";
-export const iaConfigurada = () => !!process.env.ANTHROPIC_API_KEY;
+/** La clave tal como quedó en Vercel, sin espacios, saltos de línea, comillas ni «Bearer» que a veces se pegan con ella. */
+export const claveClaude = () =>
+  String(process.env.ANTHROPIC_API_KEY ?? "").replace(/^\s*(bearer\s+)?["'“”]?/i, "").replace(/["'“”]?\s*$/, "").replace(/\s+/g, "");
+export const iaConfigurada = () => !!claveClaude();
+export const CLAVE_INVALIDA =
+  "La clave de Claude cargada en Vercel (ANTHROPIC_API_KEY) no es válida: Anthropic la rechaza. Creá una nueva en console.anthropic.com → API Keys, copiala con el botón Copy y pegala completa en Vercel (empieza con sk-ant-api03-).";
 
 /** Precios por millón de tokens (US$) para estimar el gasto; se pueden ajustar por variable de entorno. */
 const precio = () => ({
@@ -47,7 +52,7 @@ const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Una llamada a la API, con reintentos ante 429/5xx/529 respetando retry-after. */
 export async function llamar(body: Record<string, unknown>, opts: { signal?: AbortSignal; intentos?: number; hasta?: number } = {}) {
-  const key = process.env.ANTHROPIC_API_KEY;
+  const key = claveClaude();
   if (!key) throw new ApiError(401, "sin_clave", "Falta configurar la API de Claude (ANTHROPIC_API_KEY en Vercel).");
   const intentos = opts.intentos ?? 5;
   for (let i = 0; ; i++) {
@@ -74,6 +79,7 @@ export async function llamar(body: Record<string, unknown>, opts: { signal?: Abo
     } catch {}
     // Sin crédito la API frena (no cobra nada aparte): se avisa claro y en castellano, sin reintentar.
     if (/credit balance is too low/i.test(msg)) throw new ApiError(res.status, "sin_credito", SIN_CREDITO);
+    if (res.status === 401 || tipo === "authentication_error") throw new ApiError(res.status, "clave_invalida", CLAVE_INVALIDA);
     const reintentable = res.status === 429 || res.status === 529 || res.status >= 500;
     if (!reintentable || i + 1 >= intentos) throw new ApiError(res.status, tipo, msg);
     const ra = Number(res.headers.get("retry-after"));
