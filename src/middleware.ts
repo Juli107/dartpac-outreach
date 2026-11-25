@@ -14,6 +14,7 @@ const PUBLIC = [
   /^\/api\/cron/,
   /^\/api\/latido$/,
   /^\/api\/sso$/,
+  /^\/api\/sistema\//,
   /^\/api\/whatsapp$/,
   /^\/api\/radar\/worker$/,
   /^\/api\/radar\/semanal$/,
