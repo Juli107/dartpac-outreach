@@ -89,6 +89,6 @@ export async function POST(req: Request) {
     await db.enrollment.create({ data: { sequenceId: seq.id, contactId: contact.id, nextStep: first.order, nextRunAt: runAt } });
     r.sumados++;
   }
-  if (r.sumados) await registrar({ email: "", name: b.por, senderId: null, admin: true }, "secuencia", `Sumó ${r.sumados} cliente${r.sumados === 1 ? "" : "s"} del sistema a «${seq.name}» para reactivarlos`).catch(() => null);
+  if (r.sumados) await registrar({ name: b.por, senderId: null }, "secuencia", `Sumó ${r.sumados} cliente${r.sumados === 1 ? "" : "s"} del sistema a «${seq.name}» para reactivarlos`).catch(() => null);
   return NextResponse.json({ ok: true, secuencia: seq.name, enviando: seq.sendingOn && seq.status === "ACTIVE", ...r });
 }
