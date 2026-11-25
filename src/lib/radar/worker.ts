@@ -303,7 +303,9 @@ async function procesarBusqueda(job: Job, runner: string, hasta: number): Promis
               ? "Falta configurar la API de Claude en la plataforma (ANTHROPIC_API_KEY)."
               : e.tipo === "sin_credito"
                 ? SIN_CREDITO
-                : `La API de Claude rechazó la búsqueda: ${e.message.slice(0, 160)}`,
+                : e.tipo === "clave_invalida"
+                  ? e.message
+                  : `La API de Claude rechazó la búsqueda: ${e.message.slice(0, 160)}`,
         });
         return "hecho";
       }

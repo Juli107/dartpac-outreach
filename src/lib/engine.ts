@@ -94,8 +94,9 @@ export async function runDueSteps(now = new Date()) {
       });
       continue;
     }
-    // Ya es cliente (en Outreach o en DARTPAC SISTEMA): no se le escribe como a un prospecto.
-    const cli = contact.etapa === "cliente" ? { nombre: contact.company ?? "" } : await esClienteSistema(contact).catch(() => null);
+    // Ya es cliente (en Outreach o en DARTPAC SISTEMA): no se le escribe como a un prospecto, salvo que el sistema lo haya
+    // mandado a una secuencia de reactivación (marca «reactivacion»).
+    const cli = contact.tags.includes("reactivacion") ? null : contact.etapa === "cliente" ? { nombre: contact.company ?? "" } : await esClienteSistema(contact).catch(() => null);
     if (cli) {
       await db.enrollment.update({ where: { id: enr.id }, data: { status: "FINISHED", nextRunAt: null, finishedAt: now } });
       if (!contact.radarId && contact.etapa !== "cliente") await db.contact.update({ where: { id: contact.id }, data: { etapa: "cliente" } });

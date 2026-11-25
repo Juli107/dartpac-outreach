@@ -7,6 +7,7 @@ import { db } from "./db";
 import { waNum } from "./whatsapp";
 import { sendWaText } from "./whatsapp-api";
 import { eventoRadar } from "./radar/outreach";
+import { claveClaude } from "./radar/claude";
 import { botEncendido, botEnPausa, conversacionBot, instruccionesBot, ventanaAbierta, SALUDO_POR_DEFECTO, type WaEntrante } from "./whatsapp-bot";
 
 const TIPOS: Record<string, string> = { audio: "audio", image: "foto", video: "video", document: "archivo", sticker: "sticker", location: "ubicación", contacts: "contacto" };
@@ -62,9 +63,9 @@ async function respuestaBot(todo: { direction: string; by: string; body: string;
   const saludo = s?.botSaludo.trim() || SALUDO_POR_DEFECTO;
   const yaSaludo = historial.some((l) => l.by === "bot" && Date.now() - l.at.getTime() < 24 * 3600_000);
   const fijo = yaSaludo ? null : saludo;
-  if (!process.env.ANTHROPIC_API_KEY || sinTexto) return fijo;
+  if (!claveClaude() || sinTexto) return fijo;
   try {
-    const client = new Anthropic();
+    const client = new Anthropic({ apiKey: claveClaude() });
     const r = await client.beta.messages.create({
       model: "claude-opus-5-5",
       max_tokens: 1024,
