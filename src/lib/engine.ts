@@ -13,6 +13,7 @@ import { eventoRadar } from "./radar/outreach";
 import { cargarVariables } from "./variables";
 import { sendWaTemplate, waApiReady, waParamList } from "./whatsapp-api";
 import { registrar } from "./actividad";
+import { esClienteSistema } from "./sistema";
 
 const quienEs = (c: { company: string | null; firstName: string | null; lastName: string | null; email: string | null; phone: string | null }) =>
   c.company || [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || c.phone || "un contacto";
@@ -91,6 +92,14 @@ export async function runDueSteps(now = new Date()) {
         where: { id: enr.id },
         data: { status: contact.unsubscribed ? "UNSUBSCRIBED" : "BOUNCED", nextRunAt: null },
       });
+      continue;
+    }
+    // Ya es cliente (en Outreach o en DARTPAC SISTEMA): no se le escribe como a un prospecto.
+    const cli = contact.etapa === "cliente" ? { nombre: contact.company ?? "" } : await esClienteSistema(contact).catch(() => null);
+    if (cli) {
+      await db.enrollment.update({ where: { id: enr.id }, data: { status: "FINISHED", nextRunAt: null, finishedAt: now } });
+      if (!contact.radarId && contact.etapa !== "cliente") await db.contact.update({ where: { id: contact.id }, data: { etapa: "cliente" } });
+      summary.skipped++;
       continue;
     }
 

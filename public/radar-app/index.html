@@ -2942,7 +2942,7 @@ async function iniciar(){
     { const nue=alPrev?S.AL.filter(a=>a.estado==="nueva"&&!alPrev.has(a.id)):[]; if(nue.length) avisar(nue.length===1?(nue[0].titulo||"Oportunidad nueva"):nue.length+" oportunidades nuevas",{ic:"🔔",tono:"info",d:nue.length===1?(nue[0].detalle||""):"Las encontró Claude para vos.",ir:{ax:"alertas"}}); } if(S.tab==="auto"&&$("#sheet").hidden) render(); else pintarBadges(); },()=>{});
   db.collection("pedidos").onSnapshot(s=>{ const prev=new Map(S.PED.map(x=>[x.id,x.estado])); S.PED=s.docs.map(d=>Object.assign({id:d.id},d.data())); S.PED.forEach(x=>{ if(prev.get(x.id)&&prev.get(x.id)!=="hecha"&&x.estado==="hecha"&&x.resultado) avisar("✓ "+x.resultado,{ic:"✅",tono:"ok",ir:{tab:"auto"}}); }); notifPublicar(); },()=>{});
   db.collection("secuencias").onSnapshot(s=>{ S.SQ=s.docs.map(d=>Object.assign({id:d.id},d.data())); if(S.tab==="auto"&&$("#sheet").hidden) render(); notifPublicar(); },()=>{});
-  db.doc("config/excluir").onSnapshot(s=>{ S.excl=s.exists?((s.data()||{}).clientes||[]):[]; },()=>{});
+  db.doc("config/excluir").onSnapshot(s=>{ const x=s.exists?(s.data()||{}):{}; S.excl=x.clientes||[]; S.exclX={tels:new Set(x.tels||[]),emails:new Set(x.emails||[]),cuits:new Set(x.cuits||[]),doms:new Set(x.doms||[])}; },()=>{});
   db.doc("config/empresa").onSnapshot(s=>{S.cfg=Object.assign({},CFG0,s.exists?s.data():{},yoCfg());pintarSub();},()=>{});
 }
 async function guardar(fn,ok){ if(!S.db){toast("No hay conexión con la base. Revisá tu internet y recargá la página.");return false;}
@@ -3342,7 +3342,7 @@ function vSpeech(){ const r=LS.get("spRub","logistica"); const R=RUB[r]||RUB.otr
      <button class="btn ${S.cfg.firmaOn===false?"primary":""} sm" data-act="firmaOn">${S.cfg.firmaOn===false?"Activar la tarjeta en los mensajes":"Desactivar en los mensajes"}</button>
    </aside></div>
    <div class="stack"><p class="eyebrow">Cómo responder</p>${OBJ.map(([q,a])=>`<details class="obj"><summary>«${esc(q)}»</summary><p>${esc(a)}</p></details>`).join("")}</div>
-   <div class="panel stack"><p class="eyebrow">Cómo encarar cada contacto</p><ol class="hint" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--fg)"><li>Primer mensaje corto: quién sos, qué hacés y una pregunta concreta.</li><li>Si no responde, seguimiento a los ${+S.cfg.seguir||4} días con un dato útil o el catálogo.</li><li>Si responde, pedí medidas y cantidades antes de pasar precio.</li><li>Cotización por escrito y nuevo seguimiento a los 2 o 3 días.</li><li>Cuando compra, pasalo a DARTPAC Gestión como cliente.</li></ol></div>
+   <div class="panel stack"><p class="eyebrow">Cómo encarar cada contacto</p><ol class="hint" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--fg)"><li>Primer mensaje corto: quién sos, qué hacés y una pregunta concreta.</li><li>Si no responde, seguimiento a los ${+S.cfg.seguir||4} días con un dato útil o el catálogo.</li><li>Si responde, pedí medidas y cantidades antes de pasar precio.</li><li>Cotización por escrito y nuevo seguimiento a los 2 o 3 días.</li><li>Cuando compra, se da de alta como cliente en DARTPAC Sistema.</li></ol></div>
   </section>`; }
 
 /* ---------- hojas ---------- */
@@ -3358,7 +3358,7 @@ function ver(id){ const p=pById(id); if(!p) return; const et=p.etapa||"nuevo", w
   const tel=digits(p.telefono), desc=p.descripcion||"", opp=p.descripcion?p.porque:"";
   const tile=(ic,lbl,val,href,copy)=>`<div class="fx-tile">${href?`<a class="fx-tl" href="${esc(href)}" target="_blank" rel="noopener">`:`<span class="fx-tl">`}<i aria-hidden="true">${ic}</i><span><small>${lbl}</small><b>${esc(val)}</b></span>${href?`</a>`:`</span>`}${copy?`<button class="icon-btn sm ghost" data-act="copiar" data-txt="${esc(copy)}" aria-label="Copiar ${lbl.toLowerCase()}">${IC.copy}</button>`:""}</div>`;
   abrir("Ficha del prospecto",`<div class="fx-head"><span class="fx-ic" aria-hidden="true">${R.i}</span><div style="min-width:0"><h3 class="fx-name">${esc(p.nombre)}</h3><p class="fx-sub">${esc(R.n)}${lugar?" · "+esc(lugar):""}</p></div></div>
-   <div class="row"><span class="pill et ${et}">${ETN[et]}</span>${p.potencial?`<span class="pill pot-${p.potencial}">${POT[p.potencial]}</span>`:""}${vence(p)?`<span class="pill pot-alto">Seguir hoy</span>`:""}</div>
+   <div class="row"><span class="pill et ${et}">${ETN[et]}</span>${p.potencial?`<span class="pill pot-${p.potencial}">${POT[p.potencial]}</span>`:""}${vence(p)?`<span class="pill pot-alto">Seguir hoy</span>`:""}${porQueCliente(p)?`<span class="pill et cliente" title="Coincide por ${esc(porQueCliente(p))} con un cliente de DARTPAC SISTEMA">Ya es cliente de DARTPAC</span>`:""}${p.alta&&p.alta.sisId?`<span class="pill et cliente">En DARTPAC Sistema</span>`:""}</div>
    <section class="fx-sec"><p class="eyebrow">La empresa</p><div id="fx-desc">${desc?`<p class="fx-desc">${esc(desc)}</p>`:`<div class="fx-skel" aria-label="Preparando la descripción"><i></i><i></i><i style="width:62%"></i></div>`}</div></section>
    <section class="fx-sec"><p class="eyebrow">Oportunidad para ${esc(S.cfg.empresa||"DARTPAC")}</p><div class="fx-opp" id="fx-opp">${esc(opp||p.porque||R.h)}</div></section>
    <section class="fx-sec"><p class="eyebrow">Etapa comercial</p><div class="steps" role="group" aria-label="Etapa">${ETAPAS.map(([k,t],i)=>`<button data-act="etapa" data-id="${esc(id)}" data-et="${k}" class="${k===et?"on":i<idx?"done":""}">${t}</button>`).join("")}</div></section>
@@ -3375,7 +3375,7 @@ function ver(id){ const p=pById(id); if(!p) return; const et=p.etapa||"nuevo", w
    <dl class="kv"><dt>Próximo paso</dt><dd>${p.proximo?esc(fFecha(p.proximo)):"Sin fecha"}</dd>${p.fuente?`<dt>Fuente</dt><dd>${/^https?:/.test(p.fuente)?`<a href="${esc(p.fuente)}" target="_blank" rel="noopener" class="fx-src">${esc(dom(p.fuente).split("/")[0])}</a>`:esc(p.fuente)}</dd>`:""}</dl>
    ${p.notas?`<section class="fx-sec"><p class="eyebrow">Notas</p><p class="fx-note">${esc(p.notas)}</p></section>`:""}
    ${(p.historial||[]).length?`<section class="fx-sec"><p class="eyebrow">Historial</p><div class="hist">${[...p.historial].reverse().slice(0,20).map(h=>`<div>${esc(h.texto)}<small>${esc(h.por||"")}${h.por?" · ":""}${hace(h.t)}</small></div>`).join("")}</div></section>`:""}
-   <div class="row fx-foot">${et==="cliente"?`<button class="btn sm primary" data-act="altaGestion" data-id="${esc(id)}">${p.alta&&p.alta.estado==="hecha"?"✓ Cargado en Gestión":p.alta?"Alta en Gestión en curso…":"Dar de alta en DARTPAC Gestión"}</button><button class="btn sm ghost" data-act="pasarGestion" data-id="${esc(id)}">Copiar datos</button>`:""}<button class="btn sm ghost" data-act="noContactar" data-id="${esc(id)}">${p.noContactar?"Volver a contactar":"No contactar más"}</button><button class="btn sm ghost" data-act="editar" data-id="${esc(id)}">Editar</button>${et!=="descartado"?`<button class="btn sm ghost" data-act="etapa" data-id="${esc(id)}" data-et="descartado">Descartar</button>`:`<button class="btn sm ghost" data-act="etapa" data-id="${esc(id)}" data-et="nuevo">Reactivar</button>`}${p.telefono||p.whatsapp?`<button class="btn sm ghost" data-act="malNumero" data-id="${esc(id)}">Número equivocado</button>`:""}</div>`);
+   <div class="row fx-foot">${p.alta&&p.alta.sisId?`<a class="btn sm primary" href="${SIS_URL}/?cotizar=${encodeURIComponent(p.alta.sisId)}" target="_blank" rel="noopener">🧾 Cotizar en DARTPAC Sistema</a><a class="btn sm ghost" href="${SIS_URL}/?cliente=${encodeURIComponent(p.alta.sisId)}" target="_blank" rel="noopener">Ver en el Sistema</a>`:et!=="descartado"&&["respondio","cotizado","cliente"].includes(et)?`<button class="btn sm primary" data-act="altaGestion" data-id="${esc(id)}">${et==="cliente"?"Dar de alta en DARTPAC Sistema":"Cargar en DARTPAC Sistema para cotizar"}</button><button class="btn sm ghost" data-act="pasarGestion" data-id="${esc(id)}">Copiar datos</button>`:""}<button class="btn sm ghost" data-act="noContactar" data-id="${esc(id)}">${p.noContactar?"Volver a contactar":"No contactar más"}</button><button class="btn sm ghost" data-act="editar" data-id="${esc(id)}">Editar</button>${et!=="descartado"?`<button class="btn sm ghost" data-act="etapa" data-id="${esc(id)}" data-et="descartado">Descartar</button>`:`<button class="btn sm ghost" data-act="etapa" data-id="${esc(id)}" data-et="nuevo">Reactivar</button>`}${p.telefono||p.whatsapp?`<button class="btn sm ghost" data-act="malNumero" data-id="${esc(id)}">Número equivocado</button>`:""}</div>`);
   if(!desc) describir(p); }
 /* descripción profesional con IA, una sola vez por prospecto (se guarda) */
 async function describir(p){ const id=p.id, fin=(d,o)=>{ const el=document.getElementById("fx-desc"); if(el&&$(".sheet-panel")&&!$("#sheet").hidden) el.innerHTML=d?`<p class="fx-desc">${esc(d)}</p>`:`<p class="fx-desc">${esc(p.porque||"")}</p>`; const op=document.getElementById("fx-opp"); if(op&&o) op.textContent=o; };
@@ -3391,7 +3391,7 @@ Respondé solo con JSON: {"descripcion":"...","oportunidad":"..."}`,{modelTier:"
   }catch(e){ fin(""); } finally{ delete DESC_PEND[id]; } }
 async function setEtapa(id,et,nota,quieto){ const p=pById(id); if(!p) return; const h=[...(p.historial||[]),{t:Date.now(),tipo:"etapa",texto:nota||`Pasó a ${ETN[et]}`,...porH()}];
   const upd={etapa:et,historial:h,actualizado:Date.now()}; if(p.seq&&!p.seq.fin&&!["nuevo","contactado"].includes(et)) upd.seq=Object.assign({},p.seq,{fin:et}); if(et==="cliente"&&!p.clienteEl) upd.clienteEl=Date.now(); if(et==="cliente"||et==="descartado") upd.proximo=""; if(et==="respondio"&&!p.proximo) upd.proximo=addDays(hoy(),1); if(et==="cotizado") upd.proximo=addDays(hoy(),3);
-  if(await guardar(()=>S.db.doc("prospectos/"+id).update(upd),et==="cliente"?"🎉 ¡Nuevo cliente!":ETN[et])) { Object.assign(p,upd); if(et==="cliente"&&!(p.alta&&p.alta.estado==="hecha")){ setTimeout(()=>altaSheet(id),quieto?900:150); return true; } if(!quieto&&!$("#sheet").hidden) ver(id); return true; } }
+  if(await guardar(()=>S.db.doc("prospectos/"+id).update(upd),et==="cliente"?"🎉 ¡Nuevo cliente!":ETN[et])) { Object.assign(p,upd); if(et==="cliente"&&!(p.alta&&p.alta.sisId)){ setTimeout(()=>altaSheet(id),quieto?900:150); return true; } if(!quieto&&!$("#sheet").hidden) ver(id); return true; } }
 function firmaTxt(){ const c=S.cfg; if(c.firmaOn===false) return ""; const L=[[c.firmaNombre||c.vendedor||"",c.empresa].filter(Boolean).join(" · ")];
   if(c.firmaTel) L.push(c.firmaTel); return "\n\n"+L.join("\n"); }
 /* ---------- remitentes: quién escribe por WhatsApp ---------- */
@@ -4461,7 +4461,7 @@ const FUENTES=[["web","Web y Google","Webs oficiales y buscadores"],["maps","Goo
 const FUENTES_DEF=["web","maps","mercadolibre","redes","guias"];
 /* =====================================================================
    AUTOMATIZACIÓN COMERCIAL · puntaje, limpieza, secuencias, respuestas,
-   alertas, equipo, envíos seguros, tablero y alta en DARTPAC Gestión
+   alertas, equipo, envíos seguros, tablero y alta en DARTPAC Sistema
    ===================================================================== */
 const quien=()=>S.yo||S.cfg.vendedor||"";
 const vivoP=p=>!!p&&!["cliente","descartado"].includes(p.etapa||"nuevo")&&!p.noContactar;
@@ -4484,7 +4484,22 @@ function calidad(p){ const prob=[]; const t=String(p.telefono||""), w=String(p.w
   if(/a confirmar/i.test(p.ciudad||"")) prob.push("Ciudad a confirmar");
   const cel=/(^|\D)15[\s-]?\d|\+?54\s?9|^9\s?\d{2,4}/.test(t+" "+w)||(w&&w!==t);
   return {prob, cel}; }
-function esCliente(p){ const L=S.excl||[]; const n=nomNorm(p.nombre); return !!n&&L.includes(n); }
+const SIS_URL="https://sistema.plupackembalajes.com";
+function telKey(s){ let d=digits(s); if(d.startsWith("00")) d=d.slice(2); if(d.startsWith("54")) d=d.slice(2); if(d.startsWith("9")&&d.length===11) d=d.slice(1); if(d.startsWith("0")) d=d.slice(1); const m=d.match(/^(\d{2,4})15(\d{6,8})$/); if(m&&(m[1]+m[2]).length===10) d=m[1]+m[2]; return d.length>=8?d.slice(-10):""; }
+function domKey(s){ const t=norm(s); if(!t) return ""; const em=t.match(/@([a-z0-9.-]+\.[a-z]{2,})/); let h=em?em[1]:t.replace(/^[a-z]+:\/\//,"").split(/[/?#]/)[0]; h=h.replace(/^www\./,"").replace(/:\d+$/,""); return /\.[a-z]{2,}$/.test(h)?h:""; }
+/* ¿ya es cliente de DARTPAC? Lo dice la lista de clientes de DARTPAC SISTEMA: nombre, teléfono, email, CUIT o web */
+function porQueCliente(p){ if(p.alta&&p.alta.sisId) return ""; const X=S.exclX||{}, n=nomNorm(p.nombre);
+  if(X.cuits&&p.cuit&&X.cuits.has(digits(p.cuit))) return "CUIT"; if(X.emails&&p.email&&X.emails.has(norm(p.email))) return "email";
+  if(X.tels) for(const t of [p.telefono,p.whatsapp]){ const k=telKey(t); if(k&&X.tels.has(k)) return "teléfono"; }
+  if(X.doms) for(const t of [p.web,p.email]){ const k=domKey(t); if(k&&X.doms.has(k)) return "web"; }
+  return n&&(S.excl||[]).includes(n)?"nombre":""; }
+function esCliente(p){ return !!porQueCliente(p); }
+async function altaSistema(id,ven){ const p=pById(id); toast("Cargando en DARTPAC Sistema…");
+  try{ const r=await fetch("/api/radar/alta",{method:"POST",headers:{"content-type":"application/json"},credentials:"same-origin",body:JSON.stringify({id,vendedor:ven||""})}); const j=await r.json().catch(()=>({}));
+    if(r.status===401){ parent.postMessage({type:"dp:sesion"},location.origin); return false; }
+    if(!r.ok||!j.ok){ toast("No se pudo cargar en el Sistema: "+(j.detail||"probá de nuevo en un rato")); return false; }
+    if(p) p.alta=j.alta; toast(j.nuevo?"✓ Cliente creado en DARTPAC Sistema":"✓ Ya estaba en el Sistema como «"+j.nombre+"»: quedó vinculado"); render(); if(!$("#sheet").hidden) ver(id); return true;
+  }catch(e){ toast("No se pudo conectar con DARTPAC Sistema."); return false; } }
 
 /* ---------- puntaje 0-100 ---------- */
 function puntaje(p){ if(!p) return {n:0,partes:[]};
@@ -4580,7 +4595,7 @@ async function pedirAuto(tipo,ids,extra){ if(!S.db){ toast("No hay conexión con
       catch(e){ const c=e&&e.code; msg=c==="not_in_manifest"||c==="not_granted"?"No diste permiso para que la app arranque al asistente.":c==="server_not_connected"?"La plataforma no pudo arrancar el pedido.":"No se pudo arrancar ahora."; } }
     else msg="No se pudo arrancar desde acá."; }
   else msg="Falta el asistente automático.";
-  toast(ok?({alta:"Dando de alta en DARTPAC Gestión…",enriquecer:"Claude está completando los datos…",alertas:"Claude está buscando oportunidades…"})[tipo]||"Pedido enviado":msg+" Queda en cola: la plataforma lo retoma sola en unos minutos.");
+  toast(ok?({alta:"Dando de alta en DARTPAC Sistema…",enriquecer:"Claude está completando los datos…",alertas:"Claude está buscando oportunidades…"})[tipo]||"Pedido enviado":msg+" Queda en cola: la plataforma lo retoma sola en unos minutos.");
   return true; }
 
 /* ---------- respuestas de mails (Gmail) ---------- */
@@ -4648,14 +4663,14 @@ function pegarRespuesta(id){ const p=pById(id); if(!p) return;
 
 /* ---------- alta de cliente ---------- */
 function altaSheet(id){ const p=pById(id); if(!p) return;
-  abrir("🎉 ¡Nuevo cliente!",`<p class="hint"><b>${esc(p.nombre)}</b> compró. Cargalo en DARTPAC Gestión para que ventas, depósito y cobranzas lo tengan.</p>
+  abrir("🎉 ¡Nuevo cliente!",`<p class="hint"><b>${esc(p.nombre)}</b> compró. Cargalo en DARTPAC Sistema para que ventas, depósito y cobranzas lo tengan.</p>
    <label class="fld"><span>Primera compra en $ (para el tablero, opcional)</span><input id="al-m" type="number" min="0" step="1000" inputmode="numeric" value="${esc(p.montoVenta||"")}"></label>
    <label class="fld"><span>Vendedor a cargo</span><input id="al-v" value="${esc(p.asignado||S.cfg.firmaNombre||S.cfg.vendedor||"")}"></label>
-   <label class="adj" style="grid-template-columns:auto 1fr"><input type="checkbox" id="al-g" ${p.alta&&p.alta.estado==="hecha"?"":"checked"}><span><b>Darlo de alta en DARTPAC Gestión</b><small>${p.alta&&p.alta.estado==="hecha"?"Ya está cargado en Gestión.":"Claude lo crea como cliente activo con todos sus datos. Tarda un par de minutos."}</small></span></label>
+   <label class="adj" style="grid-template-columns:auto 1fr"><input type="checkbox" id="al-g" ${p.alta&&p.alta.sisId?"":"checked"}><span><b>Darlo de alta en DARTPAC Sistema</b><small>${p.alta&&p.alta.sisId?"Ya está cargado en el Sistema.":"Se crea al instante como cliente en el Sistema con sus datos. Si ya estaba cargado, lo vincula sin duplicarlo."}</small></span></label>
    <button class="btn primary block" id="al-ok">Guardar</button>`,root=>{
     root.querySelector("#al-ok").onclick=async()=>{ const m=+root.querySelector("#al-m").value||0, v=root.querySelector("#al-v").value.trim(), g=root.querySelector("#al-g").checked;
-      const upd={actualizado:Date.now()}; if(m) upd.montoVenta=m; if(v) upd.asignado=v; if(!p.clienteEl) upd.clienteEl=Date.now(); if(g) upd.alta={estado:"pendiente",t:Date.now()};
-      if(!await guardar(()=>S.db.doc("prospectos/"+id).update(upd),"")) return; Object.assign(p,upd); cerrar(); if(g) await pedirAuto("alta",[id]); else toast("Guardado"); render(); }; }); }
+      const upd={actualizado:Date.now()}; if(m) upd.montoVenta=m; if(v) upd.asignado=v; if(!p.clienteEl) upd.clienteEl=Date.now();
+      if(!await guardar(()=>S.db.doc("prospectos/"+id).update(upd),"")) return; Object.assign(p,upd); cerrar(); if(g&&!(p.alta&&p.alta.sisId)) await altaSistema(id,v); else { toast("Guardado"); render(); } }; }); }
 
 /* ---------- vista Automatización ---------- */
 const AX_TABS=[["seq","Secuencias"],["resp","Respuestas"],["alertas","Alertas"],["limpieza","Limpieza"],["equipo","Equipo"],["zonas","Zonas por remitente"],["seguro","Envíos seguros"]];
@@ -4835,7 +4850,7 @@ function mas(){ const ml=mlVencen().length;
 function fichaAuto(p){ const {n,partes}=puntaje(p), [t,c]=temp(n), s=seqPaso(p), Q=calidad(p), V=S.cfg.vendedores||[];
   return `<section class="fx-sec"><p class="eyebrow">Puntaje</p><div class="fx-pt"><span class="pt ${c} big"><b class="num">${n}</b></span><div><b>${t}</b><div class="fx-pt-l">${partes.map(([l,v])=>`<span>${esc(l)} <b class="num ${v<0?"neg":""}">${v>0?"+":""}${v}</b></span>`).join("")}</div></div></div></section>
    ${Q.prob.length?`<div class="fx-warn"><b>Datos para revisar:</b> ${esc(Q.prob.join(" · "))} <button class="rd-lnk" data-act="enriquecer1" data-id="${esc(p.id)}">Que Claude los complete</button></div>`:""}
-   ${esCliente(p)?`<div class="fx-warn">Este nombre figura como cliente de DARTPAC en Gestión.</div>`:""}
+   ${esCliente(p)?`<div class="fx-warn">Coincide con un cliente de DARTPAC SISTEMA (por nombre, teléfono, email, CUIT o web).</div>`:""}
    ${p.noContactar?`<div class="fx-warn bad">Pidió no ser contactado (${esc(p.noContactar.motivo||"")}). La app no le va a escribir.</div>`:""}
    <section class="fx-sec"><p class="eyebrow">Secuencia de Outreach</p>${p.outreach?`<p class="hint">«${esc(p.outreach.nombre||"Secuencia")}» · ${p.outreach.fin?esc(OUT_FIN[p.outreach.fin]||"terminó"):"en curso desde "+esc(fFecha(p.outreach.desde||""))}</p><div class="row"><button class="btn sm" data-act="seqAbrir" data-id="${esc(p.outreach.sid)}">Abrir en Outreach</button>${p.outreach.fin&&vivoP(p)?`<button class="btn sm primary" data-act="seqSumar1" data-id="${esc(p.id)}">Sumar a otra secuencia</button>`:""}</div>`:vivoP(p)?`<button class="btn sm primary" data-act="seqSumar1" data-id="${esc(p.id)}">Sumar a una secuencia</button>`:""}</section>
    <div class="fx-grid2"><label class="fld"><span>Vendedor</span><select class="fx-sel" data-k="asignado" data-id="${esc(p.id)}"><option value="">Sin asignar</option>${[...new Set([...V.map(v=>v.n),p.asignado].filter(Boolean))].map(v=>`<option ${v===p.asignado?"selected":""}>${esc(v)}</option>`).join("")}</select></label>

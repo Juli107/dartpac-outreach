@@ -3,7 +3,8 @@ import { hasSession } from "@/lib/session";
 
 // Rutas públicas: login (también con Google), píxel de apertura, imagen de firma, baja, y los trabajos programados
 // (cron, trabajador y búsqueda semanal del Radar), que se protegen con su propio secreto o el token de GitHub, y el
-// latido, que no necesita llave porque solo hace lo que ya tocaba, y el webhook de WhatsApp, que comprueba la firma de Meta.
+// latido, que no necesita llave porque solo hace lo que ya tocaba, y el webhook de WhatsApp, que comprueba la firma de Meta, y la entrada desde DARTPAC SISTEMA (/api/sso), que comprueba
+// el pase firmado del sistema.
 const PUBLIC = [
   /^\/login/,
   /^\/api\/t\//,
@@ -12,6 +13,7 @@ const PUBLIC = [
   /^\/baja\//,
   /^\/api\/cron/,
   /^\/api\/latido$/,
+  /^\/api\/sso$/,
   /^\/api\/whatsapp$/,
   /^\/api\/radar\/worker$/,
   /^\/api\/radar\/semanal$/,
