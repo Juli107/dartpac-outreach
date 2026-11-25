@@ -1,5 +1,6 @@
 import { db } from "./db";
 import type { Tone } from "./labels";
+import { sincronizarSistema } from "./sistema";
 
 /** Las etapas de un cliente. Son las mismas en el Radar y en Contactos. */
 export const ETAPAS: [string, string, Tone][] = [
@@ -52,4 +53,6 @@ export async function sincronizarEtapas() {
   } catch (e) {
     console.error("sincronizar etapas", e);
   }
+  // clientes de DARTPAC SISTEMA → Radar (no escribirles) y etapas de los dados de alta (cotizado / cliente)
+  await sincronizarSistema();
 }
